@@ -1,0 +1,117 @@
+// ============================================
+// SHOP MANAGEMENT MODELS
+// ============================================
+
+model Product {
+  id            String          @id @default(uuid())
+  name          String
+  sku           String          @unique
+  category      String
+  description   String?
+  costPrice     Float
+  sellingPrice  Float
+  stock         Int             @default(0)
+  minStock      Int             @default(5)
+  status        String          @default("In Stock") // In Stock, Low Stock, Out of Stock
+  userId        String
+  supplierId    String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  user          User            @relation("UserProducts", fields: [userId], references: [id])
+  supplier      ShopVendor?     @relation(fields: [supplierId], references: [id])
+  saleItems     SaleItem[]
+  purchaseItems PurchaseOrderItem[]
+  stockMovements StockMovement[]
+
+  @@map("products")
+}
+
+model Sale {
+  id            String     @id @default(uuid())
+  invoiceNumber String     @unique
+  customerId    String?
+  userId        String
+  subtotal      Float
+  tax           Float
+  total         Float
+  paymentMethod String     @default("Cash") // Cash, Card, Mobile Money
+  status        String     @default("Completed")
+  notes         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  
+  user          User       @relation("UserSales", fields: [userId], references: [id])
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  items         SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String   @id @default(uuid())
+  saleId      String
+  productId   String
+  productName String
+  quantity    Int
+  unitPrice   Float
+  total       Float
+  createdAt   DateTime @default(now())
+  
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+}
+
+model PurchaseOrder {
+  id               String              @id @default(uuid())
+  poNumber         String              @unique
+  vendorId         String
+  userId           String
+  subtotal         Float
+  tax              Float
+  total            Float
+  status           String              @default("Pending") // Pending, Ordered, Received, Cancelled
+  expectedDelivery DateTime?
+  notes            String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  
+  user             User                @relation("UserPurchaseOrders", fields: [userId], references: [id])
+  vendor           ShopVendor          @relation(fields: [vendorId], references: [id])
+  items            PurchaseOrderItem[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id          String        @id @default(uuid())
+  poId        String
+  productId   String
+  productName String
+  quantity    Int
+  unitCost    Float
+  total       Float
+  createdAt   DateTime      @default(now())
+  
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model StockMovement {
+  id        String   @id @default(uuid())
+  productId String
+  type      String   // Sale, Purchase, Adjustment, Return
+  quantity  Int      // Positive for additions, negative for reductions
+  reference String?  // Invoice number, PO number, etc.
+  userId    String
+  createdAt DateTime @default(now())
+  
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation("UserStockMovements", fields: [userId], references: [id])
+
+  @@map("stock_movements")
+}

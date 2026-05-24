@@ -1,0 +1,261 @@
+// ============================================
+// SHOP MANAGEMENT MODELS
+// ============================================
+
+model Product {
+  id            String          @id @default(uuid())
+  name          String
+  sku           String          @unique
+  category      String
+  description   String?
+  costPrice     Float
+  sellingPrice  Float
+  stock         Int             @default(0)
+  minStock      Int             @default(5)
+  status        String          @default("In Stock") // In Stock, Low Stock, Out of Stock
+  userId        String
+  supplierId    String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  user          User            @relation("UserProducts", fields: [userId], references: [id])
+  supplier      Vendor?         @relation(fields: [supplierId], references: [id])
+  saleItems     SaleItem[]
+  purchaseItems PurchaseOrderItem[]
+  stockMovements StockMovement[]
+
+  @@map("products")
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String
+  address   String?
+  status    String   @default("Active") // Active, Inactive
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user      User     @relation("UserCustomers", fields: [userId], references: [id])
+  sales     Sale[]
+
+  @@map("shop_customers")
+}
+
+model Vendor {
+  id          String          @id @default(uuid())
+  name        String
+  contactPerson String?
+  email       String?
+  phone       String
+  address     String?
+  category    String?
+  status      String          @default("Active")
+  userId      String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  
+  user          User            @relation("UserVendors", fields: [userId], references: [id])
+  products      Product[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("vendors")
+}
+
+model Sale {
+  id            String     @id @default(uuid())
+  invoiceNumber String     @unique
+  customerId    String?
+  userId        String
+  subtotal      Float
+  tax           Float
+  total         Float
+  paymentMethod String     @default("Cash") // Cash, Card, Mobile Money
+  status        String     @default("Completed")
+  notes         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  
+  user          User       @relation("UserSales", fields: [userId], references: [id])
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  items         SaleItem[]
+  transactions  Transaction[]  @relation("SaleTransaction") // Link to ledger entry
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String   @id @default(uuid())
+  saleId      String
+  productId   String
+  productName String
+  quantity    Int
+  unitPrice   Float
+  total       Float
+  createdAt   DateTime @default(now())
+  
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+}
+
+model PurchaseOrder {
+  id               String              @id @default(uuid())
+  poNumber         String              @unique
+  vendorId         String
+  userId           String
+  subtotal         Float
+  tax              Float
+  total            Float
+  status           String              @default("Pending") // Pending, Ordered, Received, Cancelled
+  expectedDelivery DateTime?
+  notes            String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  
+  user             User                @relation("UserPurchaseOrders", fields: [userId], references: [id])
+  vendor           Vendor              @relation(fields: [vendorId], references: [id])
+  items            PurchaseOrderItem[]
+  transactions     Transaction[]       @relation("PurchaseTransaction")
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id          String        @id @default(uuid())
+  poId        String
+  productId   String
+  productName String
+  quantity    Int
+  unitCost    Float
+  total       Float
+  createdAt   DateTime      @default(now())
+  
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model StockMovement {
+  id        String   @id @default(uuid())
+  productId String
+  type      String   // Sale, Purchase, Adjustment, Return
+  quantity  Int      // Positive for additions, negative for reductions
+  reference String?  // Invoice number, PO number, etc.
+  userId    String
+  createdAt DateTime @default(now())
+  
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation("UserStockMovements", fields: [userId], references: [id])
+
+  @@map("stock_movements")
+}
+
+// ============================================
+// ACCOUNTING & FINANCE MODELS (NEW)
+// ============================================
+
+// 1. FINANCIAL ACCOUNTS (Assets: Cash, Bank, Mobile Money)
+model FinancialAccount {
+  id            String        @id @default(uuid())
+  name          String        // e.g "Main Safe", "CIB Bank", "EVC Plus"
+  type          String        // CASH, BANK, MOBILE_MONEY
+  accountNumber String?       // Optional for Cash
+  currency      String        @default("ETB")
+  balance       Float         @default(0) // Current Balance
+  status        String        @default("Active")
+  userId        String
+  
+  user          User          @relation("UserAccounts", fields: [userId], references: [id])
+  transactions  Transaction[] @relation("AccountTransactions")
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("financial_accounts")
+}
+
+// 2. SHAREHOLDERS (Equity Owners)
+model Shareholder {
+  id            String        @id @default(uuid())
+  name          String
+  contact       String?
+  totalInvested Float         @default(0) // Capital Injection
+  totalWithdrawn Float        @default(0) // Drawings
+  currentEquity Float         @default(0) // Net Stake
+  userId        String
+  status        String        @default("Active")
+
+  user          User          @relation("UserShareholders", fields: [userId], references: [id])
+  transactions  Transaction[] @relation("ShareholderTransactions")
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("shareholders")
+}
+
+// 3. FIXED ASSETS (Long Term Assets)
+model FixedAsset {
+  id            String    @id @default(uuid())
+  name          String    // e.g "Delivery Truck", "Office Computer"
+  purchaseDate  DateTime
+  cost          Float
+  currentValue  Float     // After Depreciation
+  salvageValue  Float?    // Value at end of life
+  lifeSpanYears Int?      // Useful life
+  userId        String
+  status        String    @default("Active") // Active, Sold, Scrapped
+
+  user          User      @relation("UserFixedAssets", fields: [userId], references: [id])
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("fixed_assets")
+}
+
+// 4. TRANSACTION LEDGER (The General Ledger)
+// Records EVERY financial movement: Sales, Expenses, Equity, Transfers
+model Transaction {
+  id            String     @id @default(uuid())
+  date          DateTime   @default(now())
+  description   String
+  amount        Float      // Always absolute value
+  type          String     // INCOME, EXPENSE, TRANSFER, EQUITY_IN, EQUITY_OUT, ASSET_PURCHASE, LIABILITY_PAYMENT
+  category      String?    // e.g "Sales", "Rent", "Salary", "Capital Injection"
+  paymentMethod String     // Cash, Bank, Mobile
+  reference     String?    // Invoice #, Check #
+  status        String     @default("Completed")
+  userId        String
+
+  // Links to specific entities
+  accountId     String?    // Which account was affected (e.g. CIB Bank)
+  account       FinancialAccount? @relation("AccountTransactions", fields: [accountId], references: [id])
+
+  shareholderId String?    // If Equity Transaction
+  shareholder   Shareholder? @relation("ShareholderTransactions", fields: [shareholderId], references: [id])
+  
+  saleId        String?    // If Sale
+  sale          Sale?      @relation("SaleTransaction", fields: [saleId], references: [id])
+
+  purchaseOrderId String?    // If PO Payment
+  purchaseOrder PurchaseOrder? @relation("PurchaseTransaction", fields: [purchaseOrderId], references: [id])
+
+  user          User       @relation("UserTransactions", fields: [userId], references: [id])
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("transactions_ledger")
+}
+
+// Add these relations to the User model (copy this to your schema.prisma User model):
+// financialAccounts FinancialAccount[] @relation("UserAccounts")
+// shareholders      Shareholder[]      @relation("UserShareholders")
+// fixedAssets       FixedAsset[]       @relation("UserFixedAssets")
+// transactions      Transaction[]      @relation("UserTransactions")

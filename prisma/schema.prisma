@@ -1,0 +1,1188 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String             @id @default(uuid()) @map("_id")
+  email             String             @unique
+  emailVerified     DateTime?
+  password          String
+  fullName          String
+  role              Role               @default(MEMBER)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  companyId         String
+  TwoFAEnabled      Boolean            @default(false)
+  lastLogin         DateTime?
+  lastActiveAt      DateTime?
+  lastLocation      String?
+  lastDevice        String?
+  impersonatedBy    String?
+  faceDescriptor    String?            @db.Text
+  status            String             @default("Active")
+  phone             String             @default("")
+  twoFASecret       String?
+  otpCode           String?
+  otpExpires        DateTime?
+  resetToken        String?
+  resetTokenExpires DateTime?
+  sessionToken      String?
+  auditLogs         AuditLog[]
+  customers         Customer[]         @relation("UserCustomers")
+  deletedItems      DeletedItem[]
+  expenses          Expense[]
+  factoryMaterials  FactoryMaterial[]  @relation("UserFactoryMaterials")
+  inventoryItems    InventoryItem[]
+  notifications     Notification[]
+  PendingExpense    PendingExpense[]
+  products          Product[]          @relation("UserProducts")
+  purchaseOrders    PurchaseOrder[]    @relation("UserPurchaseOrders")
+  sales             Sale[]             @relation("UserSales")
+  vendors           ShopVendor[]       @relation("UserShopVendors")
+  stockMovements    StockMovement[]    @relation("UserStockMovements")
+  tasksAssigned     Task[]             @relation("AssignedTo")
+  transactions      Transaction[]
+
+  trustedDevices    TrustedDevice[]
+
+  company           Company            @relation(fields: [companyId], references: [id])
+  projects          Project[]          @relation("ProjectMembers")
+
+  closedPeriods     FinancialPeriod[]  @relation("UserClosedPeriods")
+  approvalRequests  ApprovalRequest[]  @relation("UserApprovalRequests")
+  approvalsGiven    ApprovalRequest[]  @relation("UserApprovals")
+
+  @@map("users")
+}
+
+model TrustedDevice {
+  id        String   @id @default(uuid()) @map("_id")
+  userId    String
+  token     String   @unique
+  userAgent String?
+  lastUsed  DateTime @default(now())
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("trusted_devices")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+
+model Task {
+  id           String    @id @default(uuid()) @map("_id")
+  title        String
+  content      String?
+  status       String    @default("TODO")
+  priority     String    @default("MEDIUM")
+  dueDate      DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  projectId    String
+  assignedToId String?
+  assignedTo   User?     @relation("AssignedTo", fields: [assignedToId], references: [id])
+  project      Project   @relation(fields: [projectId], references: [id])
+
+  @@map("tasks")
+}
+
+model Company {
+  id                      String                   @id @default(uuid()) @map("_id")
+  name                    String                   @unique
+  industry                String?
+  planType                String?                  @default("PROJECTS_ONLY")
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  address                 String?
+  email                   String?
+  logoUrl                 String?
+  phone                   String?
+  registrationDate        DateTime?
+  taxId                   String?
+  website                 String?
+  receiptHeader           String?
+  receiptFooter           String?
+  taxRate                 Float?                   @default(0)
+  requireReceiptNumber    Boolean                  @default(false)
+  whatsappSessionStatus   String?                  @default("DISCONNECTED")
+  whatsappNumber          String?
+  fiscalYearStartMonth    Int                      @default(1)
+  isActive                Boolean                  @default(true)
+  accounts                Account[]
+  auditLogs               AuditLog[]
+  billOfMaterials         BillOfMaterial[]
+  companyLabors           CompanyLabor[]
+  costTracking            CostTracking[]
+  customers               Customer[]
+  deletedItems            DeletedItem[]
+  employees               Employee[]
+  exchangeRates           ExchangeRate[]
+  ExpenseCategory         ExpenseCategory[]
+  expenses                Expense[]
+  factoryMaterials        FactoryMaterial[]
+  fiscalYears             FiscalYear[]
+  fixedAssets             FixedAsset[]
+  inventoryItems          InventoryItem[]
+  manufacturingUsed       ManufacturingUsed[]
+  materialPurchases       MaterialPurchase[]
+  notifications           Notification[]
+  pendingExpenses         PendingExpense[]
+  personalizationSettings PersonalizationSettings?
+  productCatalog          ProductCatalog[]
+  productionOrders        ProductionOrder[]
+  products                Product[]
+  projects                Project[]
+  purchaseOrders          PurchaseOrder[]
+  sales                   Sale[]
+  shareholders            Shareholder[]
+  vendors                 ShopVendor[]
+  stockMovements          StockMovement[]
+  transactions            Transaction[]
+  users                   User[]
+  workOrders              WorkOrder[]
+  workshopJobs            WorkshopJob[]
+
+  financialPeriods        FinancialPeriod[]
+  approvalRequests        ApprovalRequest[]
+
+  @@map("companies")
+}
+
+
+
+
+model Shareholder {
+  id              String        @id @default(uuid()) @map("_id")
+  name            String
+  email           String
+  sharePercentage Float
+  profitSplit     Decimal       @default(0.0) @db.Decimal(12, 2)
+  joinedDate      DateTime
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  companyId       String
+  company         Company       @relation(fields: [companyId], references: [id])
+  transactions    Transaction[]
+
+  @@map("shareholders")
+}
+
+model Project {
+  id                     String              @id @default(uuid()) @map("_id")
+  name                   String
+  description            String?
+  agreementAmount        Decimal             @default(0.0) @db.Decimal(12, 2)
+  advancePaid            Decimal             @default(0.0) @db.Decimal(12, 2)
+  remainingAmount        Decimal             @default(0.0) @db.Decimal(12, 2)
+  projectType            String
+  status                 String              @default("Active")
+  expectedCompletionDate DateTime?
+  actualCompletionDate   DateTime?
+  notes                  String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  companyId              String
+  customerId             String
+  budget                 Decimal?            @db.Decimal(12, 2)
+  endDate                DateTime?
+  fiscalYearId           String?
+  startDate              DateTime?
+  expenses               Expense[]
+  manufacturingUsed      ManufacturingUsed[]
+  payments               Payment[]
+  pendingExpenses        PendingExpense[]
+  productionOrders       ProductionOrder[]
+  documents              ProjectDocument[]
+  laborRecords           ProjectLabor[]
+  materialsUsed          ProjectMaterial[]
+  company                Company             @relation(fields: [companyId], references: [id])
+  customer               Customer            @relation(fields: [customerId], references: [id])
+  fiscalYear             FiscalYear?         @relation(fields: [fiscalYearId], references: [id])
+  purchaseOrders         PurchaseOrder[]
+  tasks                  Task[]
+  transactions           Transaction[]
+  workshopJobs           WorkshopJob[]
+  members                User[]              @relation("ProjectMembers")
+
+
+  @@map("projects")
+}
+
+model ProjectMaterial {
+  id           String   @id @default(uuid()) @map("_id")
+  name         String
+  quantityUsed Float
+  unit         String
+  costPerUnit  Decimal  @db.Decimal(10, 2)
+  leftoverQty  Float    @default(0.0)
+  dateUsed     DateTime @default(now())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id])
+
+  @@map("project_materials")
+}
+
+model ProjectLabor {
+  id                 String   @id @default(uuid()) @map("_id")
+  agreedWage         Decimal? @db.Decimal(10, 2)
+  paidAmount         Decimal  @db.Decimal(10, 2)
+  remainingWage      Decimal? @db.Decimal(10, 2)
+  dateWorked         DateTime @default(now())
+  projectId          String
+  employeeId         String
+  description        String?
+  paidFrom           String
+  previousPaidAmount Decimal? @db.Decimal(10, 2)
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_labor")
+}
+
+model CompanyLabor {
+  id                 String   @id @default(uuid()) @map("_id")
+  agreedWage         Decimal? @db.Decimal(10, 2)
+  paidAmount         Decimal  @db.Decimal(10, 2)
+  remainingWage      Decimal? @db.Decimal(10, 2)
+  dateWorked         DateTime @default(now())
+  employeeId         String
+  description        String?
+  paidFrom           String
+  previousPaidAmount Decimal? @db.Decimal(10, 2)
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("company_labor")
+}
+
+model ProjectDocument {
+  id         String   @id @default(uuid()) @map("_id")
+  name       String
+  fileUrl    String
+  fileType   String
+  uploadedAt DateTime @default(now())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id])
+
+  @@map("project_documents")
+}
+
+model Payment {
+  id           String      @id @default(uuid()) @map("_id")
+  amount       Decimal     @db.Decimal(12, 2)
+  paymentDate  DateTime
+  paymentType  String
+  receivedIn   String
+  note         String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  projectId    String
+  customerId   String?
+  fiscalYearId String?
+  customer     Customer?   @relation(fields: [customerId], references: [id])
+  fiscalYear   FiscalYear? @relation(fields: [fiscalYearId], references: [id])
+  project      Project     @relation(fields: [projectId], references: [id])
+
+  @@map("payments")
+}
+
+model Employee {
+  id                  String               @id @default(uuid()) @map("_id")
+  fullName            String
+  email               String?              @unique
+  phone               String?
+  role                String
+  monthlySalary       Decimal?
+  salaryPaidThisMonth Decimal              @default(0.0) @db.Decimal(12, 2)
+  lastPaymentDate     DateTime?
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  companyId           String
+  overpaidAmount      Decimal              @default(0.0) @db.Decimal(12, 2)
+  startDate           DateTime             @default(now())
+  category            EmployeeCategory     @default(COMPANY)
+  department          String?
+  phoneNumber         String?
+  position            String?
+  companyLaborRecords CompanyLabor[]
+  attendance          EmployeeAttendance[]
+  company             Company              @relation(fields: [companyId], references: [id])
+  expenses            Expense[]
+  laborRecords        ProjectLabor[]
+  transactions        Transaction[]
+  workOrders          WorkOrder[]
+  sales               Sale[]
+
+  @@map("employees")
+}
+
+model EmployeeAttendance {
+  id         String   @id @default(uuid()) @map("_id")
+  employeeId String
+  date       DateTime @db.Date
+  worked     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])
+  @@index([employeeId, date])
+  @@map("employee_attendance")
+}
+
+model ExpenseCategory {
+  id          String    @id @default(uuid()) @map("_id")
+  name        String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  companyId   String
+  description String?
+  type        String
+  company     Company   @relation(fields: [companyId], references: [id])
+  expenses    Expense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id              String           @id @default(uuid()) @map("_id")
+  description     String
+  amount          Decimal          @db.Decimal(12, 2)
+  subCategory     String?
+  paidFrom        String
+  expenseDate     DateTime         @default(now())
+  note            String?
+  approved        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  companyId       String
+  projectId       String?
+  userId          String?
+  categoryId      String?
+  vendorId        String?
+  category        String
+  employeeId      String?
+  materials       Json?
+  customerId      String?
+  transportType   String?
+  consultancyFee  Decimal?         @db.Decimal(12, 2)
+  consultancyType String?
+  consultantName  String?
+  bankAccountId   String?
+  equipmentName   String?
+  rentalFee       Float?
+  rentalPeriod    String?
+  supplierName    String?
+  accountId       String?
+  fiscalYearId    String?
+  receiptUrl      String?
+  paymentStatus   String?          @default("UNPAID")
+  invoiceNumber   String?
+  paymentDate     DateTime?
+  materialDate    DateTime?
+  purchaseOrderId String?
+  workshopJobId   String?
+  workshopJob     WorkshopJob?     @relation(fields: [workshopJobId], references: [id])
+  account         Account?         @relation(fields: [accountId], references: [id])
+  expenseCategory ExpenseCategory? @relation(fields: [categoryId], references: [id])
+  company         Company          @relation(fields: [companyId], references: [id])
+  customer        Customer?        @relation(fields: [customerId], references: [id])
+  employee        Employee?        @relation(fields: [employeeId], references: [id])
+  fiscalYear      FiscalYear?      @relation(fields: [fiscalYearId], references: [id])
+  project         Project?         @relation(fields: [projectId], references: [id])
+  purchaseOrder   PurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id])
+  user            User?            @relation(fields: [userId], references: [id])
+  vendor          ShopVendor?      @relation(fields: [vendorId], references: [id])
+  transactions    Transaction[]
+
+  @@map("expenses")
+}
+
+model InventoryItem {
+  id              String           @id @default(uuid()) @map("_id")
+  name            String
+  sku             String?
+  category        String
+  description     String?
+  unit            String
+  inStock         Float
+  minStock        Float
+  location        String?
+  supplier        String?
+  purchasePrice   Decimal          @db.Decimal(10, 2)
+  sellingPrice    Decimal          @db.Decimal(10, 2)
+  capacity        Int?             @default(150) // Items per bag (e.g., 50, 100, 150)
+  yieldPerMeter   Float?           @default(0)   // If bought in meters, how many pieces per meter
+  usedInProjects  Float            @default(0.0)
+  lastUpdated     DateTime         @default(now())
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  companyId       String
+  userId          String?
+  company         Company          @relation(fields: [companyId], references: [id])
+  user            User?            @relation(fields: [userId], references: [id])
+  billOfMaterials BillOfMaterial[]
+
+  @@unique([name, companyId])
+  @@map("inventory_items")
+}
+
+
+model FixedAsset {
+  id               String        @id @default(uuid()) @map("_id")
+  name             String
+  type             String
+  value            Decimal       @db.Decimal(12, 2)
+  purchaseDate     DateTime
+  assignedTo       String?
+  status           String        @default("Active")
+  depreciationRate Float
+  currentBookValue Decimal       @db.Decimal(12, 2)
+  lastUpdated      DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  companyId        String
+  company          Company       @relation(fields: [companyId], references: [id])
+  transactions     Transaction[]
+
+  @@unique([name, companyId])
+  @@map("fixed_assets")
+}
+
+model Customer {
+  id               String            @id @default(uuid()) @map("_id")
+  name             String
+  type             String            @default("Individual")
+  companyName      String?
+  phone            String?
+  email            String?
+  address          String?
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  companyId        String
+  userId           String?
+  contactPerson    String?
+  phoneNumber      String?
+  company          Company           @relation(fields: [companyId], references: [id])
+  user             User?             @relation("UserCustomers", fields: [userId], references: [id])
+  expenses         Expense[]
+  payments         Payment[]
+  productionOrders ProductionOrder[]
+  projects         Project[]
+  sales            Sale[]
+  transactions     Transaction[]
+  workshopJobs     WorkshopJob[]
+
+  @@unique([name, companyId])
+  @@map("customers")
+}
+
+model ShopVendor {
+  id                String             @id @default(uuid()) @map("_id")
+  name              String
+  type              String
+  phone             String?
+  email             String?
+  address           String?
+  productsServices  String?
+  notes             String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  companyId         String
+  contactPerson     String?
+  phoneNumber       String?
+  userId            String?
+  expenses          Expense[]
+  materialPurchases MaterialPurchase[]
+  products          Product[]
+  purchaseOrders    PurchaseOrder[]
+  company           Company            @relation(fields: [companyId], references: [id])
+  user              User?              @relation("UserShopVendors", fields: [userId], references: [id])
+  transactions      Transaction[]
+
+  @@unique([name, companyId])
+  @@map("shop_vendors")
+}
+
+model Account {
+  id               String        @id @default(uuid()) @map("_id")
+  name             String
+  balance          Float         @default(0.0)
+  currency         String        @default("USD")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  companyId        String
+  description      String?
+  isActive         Boolean       @default(true)
+  type             String
+  company          Company       @relation(fields: [companyId], references: [id])
+  expenses         Expense[]
+  transactions     Transaction[]
+  sales            Sale[]
+  fromTransactions Transaction[] @relation("FromAccount")
+  toTransactions   Transaction[] @relation("ToAccount")
+
+
+  @@unique([name, companyId])
+  @@map("accounts")
+}
+
+model Transaction {
+  id              String          @id @default(uuid()) @map("_id")
+  description     String
+  amount          Decimal         @db.Decimal(12, 2)
+  type            TransactionType
+  transactionDate DateTime        @default(now())
+  note            String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  accountId       String?
+  fromAccountId   String?
+  toAccountId     String?
+  projectId       String?
+  expenseId       String?
+  customerId      String?
+  vendorId        String?
+  userId          String?
+  employeeId      String?
+  category        String?
+  receiptUrl      String?
+  companyId       String
+  fiscalYearId    String?
+  shareholderId   String?
+  fixedAssetId    String?
+  account         Account?        @relation(fields: [accountId], references: [id])
+  company         Company         @relation(fields: [companyId], references: [id])
+  customer        Customer?       @relation(fields: [customerId], references: [id])
+  employee        Employee?       @relation(fields: [employeeId], references: [id])
+  expense         Expense?        @relation(fields: [expenseId], references: [id])
+  fiscalYear      FiscalYear?     @relation(fields: [fiscalYearId], references: [id])
+  fixedAsset      FixedAsset?     @relation(fields: [fixedAssetId], references: [id])
+  fromAccount     Account?        @relation("FromAccount", fields: [fromAccountId], references: [id])
+  project         Project?        @relation(fields: [projectId], references: [id])
+  shareholder     Shareholder?    @relation(fields: [shareholderId], references: [id])
+  toAccount       Account?        @relation("ToAccount", fields: [toAccountId], references: [id])
+  user            User?           @relation(fields: [userId], references: [id])
+  vendor          ShopVendor?     @relation(fields: [vendorId], references: [id])
+
+  @@map("transactions")
+}
+
+
+
+model Notification {
+  id              String   @id @default(uuid()) @map("_id")
+  message         String
+  type            String
+  date            DateTime @default(now())
+  read            Boolean  @default(false)
+  details         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  companyId       String
+  userDisplayName String?
+  userId          String?
+  company         Company  @relation(fields: [companyId], references: [id])
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model PendingExpense {
+  id                   String        @id @default(uuid()) @map("_id")
+  description          String
+  amount               Decimal       @db.Decimal(12, 2)
+  status               String        @default("PENDING")
+  companyId            String
+  userId               String?
+  approvedAt           DateTime?
+  projectId            String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  company              Company       @relation(fields: [companyId], references: [id])
+  project              Project?      @relation(fields: [projectId], references: [id])
+  user                 User?         @relation(fields: [userId], references: [id])
+
+  @@map("pending_expenses")
+}
+
+
+
+
+model PersonalizationSettings {
+  id                  String   @id @default(uuid()) @map("_id")
+  companyId           String   @unique
+  theme               String   @default("system")
+  language            String   @default("so")
+  defaultHomePage     String   @default("/dashboard")
+  currency            String   @default("ETB")
+  dateFormat          String   @default("DD/MM/YYYY")
+  tableDensity        String   @default("comfortable")
+  avatarColor         String   @default("#3498DB")
+  customFont          String   @default("Inter")
+  notificationSound   String   @default("default")
+  highContrast        Boolean  @default(false)
+  textSize            String   @default("medium")
+  defaultExportFormat String   @default("CSV")
+  notifications       Json     @default("{\"sms\": false, \"email\": true, \"inApp\": true, \"lowStock\": true, \"overdueProjects\": true}")
+  enabledFeatures     Json     @default("{}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  company             Company  @relation(fields: [companyId], references: [id])
+
+  @@map("personalization_settings")
+}
+
+model ProductCatalog {
+  id               String            @id @default(uuid()) @map("_id")
+  name             String
+  description      String?
+  category         String
+  unit             String
+  standardCost     Decimal           @db.Decimal(10, 2)
+  sellingPrice     Decimal           @db.Decimal(10, 2)
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  companyId        String
+  billOfMaterials  BillOfMaterial[]
+  company          Company           @relation(fields: [companyId], references: [id])
+  productionOrders ProductionOrder[]
+
+  @@unique([name, companyId])
+  @@map("product_catalog")
+}
+
+model ProductionOrder {
+  id                String              @id @default(uuid()) @map("_id")
+  orderNumber       String
+  productName       String
+  quantity          Int
+  status            String              @default("PLANNED")
+  priority          String              @default("MEDIUM")
+  startDate         DateTime?
+  dueDate           DateTime?
+  completedDate     DateTime?
+  notes             String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  companyId         String
+  customerId        String?
+  productId         String?
+  projectId         String?
+  billOfMaterials   BillOfMaterial[]
+  costTracking      CostTracking?
+  manufacturingUsed ManufacturingUsed[]
+  materialPurchases MaterialPurchase[]
+  company           Company             @relation(fields: [companyId], references: [id])
+  customer          Customer?           @relation(fields: [customerId], references: [id])
+  product           ProductCatalog?     @relation(fields: [productId], references: [id])
+  project           Project?            @relation(fields: [projectId], references: [id])
+  workOrders        WorkOrder[]
+
+  @@map("production_orders")
+}
+
+model BillOfMaterial {
+  id                String           @id @default(uuid()) @map("_id")
+  materialName      String
+  quantity          Float
+  unit              String
+  costPerUnit       Decimal          @db.Decimal(10, 2)
+  totalCost         Decimal          @db.Decimal(10, 2)
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  companyId         String
+  productionOrderId String?
+  productId         String?
+  inventoryItemId   String?
+  company           Company          @relation(fields: [companyId], references: [id])
+  product           ProductCatalog?  @relation(fields: [productId], references: [id])
+  productionOrder   ProductionOrder? @relation(fields: [productionOrderId], references: [id])
+  inventoryItem     InventoryItem?   @relation(fields: [inventoryItemId], references: [id])
+
+  @@map("bill_of_materials")
+}
+
+
+model WorkOrder {
+  id                String          @id @default(uuid()) @map("_id")
+  stage             String
+  description       String?
+  estimatedHours    Float
+  actualHours       Float?
+  status            String          @default("PENDING")
+  startTime         DateTime?
+  endTime           DateTime?
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  companyId         String
+  productionOrderId String
+  assignedToId      String?
+  assignedTo        Employee?       @relation(fields: [assignedToId], references: [id])
+  company           Company         @relation(fields: [companyId], references: [id])
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id])
+
+  @@map("work_orders")
+}
+
+model FiscalYear {
+  id                String             @id @default(uuid()) @map("_id")
+  year              Int
+  startDate         DateTime
+  endDate           DateTime
+  status            FiscalYearStatus   @default(ACTIVE)
+  description       String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  isClosed          Boolean            @default(false)
+  closedAt          DateTime?
+  companyId         String
+  expenses          Expense[]
+  company           Company            @relation(fields: [companyId], references: [id])
+  materialPurchases MaterialPurchase[]
+  payments          Payment[]
+  projects          Project[]
+  transactions      Transaction[]
+
+  @@unique([year, companyId])
+  @@map("fiscal_years")
+}
+
+model MaterialPurchase {
+  id                String           @id @default(uuid()) @map("_id")
+  materialName      String
+  quantity          Float
+  unit              String           @default("pcs")
+  unitPrice         Float
+  totalPrice        Float
+  transportCost     Float            @default(0)
+  taxAmount         Float            @default(0)
+  otherCosts        Float            @default(0)
+  landedCostApplied Boolean          @default(true)
+  vendorId          String
+  purchaseDate      DateTime
+  invoiceNumber     String?
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  companyId         String
+  productionOrderId String?
+  fiscalYearId      String?
+  paidAmount        Float            @default(0)
+  paymentStatus     String           @default("UNPAID")
+  company           Company          @relation(fields: [companyId], references: [id])
+  fiscalYear        FiscalYear?      @relation(fields: [fiscalYearId], references: [id])
+  productionOrder   ProductionOrder? @relation(fields: [productionOrderId], references: [id])
+  vendor            ShopVendor       @relation(fields: [vendorId], references: [id])
+
+  @@map("material_purchases")
+}
+
+model CostTracking {
+  id                 String          @id @default(uuid()) @map("_id")
+  productionOrderId  String          @unique
+  actualMaterialCost Float           @default(0)
+  actualLaborCost    Float           @default(0)
+  overheadCost       Float           @default(0)
+  notes              String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  companyId          String
+  company            Company         @relation(fields: [companyId], references: [id])
+  productionOrder    ProductionOrder @relation(fields: [productionOrderId], references: [id])
+
+  @@map("cost_tracking")
+}
+
+model ManufacturingUsed {
+  id                String          @id @default(uuid()) @map("_id")
+  materialName      String
+  quantityUsed      Float
+  unit              String          @default("pcs")
+  costPerUnit       Float
+  totalCost         Float
+  usedDate          DateTime
+  productionOrderId String
+  projectId         String?
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  companyId         String
+  company           Company         @relation(fields: [companyId], references: [id])
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id])
+  project           Project?        @relation(fields: [projectId], references: [id])
+
+  @@map("manufacturing_used")
+}
+
+
+
+model Product {
+  id             String              @id @default(uuid())
+  name           String
+  sku            String
+  category       String
+  description    String?
+  costPrice      Float
+  costPriceUSD   Float               @default(0)
+  sellingPrice   Float
+  stock          Int                 @default(0)
+  minStock       Int                 @default(5)
+  status         String              @default("In Stock")
+  userId         String
+  companyId      String?
+  supplierId     String?
+  imageUrl       String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  company        Company?            @relation(fields: [companyId], references: [id])
+  supplier       ShopVendor?         @relation(fields: [supplierId], references: [id])
+  user           User                @relation("UserProducts", fields: [userId], references: [id])
+  purchaseItems  PurchaseOrderItem[]
+  stockMovements StockMovement[]
+
+  @@unique([sku, companyId])
+  @@map("products")
+}
+
+model FactoryMaterial {
+  id            String   @id @default(uuid())
+  name          String
+  sku           String
+  category      String
+  description   String?
+  unit          String   @default("pcs")
+  inStock       Float    @default(0)
+  minStock      Float    @default(10)
+  purchasePrice Float    @default(0)
+  sellingPrice  Float    @default(0)
+  capacity        Int?             @default(150) // Items per bag (e.g., 50, 100, 150)
+  yieldPerMeter   Float?           @default(0)   // If bought in meters, how many pieces per meter
+  location      String?
+  userId        String
+  companyId     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  company       Company? @relation(fields: [companyId], references: [id])
+  user          User     @relation("UserFactoryMaterials", fields: [userId], references: [id])
+  saleItems     SaleItem[]
+
+  @@unique([sku, companyId])
+  @@map("factory_materials")
+}
+
+model Sale {
+  id                   String      @id @default(uuid())
+  invoiceNumber        String      @unique
+  customerId           String?
+  userId               String
+  companyId            String?
+  accountId            String?
+  subtotal             Float
+  tax                  Float
+  total                Float
+  paymentMethod        String      @default("Cash")
+  status               String      @default("Completed")
+  paymentStatus        String      @default("Paid")
+  paidAmount           Float       @default(0)
+  dueDate              DateTime?
+  notes                String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  currency             String      @default("ETB")
+  exchangeRate         Float       @default(1)
+  isConvertedToUSD     Boolean     @default(false)
+  convertedAt          DateTime?
+  originalTotal        Float?
+  autoConvertDebt      Boolean     @default(true)
+  convertDebtAfterDays Int         @default(7)
+  employeeId           String?
+  items                SaleItem[]
+  company              Company?    @relation(fields: [companyId], references: [id])
+  customer             Customer?   @relation(fields: [customerId], references: [id])
+  account              Account?    @relation(fields: [accountId], references: [id])
+  user                 User        @relation("UserSales", fields: [userId], references: [id])
+  employee             Employee?   @relation(fields: [employeeId], references: [id])
+  receiptUrl           String?
+
+  @@map("sales")
+}
+
+
+
+model SaleItem {
+  id           String   @id @default(uuid())
+  saleId       String
+  productId    String
+  productName  String
+  quantity     Int
+  unitPrice    Float
+  total        Float
+  costPrice    Float    @default(0)
+  totalCost    Float    @default(0)
+  createdAt    DateTime @default(now())
+  unitPriceUSD Float?
+  costPriceUSD Float?
+  material     FactoryMaterial @relation(fields: [productId], references: [id])
+  sale         Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("sale_items")
+}
+
+model PurchaseOrder {
+  id               String              @id @default(uuid())
+  poNumber         String
+  vendorId         String
+  userId           String
+  companyId        String?
+  subtotal         Float
+  tax              Float
+  total            Float
+  paidAmount       Float               @default(0)
+  paymentStatus    String              @default("Unpaid")
+  status           String              @default("Pending")
+  expectedDelivery DateTime?
+  notes            String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  currency         String              @default("USD")
+  exchangeRate     Float               @default(1)
+  shippingCost     Float               @default(0)
+  customsFee       Float               @default(0)
+  otherExpenses    Float               @default(0)
+  projectId        String?
+  expenses         Expense[]
+  items            PurchaseOrderItem[]
+  company          Company?            @relation(fields: [companyId], references: [id])
+  project          Project?            @relation(fields: [projectId], references: [id])
+  user             User                @relation("UserPurchaseOrders", fields: [userId], references: [id])
+  vendor           ShopVendor          @relation(fields: [vendorId], references: [id])
+  receiptUrl       String?
+
+  @@unique([poNumber, companyId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id            String        @id @default(uuid())
+  poId          String
+  productId     String
+  productName   String
+  sku           String?
+  quantity      Int
+  unitCost      Float
+  sellingPrice  Float?
+  total         Float
+  createdAt     DateTime      @default(now())
+  unitCostUSD   Float?
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model StockMovement {
+  id        String   @id @default(uuid())
+  productId String
+  type      String
+  quantity  Int
+  reference String?
+  userId    String
+  companyId String?
+  createdAt DateTime @default(now())
+  company   Company? @relation(fields: [companyId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation("UserStockMovements", fields: [userId], references: [id])
+
+  @@map("stock_movements")
+}
+
+
+
+model WorkshopJob {
+  id                 String       @id @default(uuid()) @map("_id")
+  jobNumber          String
+  name               String
+  description        String?
+  status             String       @default("PENDING")
+  startDate          DateTime     @default(now())
+  completionDate     DateTime?
+  materialCost       Float        @default(0)
+  laborCost          Float        @default(0)
+  overheadCost       Float        @default(0)
+  totalCost          Float        @default(0)
+  generatedProductId String?
+  projectId          String?
+  customerId         String?
+  companyId          String
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  expenses           JobExpense[]
+  systemExpenses     Expense[]
+  company            Company      @relation(fields: [companyId], references: [id])
+  customer           Customer?    @relation(fields: [customerId], references: [id])
+  project            Project?     @relation(fields: [projectId], references: [id])
+
+  @@map("workshop_jobs")
+}
+
+model JobExpense {
+  id          String      @id @default(uuid()) @map("_id")
+  description String
+  amount      Float
+  category    String
+  date        DateTime    @default(now())
+  jobId       String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  job         WorkshopJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("job_expenses")
+}
+
+model DeletedItem {
+  id         String   @id @default(uuid()) @map("_id")
+  modelName  String
+  originalId String?
+  data       Json
+  deletedAt  DateTime @default(now())
+  deletedBy  String?
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  user       User?    @relation(fields: [deletedBy], references: [id])
+
+  @@map("deleted_items")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @map("_id")
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  userId    String
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model ExchangeRate {
+  id        String   @id @default(uuid())
+  from      String   @default("USD")
+  to        String   @default("ETB")
+  rate      Float
+  date      DateTime @default(now())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+
+  @@unique([date, companyId])
+  @@map("exchange_rates")
+}
+
+enum EmployeeCategory {
+  COMPANY
+  PROJECT
+}
+
+enum FiscalYearStatus {
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  MEMBER
+  VIEWER
+  SUPER_ADMIN
+  PROJECTS_ADMIN
+  SHOP_ADMIN
+  MANUFACTURING_ADMIN
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER_IN
+  TRANSFER_OUT
+  DEBT_TAKEN
+  DEBT_REPAID
+  DEBT_GIVEN
+  DEBT_RECEIVED
+  OTHER
+}
+
+
+
+
+
+model FinancialPeriod {
+  id          String   @id @default(uuid()) @map("_id")
+  name        String   // e.g. "March 2026"
+  startDate   DateTime
+  endDate     DateTime
+  isClosed    Boolean  @default(false)
+  closedAt    DateTime?
+  closedById  String?
+  companyId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company  @relation(fields: [companyId], references: [id])
+  closedBy    User?    @relation("UserClosedPeriods", fields: [closedById], references: [id])
+
+  @@unique([name, companyId])
+  @@map("financial_periods")
+}
+
+model ApprovalRequest {
+  id           String   @id @default(uuid()) @map("_id")
+  type         String   // e.g. "DELETE_TRANSACTION", "EDIT_TRANSACTION"
+  entityType   String   // e.g. "Transaction"
+  entityId     String
+  requestData  Json     // The payload to be executed upon approval
+  reason       String?
+  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  requestedById String
+  approvedById  String?
+  companyId    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company      Company  @relation(fields: [companyId], references: [id])
+  requestedBy  User     @relation("UserApprovalRequests", fields: [requestedById], references: [id])
+  approvedBy   User?    @relation("UserApprovals", fields: [approvedById], references: [id])
+
+  @@map("approval_requests")
+}
+
+
+
+
+
