@@ -1001,7 +1001,7 @@ const Footer = () => {
           </p>
           <div className="flex gap-4">
             {/* Socials placeholder */}
-            <Link href="#" className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-primary transition-colors cursor-pointer"><Globe size={20} /></Link>
+            <Link href="https://merry-zuccutto-cc1bd1.netlify.app" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-primary transition-colors cursor-pointer"><Globe size={20} /></Link>
             <Link href="mailto:info@an-industory.com" className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-primary transition-colors cursor-pointer"><Mail size={20} /></Link>
           </div>
         </div>
