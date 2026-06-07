@@ -11,9 +11,14 @@ import crypto from 'crypto';
 if (!process.env.NEXTAUTH_SECRET) {
   throw new Error('NEXTAUTH_SECRET is not set in environment variables');
 }
-// Hubi in NEXTAUTH_URL uu jiro. Tani waa muhiim!
+
+// On Netlify, process.env.URL is automatically set to the site URL.
+// This ensures auth works correctly on deployed environments.
+if (!process.env.NEXTAUTH_URL && process.env.URL) {
+  process.env.NEXTAUTH_URL = process.env.URL;
+}
 if (!process.env.NEXTAUTH_URL) {
-  throw new Error('NEXTAUTH_URL is not set in environment variables. Please add it to your .env file.');
+  console.warn('NEXTAUTH_URL is not set. Auth redirects may not work correctly.');
 }
 
 
