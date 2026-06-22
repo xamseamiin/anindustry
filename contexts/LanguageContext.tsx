@@ -73,6 +73,8 @@ interface Translations {
     settings: string;
     profile: string;
     logout: string;
+    cctvCounter: string;
+    expenses: string;
   };
 
   // Notifications
@@ -267,6 +269,8 @@ const translations: Record<Language, Translations> = {
       settings: 'Dejinta',
       profile: 'Macluumaadkaaga',
       logout: 'Ka Bax',
+      cctvCounter: 'Tiriyaha CCTV AI',
+      expenses: 'Kharashyada',
     },
     notifications: {
       title: 'Digniinaha',
@@ -437,6 +441,8 @@ const translations: Record<Language, Translations> = {
       settings: 'Settings',
       profile: 'Profile',
       logout: 'Log Out',
+      cctvCounter: 'CCTV AI Counter',
+      expenses: 'Expenses',
     },
     notifications: {
       title: 'Notifications',

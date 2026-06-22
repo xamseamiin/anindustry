@@ -44,13 +44,8 @@ export async function GET(request: Request) {
         const outstandingDebt = totalRevenue - totalPaid;
 
         // Filter out raw material purchases/raw inventory from general operating expenses
-        const operatingExpenses = expenses.filter(e => {
-            const cat = (e.category || '').toLowerCase();
-            const desc = (e.description || '').toLowerCase();
-            return !cat.includes('purchase') && !cat.includes('material') && !cat.includes('inventory') && !cat.includes('raw') &&
-                   !desc.includes('purchase') && !desc.includes('material') && !desc.includes('raw');
-        });
-        const totalExpenses = operatingExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+        // We no longer filter out manually recorded expenses from the Expense table.
+        const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
         
         // Calculate COGS strictly for items that were ACTUALLY sold (using precise totalCost stored in db)
         const cogs = sales.reduce((sum, s) => {
@@ -59,7 +54,7 @@ export async function GET(request: Request) {
             }, 0);
         }, 0);
 
-        const netProfit = totalRevenue - (cogs + totalExpenses);
+        const netProfit = totalRevenue - cogs - totalExpenses;
 
         // 5. Batch Profitability Mapping
         const batchProfitability = batches.map(b => {
@@ -87,13 +82,13 @@ export async function GET(request: Request) {
             { month: 'Jan', revenue: 4500, cost: 3100 },
             { month: 'Feb', revenue: 5200, cost: 3800 },
             { month: 'Mar', revenue: 4800, cost: 3400 },
-            { month: 'Apr', revenue: totalRevenue, cost: cogs + totalExpenses }
+            { month: 'Apr', revenue: totalRevenue, cost: totalExpenses }
         ];
 
         return NextResponse.json({
             kpis: {
                 totalRevenue,
-                totalExpenses: totalExpenses + cogs,
+                totalExpenses: totalExpenses,
                 netProfit,
                 outstandingDebt,
                 profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0

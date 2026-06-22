@@ -39,5 +39,6 @@ next-env.d.ts
 # Uploads and temporary files
 /public/uploads/
 /public/receipts/
+/public/Downloads/
 .temp/
 scratch/

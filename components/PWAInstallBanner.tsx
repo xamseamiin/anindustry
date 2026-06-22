@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { Download, X, Share } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 
 export default function PWAInstallBanner() {
+    const pathname = usePathname();
     const [showBanner, setShowBanner] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
     const [isIOS, setIsIOS] = useState(false);
@@ -48,6 +50,10 @@ export default function PWAInstallBanner() {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
         };
     }, []);
+
+    if (pathname && pathname.startsWith('/telegram-mini-app')) {
+        return null;
+    }
 
     const handleInstallClick = async () => {
         if (!deferredPrompt && !isIOS) return;

@@ -23,18 +23,18 @@ interface SidebarItemProps {
 const SidebarItem = ({ name, href, icon: Icon, active }: SidebarItemProps) => (
     <button
         onClick={() => window.location.href = href}
-        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${
+        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${
             active
-            ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-lg shadow-slate-900/10'
+            ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-md shadow-slate-900/10'
             : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/70 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/50'
         }`}
     >
-        <div className={`p-1.5 rounded-xl transition-all duration-300 ${
+        <div className={`p-1 rounded-lg transition-all duration-300 ${
             active 
             ? 'bg-emerald-500 text-white' 
             : 'bg-slate-50 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
         }`}>
-            <Icon size={16} />
+            <Icon size={13} />
         </div>
         <span>{name}</span>
     </button>
@@ -70,9 +70,9 @@ export default function AccountingLayout({ children }: { children: React.ReactNo
         },
         {
             name: 'Kharashyada (Expenses)',
-            href: '/manufacturing/expenses',
+            href: '/manufacturing/accounting/expenses',
             icon: DollarSign,
-            active: pathname.startsWith('/manufacturing/expenses')
+            active: pathname.startsWith('/manufacturing/accounting/expenses') || pathname.startsWith('/manufacturing/expenses')
         },
         {
             name: 'Period Control (Fiscal)',
@@ -83,21 +83,21 @@ export default function AccountingLayout({ children }: { children: React.ReactNo
     ];
 
     return (
-        <div className="flex flex-col lg:flex-row gap-8 min-h-[80vh] items-stretch">
+        <div className="flex flex-col lg:flex-row gap-6 min-h-[80vh] items-stretch">
             {/* Local Accounting Sidebar */}
-            <div className="w-full lg:w-[280px] shrink-0">
-                <div className="card p-6 sticky top-24 space-y-6">
+            <div className="w-full lg:w-[230px] shrink-0">
+                <div className="card p-4 sticky top-20 space-y-4">
                     <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <div className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg">
-                                <Wallet size={16} />
+                        <div className="flex items-center gap-2 mb-0.5">
+                            <div className="p-1 bg-emerald-500/10 text-emerald-500 rounded-md">
+                                <Wallet size={13} />
                             </div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Financial Suite</span>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Financial Suite</span>
                         </div>
-                        <h3 className="text-sm font-black text-slate-900 dark:text-white tracking-tight uppercase">Accounting Menu</h3>
+                        <h3 className="text-xs font-black text-slate-900 dark:text-white tracking-tight uppercase">Accounting Menu</h3>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-0.5">
                         {menuItems.map((item, idx) => (
                             <SidebarItem
                                 key={idx}

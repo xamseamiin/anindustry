@@ -76,12 +76,39 @@ export async function GET(request: Request) {
         
         const receivablesDebt = salesDebt + manualDebtGiven - manualDebtReceived;
 
-        // Material Purchases Debt (Payables)
+        // Material Purchases & Purchase Orders & Manual Debts (Payables)
         const purchases = await prisma.materialPurchase.findMany({
             where: { companyId },
             select: { totalPrice: true, paidAmount: true }
         });
-        const payablesDebt = purchases.reduce((sum, p) => sum + (Number(p.totalPrice) - Number(p.paidAmount)), 0);
+        const mpDebt = purchases.reduce((sum, p) => sum + (Number(p.totalPrice) - Number(p.paidAmount || 0)), 0);
+
+        const pos = await prisma.purchaseOrder.findMany({
+            where: { companyId },
+            select: { total: true, paidAmount: true }
+        });
+        const poDebt = pos.reduce((sum, p) => sum + (Number(p.total) - Number(p.paidAmount || 0)), 0);
+
+        const debtTakenTx = await prisma.transaction.findMany({
+            where: { 
+                companyId, 
+                type: 'DEBT_TAKEN',
+                OR: [
+                    { category: null },
+                    { category: { not: 'Material Purchase Debt' } }
+                ]
+            },
+            select: { amount: true }
+        });
+        const debtRepaidTx = await prisma.transaction.findMany({
+            where: { companyId, type: 'DEBT_REPAID' },
+            select: { amount: true }
+        });
+
+        const manualDebtTaken = debtTakenTx.reduce((sum, tx) => sum + Number(tx.amount), 0);
+        const manualDebtRepaid = debtRepaidTx.reduce((sum, tx) => sum + Number(tx.amount), 0);
+
+        const payablesDebt = mpDebt + poDebt + manualDebtTaken - manualDebtRepaid;
 
         // 5. Daily & Weekly Output Calculation
         const now = new Date();

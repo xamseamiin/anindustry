@@ -171,8 +171,17 @@ export default function FactorySalesPage() {
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className="p-6 text-center font-bold text-slate-600 text-sm">
-                                                    {order.items.toLocaleString()} <span className="text-[10px] text-slate-400 font-black">PCS</span>
+                                                <td className="p-6 text-center">
+                                                    <div className="flex flex-col items-center justify-center gap-1">
+                                                        <span className="font-bold text-slate-600 text-sm">
+                                                            {order.items.toLocaleString()} <span className="text-[10px] text-slate-400 font-black">PCS</span>
+                                                        </span>
+                                                        {order.breakdown && (
+                                                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-tight bg-blue-500/10 px-2.5 py-0.5 rounded-lg border border-blue-500/15">
+                                                                {order.breakdown}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="p-6 text-right">
                                                     <div className="flex flex-col items-end">

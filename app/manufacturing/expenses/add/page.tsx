@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Loader2, CreditCard } from 'lucide-react';
@@ -10,16 +10,36 @@ export default function NewExpensePage() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [accounts, setAccounts] = useState<any[]>([]);
 
     const [formData, setFormData] = useState({
         description: '',
         amount: '',
         category: 'Utilities',
         date: new Date().toISOString().split('T')[0],
-        status: 'PAID'
+        status: 'PAID',
+        accountId: ''
     });
 
     const categories = ['Utilities', 'Maintenance', 'Rent', 'Salaries', 'Raw Material', 'Transport', 'Marketing', 'Office Supplies'];
+
+    useEffect(() => {
+        const fetchAccounts = async () => {
+            try {
+                const res = await fetch('/api/manufacturing/accounting/accounts');
+                if (res.ok) {
+                    const data = await res.json();
+                    setAccounts(data.accounts || []);
+                    if (data.accounts?.length > 0) {
+                        setFormData(prev => ({ ...prev, accountId: data.accounts[0].id }));
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to fetch accounts:', e);
+            }
+        };
+        fetchAccounts();
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,6 +47,12 @@ export default function NewExpensePage() {
 
         if (!formData.description || !formData.amount) {
             setToast({ message: 'Please fill in all required fields.', type: 'error' });
+            setLoading(false);
+            return;
+        }
+
+        if (formData.status === 'PAID' && !formData.accountId) {
+            setToast({ message: 'Fadlan dooro account-ka lacagta laga bixiyay.', type: 'error' });
             setLoading(false);
             return;
         }
@@ -139,6 +165,25 @@ export default function NewExpensePage() {
                             </select>
                         </div>
                     </div>
+
+                    {formData.status === 'PAID' && (
+                        <div className="animate-in fade-in slide-in-from-top-4 duration-300">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Pay From Account *</label>
+                            <select
+                                required
+                                value={formData.accountId}
+                                onChange={(e) => handleInputChange('accountId', e.target.value)}
+                                className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-[#3498DB] outline-none font-bold"
+                            >
+                                <option value="">Select Account...</option>
+                                {accounts.map(acc => (
+                                    <option key={acc.id} value={acc.id}>
+                                        {acc.name} ({parseFloat(acc.balance).toLocaleString()} ETB)
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     <div className="pt-4 flex gap-4">
                         <button

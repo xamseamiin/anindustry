@@ -62,7 +62,11 @@ const localTranslations = {
         errDesc: "Fadlan geli sharaxaadda.",
         successSaved: "Waa la kaydiyey si guul leh!",
         errServer: "Cilad ayaa dhacday inta lagu guda jiray kaydinta.",
-        errNetwork: "Kumbuyuutarku ma awoodo inuu la xiriiro server-ka."
+        errNetwork: "Kumbuyuutarku ma awoodo inuu la xiriiro server-ka.",
+        quickAddCustomerOpt: "+ Ku dar Macmiil Cusub...",
+        quickAddVendorOpt: "+ Ku dar Iibiye Cusub...",
+        quickAddNameLabel: "Magaca Cusub",
+        quickAddPhoneLabel: "Taleefanka Cusub (Option)"
     },
     en: {
         pageTitle: "General Ledger",
@@ -106,7 +110,11 @@ const localTranslations = {
         errDesc: "Please enter a description.",
         successSaved: "Transaction saved successfully!",
         errServer: "An error occurred while saving.",
-        errNetwork: "Unable to connect to the server."
+        errNetwork: "Unable to connect to the server.",
+        quickAddCustomerOpt: "+ Add New Customer...",
+        quickAddVendorOpt: "+ Add New Vendor...",
+        quickAddNameLabel: "New Name",
+        quickAddPhoneLabel: "New Phone (Optional)"
     }
 };
 
@@ -141,6 +149,21 @@ export default function TransactionsJournalPage() {
     // For debts
     const [selectedPartyType, setSelectedPartyType] = useState('CUSTOMER'); // CUSTOMER or VENDOR
     const [selectedPartyId, setSelectedPartyId] = useState('');
+    const [quickAddName, setQuickAddName] = useState('');
+    const [quickAddPhone, setQuickAddPhone] = useState('');
+
+    const handleCloseModal = () => {
+        setShowModal(false);
+        setAmount('');
+        setDescription('');
+        setNote('');
+        setReference('');
+        setSelectedPartyId('');
+        setQuickAddName('');
+        setQuickAddPhone('');
+        setFormError('');
+        setFormSuccess('');
+    };
 
     const fetchJournalData = async () => {
         try {
@@ -199,8 +222,66 @@ export default function TransactionsJournalPage() {
             return;
         }
 
+        if (txType === 'DEBT_TAKEN' || txType === 'DEBT_GIVEN') {
+            if (selectedPartyId === 'NEW_PARTY') {
+                if (!quickAddName.trim()) {
+                    setFormError(language === 'so' ? 'Fadlan qor magaca cusub.' : 'Please enter the new name.');
+                    return;
+                }
+            } else if (!selectedPartyId) {
+                setFormError(language === 'so' ? 'Fadlan dooro qofka ama shirkada.' : 'Please select a customer or vendor.');
+                return;
+            }
+        } else if (txType === 'INCOME' || txType === 'EXPENSE') {
+            if (selectedPartyId === 'NEW_PARTY') {
+                if (!quickAddName.trim()) {
+                    setFormError(language === 'so' ? 'Fadlan qor magaca cusub.' : 'Please enter the new name.');
+                    return;
+                }
+            }
+        }
+
         setSaving(true);
         try {
+            let actualPartyId = selectedPartyId;
+
+            // Handle Quick Add customer/vendor registration
+            if ((txType === 'INCOME' || txType === 'EXPENSE' || txType === 'DEBT_TAKEN' || txType === 'DEBT_GIVEN') && selectedPartyId === 'NEW_PARTY') {
+                if (selectedPartyType === 'CUSTOMER') {
+                    const custRes = await fetch('/api/manufacturing/customers', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: quickAddName.trim(),
+                            phone: quickAddPhone.trim(),
+                            type: 'Individual'
+                        })
+                    });
+                    if (!custRes.ok) {
+                        const errData = await custRes.json();
+                        throw new Error(errData.message || 'Ku guuldareystay in la diwaangaliyo macmiilka.');
+                    }
+                    const custData = await custRes.json();
+                    actualPartyId = custData.customer.id;
+                } else {
+                    const vendRes = await fetch('/api/manufacturing/vendors', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: quickAddName.trim(),
+                            phone: quickAddPhone.trim(),
+                            type: 'Supplier'
+                        })
+                    });
+                    if (!vendRes.ok) {
+                        const errData = await vendRes.json();
+                        throw new Error(errData.error || errData.message || 'Ku guuldareystay in la diwaangaliyo iibiyaha.');
+                    }
+                    const vendData = await vendRes.json();
+                    actualPartyId = vendData.vendor.id;
+                }
+            }
+
             const res = await fetch('/api/manufacturing/accounting/transactions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -213,8 +294,8 @@ export default function TransactionsJournalPage() {
                     fromAccountId: txType === 'TRANSFER' ? fromAccountId : null,
                     toAccountId: txType === 'TRANSFER' ? toAccountId : null,
                     reference,
-                    customerId: (txType === 'DEBT_TAKEN' || txType === 'DEBT_GIVEN') && selectedPartyType === 'CUSTOMER' ? selectedPartyId : null,
-                    vendorId: (txType === 'DEBT_TAKEN' || txType === 'DEBT_GIVEN') && selectedPartyType === 'VENDOR' ? selectedPartyId : null
+                    customerId: txType !== 'TRANSFER' && selectedPartyType === 'CUSTOMER' && actualPartyId ? actualPartyId : null,
+                    vendorId: txType !== 'TRANSFER' && selectedPartyType === 'VENDOR' && actualPartyId ? actualPartyId : null
                 })
             });
 
@@ -227,6 +308,8 @@ export default function TransactionsJournalPage() {
                 setNote('');
                 setReference('');
                 setSelectedPartyId('');
+                setQuickAddName('');
+                setQuickAddPhone('');
                 
                 // Refresh list and close modal
                 setTimeout(() => {
@@ -237,9 +320,9 @@ export default function TransactionsJournalPage() {
             } else {
                 setFormError(data.message || tLocal.errServer);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            setFormError(tLocal.errNetwork);
+            setFormError(err.message || tLocal.errNetwork);
         } finally {
             setSaving(false);
         }
@@ -366,6 +449,8 @@ export default function TransactionsJournalPage() {
                                             <td className="p-4">
                                                 <p className="text-xs font-black text-slate-900 dark:text-white tracking-tight">{tx.description}</p>
                                                 {tx.note && <p className="text-[10px] text-slate-400 mt-0.5">{tx.note}</p>}
+                                                {tx.customer && <p className="text-[10px] text-emerald-600 font-bold mt-1">Macmiilka: {tx.customer.name}</p>}
+                                                {tx.vendor && <p className="text-[10px] text-blue-600 font-bold mt-1">Iibiyaha: {tx.vendor.name}</p>}
                                             </td>
                                             <td className="p-4 text-xs font-bold text-slate-500">
                                                 {isTransfer ? (
@@ -390,12 +475,19 @@ export default function TransactionsJournalPage() {
                                                     {tx.type.replace('_', ' ')}
                                                 </span>
                                             </td>
-                                            <td className={`p-4 pr-6 text-right font-black text-sm ${
+                                            <td className={`p-4 pr-6 text-right font-black text-sm flex items-center justify-end gap-3 ${
                                                 isIncome ? 'text-emerald-600' :
                                                 isExpense ? 'text-rose-600' :
                                                 'text-blue-600'
                                             }`}>
-                                                {isIncome ? '+' : isExpense ? '-' : ''}{Number(tx.amount).toLocaleString()} ETB
+                                                <span>{isIncome ? '+' : isExpense ? '-' : ''}{Number(tx.amount).toLocaleString()} ETB</span>
+                                                <button 
+                                                    onClick={() => window.location.href = `/manufacturing/accounting/transactions/${tx.id}`}
+                                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                                                    title="Edit Transaction"
+                                                >
+                                                    <span className="text-[10px] font-black uppercase tracking-wider px-1">Edit</span>
+                                                </button>
                                             </td>
                                         </tr>
                                     );
@@ -418,7 +510,7 @@ export default function TransactionsJournalPage() {
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl p-8 shadow-2xl relative animate-scale-in border border-slate-200 dark:border-slate-800">
                         <button 
-                            onClick={() => setShowModal(false)}
+                            onClick={handleCloseModal}
                             className="absolute right-4 top-4 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 transition-colors"
                         >
                             <X size={20} />
@@ -453,7 +545,18 @@ export default function TransactionsJournalPage() {
                                 <label className="block text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2">{tLocal.txTypeLabel}</label>
                                 <select
                                     value={txType}
-                                    onChange={(e) => setTxType(e.target.value)}
+                                    onChange={(e) => {
+                                        const newType = e.target.value;
+                                        setTxType(newType);
+                                        if (newType === 'DEBT_TAKEN' || newType === 'EXPENSE') {
+                                            setSelectedPartyType('VENDOR');
+                                        } else {
+                                            setSelectedPartyType('CUSTOMER');
+                                        }
+                                        setSelectedPartyId('');
+                                        setQuickAddName('');
+                                        setQuickAddPhone('');
+                                    }}
                                     className="w-full px-4 py-3.5 border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-xl text-xs font-black text-slate-900 dark:text-white focus:outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-900 transition-all cursor-pointer"
                                 >
                                     <option value="INCOME">{tLocal.incomeOpt}</option>
@@ -464,12 +567,14 @@ export default function TransactionsJournalPage() {
                                 </select>
                             </div>
 
-                            {/* Party Selection for Debts */}
-                            {(txType === 'DEBT_TAKEN' || txType === 'DEBT_GIVEN') && (
+                            {/* Party Selection */}
+                            {(txType === 'INCOME' || txType === 'EXPENSE' || txType === 'DEBT_TAKEN' || txType === 'DEBT_GIVEN') && (
                                 <div className="p-4 bg-orange-50 dark:bg-orange-500/10 rounded-2xl border border-orange-100 dark:border-orange-500/20 space-y-4">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Info size={16} className="text-orange-500" />
-                                        <h4 className="text-xs font-black text-orange-700 dark:text-orange-400 uppercase tracking-widest">{tLocal.debtDetails}</h4>
+                                        <h4 className="text-xs font-black text-orange-700 dark:text-orange-400 uppercase tracking-widest">
+                                            {txType === 'DEBT_TAKEN' || txType === 'DEBT_GIVEN' ? tLocal.debtDetails : (language === 'so' ? 'Macmiilka / Iibiyaha' : 'Customer / Vendor')}
+                                        </h4>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
@@ -479,6 +584,8 @@ export default function TransactionsJournalPage() {
                                                 onChange={(e) => {
                                                     setSelectedPartyType(e.target.value);
                                                     setSelectedPartyId('');
+                                                    setQuickAddName('');
+                                                    setQuickAddPhone('');
                                                 }}
                                                 className="w-full px-4 py-2.5 border-2 border-orange-200 dark:border-orange-500/30 bg-white dark:bg-slate-900 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-orange-500 transition-colors"
                                             >
@@ -490,11 +597,16 @@ export default function TransactionsJournalPage() {
                                             <label className="block text-[10px] font-black uppercase text-orange-700/70 dark:text-orange-400/70 tracking-wider mb-2">{tLocal.partyNameLabel}</label>
                                             <select
                                                 value={selectedPartyId}
-                                                onChange={(e) => setSelectedPartyId(e.target.value)}
+                                                onChange={(e) => {
+                                                    setSelectedPartyId(e.target.value);
+                                                    setQuickAddName('');
+                                                    setQuickAddPhone('');
+                                                }}
                                                 className="w-full px-4 py-2.5 border-2 border-orange-200 dark:border-orange-500/30 bg-white dark:bg-slate-900 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-orange-500 transition-colors"
-                                                required
+                                                required={txType === 'DEBT_TAKEN' || txType === 'DEBT_GIVEN'}
                                             >
                                                 <option value="">{tLocal.selectOpt}</option>
+                                                <option value="NEW_PARTY">{selectedPartyType === 'CUSTOMER' ? tLocal.quickAddCustomerOpt : tLocal.quickAddVendorOpt}</option>
                                                 {selectedPartyType === 'CUSTOMER' ? (
                                                     customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
                                                 ) : (
@@ -503,6 +615,31 @@ export default function TransactionsJournalPage() {
                                             </select>
                                         </div>
                                     </div>
+                                    {selectedPartyId === 'NEW_PARTY' && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-orange-100 dark:border-orange-500/10">
+                                            <div>
+                                                <label className="block text-[10px] font-black uppercase text-orange-700/70 dark:text-orange-400/70 tracking-wider mb-2">{tLocal.quickAddNameLabel}</label>
+                                                <input
+                                                    type="text"
+                                                    value={quickAddName}
+                                                    onChange={(e) => setQuickAddName(e.target.value)}
+                                                    placeholder={selectedPartyType === 'CUSTOMER' ? "Tusaale: Axmed Cali" : "Tusaale: Warshada Baakadaha"}
+                                                    className="w-full px-4 py-2.5 border-2 border-orange-200 dark:border-orange-500/30 bg-white dark:bg-slate-900 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-orange-500 transition-colors"
+                                                    required
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black uppercase text-orange-700/70 dark:text-orange-400/70 tracking-wider mb-2">{tLocal.quickAddPhoneLabel}</label>
+                                                <input
+                                                    type="text"
+                                                    value={quickAddPhone}
+                                                    onChange={(e) => setQuickAddPhone(e.target.value)}
+                                                    placeholder="Tusaale: +2519..."
+                                                    className="w-full px-4 py-2.5 border-2 border-orange-200 dark:border-orange-500/30 bg-white dark:bg-slate-900 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-orange-500 transition-colors"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -601,7 +738,7 @@ export default function TransactionsJournalPage() {
                             <div className="flex items-center justify-end gap-3 pt-6 mt-4 border-t border-slate-100 dark:border-slate-800">
                                 <button
                                     type="button"
-                                    onClick={() => setShowModal(false)}
+                                    onClick={handleCloseModal}
                                     className="px-6 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 transition-colors"
                                 >
                                     {tLocal.cancel}

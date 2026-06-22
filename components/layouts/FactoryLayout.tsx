@@ -7,6 +7,7 @@ import { Menu, Bell, Search, User as UserIcon } from 'lucide-react';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Globe } from 'lucide-react';
+import ShopAiChat from '@/components/shop/ShopAiChat';
 
 export default function FactoryLayout({ children }: { children: React.ReactNode }) {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -40,7 +41,7 @@ export default function FactoryLayout({ children }: { children: React.ReactNode 
                     </div>
 
                     {/* Desktop Sidebar */}
-                    <div className={`hidden md:block transition-all duration-300 ${sidebarCollapsed ? 'w-24' : 'w-72'} flex-shrink-0 relative z-20`}>
+                    <div className={`hidden md:block transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-56'} flex-shrink-0 relative z-20`}>
                         <FactorySidebar
                             isCollapsed={sidebarCollapsed}
                             currentUser={currentUser}
@@ -58,7 +59,7 @@ export default function FactoryLayout({ children }: { children: React.ReactNode 
                     {mobileSidebarOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden transition-opacity" onClick={() => setMobileSidebarOpen(false)} />
                     )}
-                    <div className={`fixed inset-y-0 left-0 w-72 transform transition-transform duration-300 z-50 md:hidden ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                    <div className={`fixed inset-y-0 left-0 w-56 transform transition-transform duration-300 z-50 md:hidden ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <FactorySidebar
                             isCollapsed={false}
                             currentUser={currentUser}
@@ -71,7 +72,7 @@ export default function FactoryLayout({ children }: { children: React.ReactNode 
                     <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
 
                         {/* Top Header */}
-                        <header className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 h-[70px] flex items-center justify-between px-6 z-10">
+                        <header className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 h-[56px] flex items-center justify-between px-6 z-10">
                             <div className="flex items-center gap-4">
                                 <button
                                     className="p-2 -ml-2 text-slate-500 md:hidden hover:bg-slate-100 rounded-xl transition-colors"
@@ -126,11 +127,14 @@ export default function FactoryLayout({ children }: { children: React.ReactNode 
                         </header>
 
                         {/* Page Content */}
-                        <main className="flex-1 overflow-y-auto relative scrollbar-hide p-6 md:p-8">
+                        <main className="flex-1 overflow-y-auto relative scrollbar-hide p-4 md:p-6">
                             <div className="max-w-[1920px] mx-auto w-full">
                                 {children}
                             </div>
                         </main>
+
+                        {/* AI Assistant Chatbot */}
+                        <ShopAiChat />
                     </div>
                 </div>
             </NotificationProvider>

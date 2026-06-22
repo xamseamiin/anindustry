@@ -101,17 +101,35 @@ export default function BulkEntryTerminal() {
                 // Determine format
                 // 1. Tariikh (Date)
                 let dateStr = parts[0]?.trim();
-                // Standardize dates like 25/4/2026 to YYYY-MM-DD
-                if (dateStr && dateStr.includes('/')) {
-                    const splitted = dateStr.split('/');
+                // Standardize dates to YYYY-MM-DD
+                if (dateStr && (dateStr.includes('/') || dateStr.includes('-') || dateStr.includes('.'))) {
+                    const splitted = dateStr.split(/[\/\-\.]/);
                     if (splitted.length === 3) {
-                        let day = splitted[0];
-                        let month = splitted[1];
-                        let year = splitted[2];
-                        if (year.length === 2) year = '20' + year;
-                        dateStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                        let p0 = parseInt(splitted[0], 10);
+                        let p1 = parseInt(splitted[1], 10);
+                        let yearStr = splitted[2].trim();
+                        if (yearStr.length === 2) yearStr = '20' + yearStr;
+                        
+                        let day = p0;
+                        let month = p1;
+                        
+                        if (p0 > 12 && p1 <= 12) {
+                            // p0 is day, p1 is month (DD/MM/YYYY)
+                            day = p0;
+                            month = p1;
+                        } else if (p1 > 12 && p0 <= 12) {
+                            // p1 is day, p0 is month (MM/DD/YYYY)
+                            day = p1;
+                            month = p0;
+                        } else {
+                            // Both are <= 12. Default to MM/DD/YYYY based on the user's Excel sheet format
+                            day = p1;
+                            month = p0;
+                        }
+                        
+                        dateStr = `${yearStr}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
                     }
-                } else if (!dateStr || dateStr.toLowerCase().includes('tariikh')) {
+                } else if (!dateStr || dateStr.toLowerCase().includes('tariikh') || dateStr.toLowerCase().includes('date')) {
                     // Skip header rows
                     return;
                 }

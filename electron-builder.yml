@@ -1,0 +1,60 @@
+appId: com.an-industory.desktop
+productName: AN-Industory
+copyright: Copyright © 2026 AN-Industory
+
+directories:
+  output: dist-electron
+  buildResources: build
+
+files:
+  - "electron/**/*"
+  - "!node_modules"
+
+extraResources:
+  - from: ".next/standalone"
+    to: "standalone"
+    filter:
+      - "**/*"
+  - from: ".next/static"
+    to: "standalone/.next/static"
+    filter:
+      - "**/*"
+  - from: "public"
+    to: "standalone/public"
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: public/an-industory-logo.png
+  artifactName: "${productName}-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: public/an-industory-logo.png
+  uninstallerIcon: public/an-industory-logo.png
+  installerHeaderIcon: public/an-industory-logo.png
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AN-Industory
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: public/an-industory-logo.png
+  category: public.app-category.business
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  icon: public/an-industory-logo.png
+  category: Office

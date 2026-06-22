@@ -147,6 +147,56 @@ export class TelegramSender {
     const message = `🚫 *Maamulka ayaa xannibay aqoonsigan*\n\nFadlan la xidhiidh maamulka shirkadda haddii aad u baahan tahay in laguu fasaxo.`; 
     return this.sendMessage({ chatId, text: message, replyToMessageId: messageId });
   }
+
+  /**
+   * Edit message text or caption to mark it as approved/paid and remove the inline buttons.
+   */
+  async updateMessageToPaid(chatId: string, messageId: number, currentText: string, hasPhoto: boolean): Promise<boolean> {
+    if (!this.isConfigured()) return false;
+
+    try {
+      const method = hasPhoto ? 'editMessageCaption' : 'editMessageText';
+      const url = `https://api.telegram.org/bot${this.botToken}/${method}`;
+
+      let updatedText = currentText
+        .replace(/⏳\s*Sugaya\s*rasiidka\s*si\s*loo\s*xaqiijiyo\s*in\s*lacagtaas\s*la\s*diray\.\.\./g, '✅ Lacagtaas waa la diray.')
+        .replace(/⏳\s*Sugaya\s*ansixinta\s*maamulka\s*si\s*looga\s*gooyo\s*haraaga\.\.\./g, '✅ Lacagtaas waa la diray.')
+        .replace(/⏳\s*Sugaya\s*ansixinta\s*maamulka\s*si\s*looga\s*gooyo\s*haraaga/g, '✅ Lacagtaas waa la diray.')
+        .replace(/⏳\s*Sugaya\s*ansixinta/g, '✅ Lacagtaas waa la diray.');
+
+      updatedText = updatedText
+        .replace(/\(Sugaya\s*Rasiidka\)/g, '(Waala Bixiyey)')
+        .replace(/\(Sugaya\s*Ansixinta\)/g, '(Waala Bixiyey)')
+        .replace(/Sugaya\s*Rasiidka/g, 'Waala Bixiyey')
+        .replace(/Sugaya\s*Ansixinta/g, 'Waala Bixiyey');
+
+      const payload: any = {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [] }
+      };
+
+      if (hasPhoto) {
+        payload.caption = updatedText;
+      } else {
+        payload.text = updatedText;
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Error updating Telegram message to paid:', error);
+      return false;
+    }
+  }
 }
 
 // Export singleton instance

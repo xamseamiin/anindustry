@@ -13,47 +13,45 @@ import PWAInstallBanner from '@/components/PWAInstallBanner';
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Revlo - The Ultimate ERP & Business Management Solution',
-  description: 'Revlo is a powerful, all-in-one ERP and POS system designed to streamline business operations globally. From inventory management to financial reporting, Revlo empowers businesses of all sizes with cutting-edge technology. Founded by Hamse Moalin Amiin. | Revlo waa nidaamka maamulka ganacsiga ee ugu casrisan, kaas oo isugu keenaya maamulka kaydka, xisaabaadka, iyo iibka hal meel. Ku habboon ganacsi kasta, meel kasta.',
+  title: 'AN-Industory | Warshad Caagadaha Caaga Ah - Jigjiga',
+  description: 'AN-Industory waa warshad soo saarta caagadaha tayada sare leh ee lagu shubto biyaha, cabitaannada, iyo dareereyaasha kale ee ku taal Jigjiga. Fresh plastic bottles 1L, 0.5L (500ml).',
   keywords: [
-    'Revlo', 'Revlo ERP', 'Revlo App', 'ERP System', 'Business Management Software', 'POS System',
-    'Accounting Software', 'Inventory Management', 'Hamse Moalin Amiin', 'Cloud ERP',
-    'Ganacsi Maamul', 'Nidaamka Xisaabaadka', 'Software', 'Technology', 'Somali ERP',
-    'Best ERP 2026', 'East Africa ERP', 'Global ERP Solution', 'Smart Business Tools',
-    'Manufacturing ERP', 'Construction Management Software', 'Retail POS'
+    'AN-Industory', 'Caagado', 'Plastic Bottles', 'Warshad', 'Factory',
+    'Jigjiga', 'Plastic Containers', 'Somali Plastic', 'Caagadaha Biyaha',
+    'Ethiopia Plastic', 'East Africa Bottles', 'Premium Plastic',
+    'AN Industory Bottles', 'Hamse Moalin Amiin'
   ],
-  authors: [{ name: 'Hamse Moalin Amiin', url: 'https://revlo.me' }],
+  authors: [{ name: 'Hamse Moalin Amiin' }],
   creator: 'Hamse Moalin Amiin',
-  publisher: 'Revlo Inc.',
-  metadataBase: new URL('https://revlo.me'),
+  publisher: 'AN-Industory',
+  metadataBase: new URL('https://an-industory.com'),
   openGraph: {
-    title: 'Revlo - Transform Your Business with Smart Management',
-    description: 'Empowering businesses with seamless ERP & POS solutions. Built for efficiency, designed for growth. Founded by Hamse Moalin Amiin.',
-    url: 'https://revlo.me',
-    siteName: 'Revlo',
+    title: 'AN-Industory | Caagadaha Caaga Ah ee Tayada Sare Leh',
+    description: 'Warshad soo saarta caagadaha tayada sare leh ee lagu shubto biyaha, cabitaannada, iyo dareereyaasha kale ee ku taal Jigjiga.',
+    url: 'https://an-industory.com',
+    siteName: 'AN-Industory',
     images: [
       {
-        url: 'https://revlo.me/about-hero.png', // Absolute URL for better social sharing
+        url: 'https://an-industory.com/bottle.png',
         width: 1200,
         height: 630,
-        alt: 'Revlo Dashboard Preview',
+        alt: 'AN-Industory Caagadaha',
       },
     ],
-    locale: 'en_US',
+    locale: 'so_SO',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Revlo - Global ERP & Business Solution',
-    description: 'The future of business management is here. Discover Revlo, founded by Hamse Moalin Amiin. Contact: hamsemoalin@gmail.com | +251 929 475 332',
-    images: ['https://revlo.me/about-hero.png'],
+    title: 'AN-Industory | Warshad Caagadaha Caaga Ah',
+    description: 'Caagadaha tayada sare leh ee lagu shubto biyaha, cabitaannada, iyo dareereyaasha kale. Jigjiga, Ethiopia.',
+    images: ['https://an-industory.com/bottle.png'],
   },
   icons: {
-    icon: '/revlo-logo.png',
-    shortcut: '/revlo-logo.png',
-    apple: '/revlo-logo.png',
+    icon: '/an-industory-logo.png',
+    shortcut: '/an-industory-logo.png',
+    apple: '/an-industory-logo.png',
   },
-  manifest: '/manifest.json',
   robots: {
     index: true,
     follow: true,
@@ -65,22 +63,8 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
-  alternates: {
-    languages: {
-      'en-US': 'https://revlo.me/en',
-      'so-SO': 'https://revlo.me/so',
-    },
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'Revlo',
-  },
-  verification: {
-    google: 'google-site-verification-code', // Add verification code if available later
-  },
   other: {
-    "contact:email": "hamsemoalin@gmail.com",
+    "contact:email": "info@an-industory.com",
     "contact:phone_number": "+251 929 475 332",
     "founder": "Hamse Moalin Amiin"
   }
@@ -88,48 +72,25 @@ export const metadata: Metadata = {
 
 const jsonLd = {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "Revlo ERP",
-  "applicationCategory": "BusinessApplication",
-  "operatingSystem": "Web, Windows, macOS, Linux, Android, iOS",
-  "offers": {
-    "@type": "Offer",
-    "price": "0",
-    "priceCurrency": "USD",
-    "description": "Free Starter Plan available"
+  "@type": "LocalBusiness",
+  "name": "AN-Industory",
+  "description": "Warshad soo saarta caagadaha tayada sare leh ee lagu shubto biyaha, cabitaannada, iyo dareereyaasha kale ee ku taal Jigjiga.",
+  "image": "https://an-industory.com/an-industory-logo.png",
+  "telephone": "+251929475332",
+  "email": "info@an-industory.com",
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": "Jigjiga",
+    "addressRegion": "Somali Region",
+    "addressCountry": "Ethiopia"
   },
-  "description": "The ultimate AI-powered ERP and POS system for global business management. Features include inventory tracking, financial accounting, manufacturing, and project management.",
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "4.9",
-    "ratingCount": "1250"
-  },
-  "author": {
+  "founder": {
     "@type": "Person",
     "name": "Hamse Moalin Amiin",
-    "url": "https://revlo.me",
-    "jobTitle": "Founder & CEO",
-    "sameAs": [
-      "https://twitter.com/hamsemoalin",
-      "https://linkedin.com/in/hamsemoalin"
-    ]
+    "jobTitle": "Founder & CEO"
   },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Revlo Inc.",
-    "logo": "https://revlo.me/revlo-logo.png",
-    "sameAs": [
-      "https://twitter.com/revlo_erp",
-      "https://facebook.com/revlo_erp",
-      "https://linkedin.com/company/revlo",
-      "https://instagram.com/revlo_erp"
-    ]
-  },
-  "sameAs": [
-    "https://twitter.com/revlo_erp",
-    "https://facebook.com/revlo_erp",
-    "https://linkedin.com/company/revlo"
-  ]
+  "openingHours": "Mo-Sa 06:00-18:00",
+  "priceRange": "$$"
 };
 
 export default function RootLayout({
@@ -138,7 +99,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="so">
       <body className={jakarta.className}>
         <script
           type="application/ld+json"

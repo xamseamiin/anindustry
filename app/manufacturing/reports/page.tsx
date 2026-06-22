@@ -82,8 +82,8 @@ export default function FinancialHubPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {[
                         { title: 'Total Revenue', value: kpis.totalRevenue?.toLocaleString(), sub: 'Lifetime Income', icon: <TrendingUp size={20} />, color: 'emerald', trend: '+12.5%' },
-                        { title: 'Total Expenses', value: kpis.totalExpenses?.toLocaleString(), sub: 'COGS & Ops', icon: <TrendingDown size={20} />, color: 'rose', trend: '+4.2%' },
-                        { title: 'Net Profit', value: kpis.netProfit?.toLocaleString(), sub: 'After All Costs', icon: <Wallet size={20} />, color: 'blue', trend: '+18.1%' },
+                        { title: 'Total Expenses', value: kpis.totalExpenses?.toLocaleString(), sub: 'Ops & Salaries', icon: <TrendingDown size={20} />, color: 'rose', trend: '+4.2%' },
+                        { title: 'Net Profit', value: kpis.netProfit?.toLocaleString(), sub: 'Revenue - COGS - Expenses', icon: <Wallet size={20} />, color: 'blue', trend: '+18.1%' },
                         { title: 'Profit Margin', value: kpis.profitMargin, sub: 'Business Efficiency', icon: <PieChart size={20} />, color: 'amber', trend: 'Healthy' }
                     ].map((stat, idx) => (
                         <div key={idx} className="bg-white/40 backdrop-blur-2xl p-7 rounded-3xl border border-white/40 shadow-xl relative overflow-hidden group">

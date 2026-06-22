@@ -43,7 +43,8 @@ export async function GET(req: Request) {
             paidAmount: Number(sale.paidAmount),
             status: sale.paymentStatus,
             account: sale.account?.name || 'Cash',
-            items: sale.items.reduce((sum, item) => sum + item.quantity, 0)
+            items: sale.items.reduce((sum, item) => sum + item.quantity, 0),
+            breakdown: sale.items.map(item => `${item.productName}: ${item.quantity.toLocaleString()}`).join(', ')
         }));
 
         return NextResponse.json({ orders: formattedSales });

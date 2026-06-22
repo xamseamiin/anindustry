@@ -43,7 +43,9 @@ export async function GET(request: Request) {
             include: {
                 account: { select: { name: true, type: true } },
                 fromAccount: { select: { name: true } },
-                toAccount: { select: { name: true } }
+                toAccount: { select: { name: true } },
+                customer: { select: { name: true } },
+                vendor: { select: { name: true } }
             },
             orderBy: { transactionDate: 'desc' }
         });
@@ -60,7 +62,7 @@ export async function POST(request: Request) {
     try {
         const { companyId, userId } = await requireManufacturingAccess();
         const body = await request.json();
-        const { amount, type, description, note, transactionDate, accountId, fromAccountId, toAccountId, reference } = body;
+        const { amount, type, description, note, transactionDate, accountId, fromAccountId, toAccountId, reference, customerId, vendorId } = body;
 
         const txAmount = parseFloat(amount);
         if (isNaN(txAmount) || txAmount <= 0) {
@@ -114,7 +116,9 @@ export async function POST(request: Request) {
                         note,
                         transactionDate: date,
                         accountId: accountId || null,
-                        userId
+                        userId,
+                        customerId: customerId || null,
+                        vendorId: vendorId || null
                     }
                 });
             }

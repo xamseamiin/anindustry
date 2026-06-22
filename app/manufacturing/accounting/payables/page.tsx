@@ -214,7 +214,7 @@ export default function PayablesHubPage() {
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50">
-                                <th className="p-4 pl-6 text-[10px] font-black uppercase tracking-wider text-slate-400">Alaab-keenaha (Vendor)</th>
+                                <th className="p-4 pl-6 text-[10px] font-black uppercase tracking-wider text-slate-400">Qofka (Vendor / Macmiil)</th>
                                 <th className="p-4 text-[10px] font-black uppercase tracking-wider text-slate-400">Purchase Number</th>
                                 <th className="p-4 text-[10px] font-black uppercase tracking-wider text-slate-400">Taariikhda</th>
                                 <th className="p-4 text-right text-[10px] font-black uppercase tracking-wider text-slate-400">Wadarta / Total</th>
@@ -234,15 +234,27 @@ export default function PayablesHubPage() {
                                                 {pay.vendorPhone && <p className="text-[10px] text-slate-400 mt-0.5">{pay.vendorPhone}</p>}
                                             </td>
                                             <td className="p-4 text-xs font-black">
-                                                <Link 
-                                                    href={pay.source === 'MaterialPurchase' ? `/manufacturing/material-purchases/${pay.id}` : `/manufacturing/material-purchases/${pay.id}`}
-                                                    className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 hover:underline transition-colors group/link font-black"
-                                                >
-                                                    #{pay.purchaseNumber}
-                                                    <ArrowDownRight size={12} className="opacity-0 group-hover/link:opacity-100 transition-opacity" />
-                                                </Link>
-                                                <span className={`ml-2 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${pay.source === 'MaterialPurchase' ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                                    {pay.source === 'MaterialPurchase' ? 'RAW' : 'PO'}
+                                                {pay.source === 'Transaction' ? (
+                                                    <span className="inline-flex items-center gap-1 text-slate-700 font-black">
+                                                        #{pay.purchaseNumber}
+                                                    </span>
+                                                ) : (
+                                                    <Link 
+                                                        href={pay.source === 'MaterialPurchase' ? `/manufacturing/material-purchases/${pay.id}` : `/manufacturing/material-purchases/${pay.id}`}
+                                                        className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 hover:underline transition-colors group/link font-black"
+                                                    >
+                                                        #{pay.purchaseNumber}
+                                                        <ArrowDownRight size={12} className="opacity-0 group-hover/link:opacity-100 transition-opacity" />
+                                                    </Link>
+                                                )}
+                                                <span className={`ml-2 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
+                                                    pay.source === 'MaterialPurchase' ? 'bg-sky-100 text-sky-600' :
+                                                    pay.source === 'Transaction' ? 'bg-amber-100 text-amber-700' :
+                                                    'bg-emerald-100 text-emerald-600'
+                                                }`}>
+                                                    {pay.source === 'MaterialPurchase' ? 'RAW' :
+                                                     pay.source === 'Transaction' ? 'DEBT' :
+                                                     'PO'}
                                                 </span>
                                             </td>
                                             <td className="p-4 text-xs font-bold text-slate-500">
@@ -262,7 +274,7 @@ export default function PayablesHubPage() {
                                                     onClick={() => openPayModal(pay)}
                                                     className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 mx-auto active:scale-95"
                                                 >
-                                                    <DollarSign size={12} /> Pay Vendor
+                                                    <DollarSign size={12} /> {pay.source === 'Transaction' ? 'Repay Debt' : 'Pay Vendor'}
                                                 </button>
                                             </td>
                                         </tr>

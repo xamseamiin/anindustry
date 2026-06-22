@@ -4,8 +4,17 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
+
+function cleanAndParseFloat(val: any): number {
+    if (val === undefined || val === null) return 0;
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    const cleanStr = String(val).replace(/,/g, '').trim();
+    const num = parseFloat(cleanStr);
+    return isNaN(num) ? 0 : num;
+}
 
 export async function POST(req: Request) {
     try {
@@ -32,11 +41,17 @@ export async function POST(req: Request) {
 
         // Execute all expenses atomically
         const results = await prisma.$transaction(async (tx) => {
-            const processedExpenses = [];
+            const expensesToCreate: any[] = [];
+            const transactionsToCreate: any[] = [];
+            const accountDecrements = new Map<string, number>();
+
+            const closedPeriods = await tx.financialPeriod.findMany({
+                where: { companyId: user.companyId, isClosed: true }
+            });
 
             for (const item of expenses) {
                 const description = (item.description || '').trim();
-                const amount = Number(item.amount) || 0;
+                const amount = cleanAndParseFloat(item.amount);
                 const category = item.category || 'Utilities';
                 const date = new Date(item.date || Date.now());
                 const status = item.status || 'PAID';
@@ -44,58 +59,69 @@ export async function POST(req: Request) {
 
                 if (!description || amount <= 0) continue; // Skip empty rows
 
-                // Check for Closed Fiscal Period
-                const closedPeriod = await tx.financialPeriod.findFirst({
-                    where: {
-                        companyId: user.companyId,
-                        isClosed: true,
-                        startDate: { lte: date },
-                        endDate: { gte: date }
-                    }
-                });
-
+                // Check for Closed Fiscal Period in-memory
+                const closedPeriod = closedPeriods.find(p => date >= new Date(p.startDate) && date <= new Date(p.endDate));
                 if (closedPeriod) {
                     throw new Error(`Muddada maaliyadeed ee ${closedPeriod.name} waa mid xiran. Kharash cusub laguma qori karo.`);
                 }
 
-                // 1. Create Expense record
-                const expense = await tx.expense.create({
-                    data: {
-                        companyId: user.companyId,
-                        description,
-                        category,
-                        amount,
-                        expenseDate: date,
-                        paidFrom: 'Petty Cash',
-                        paymentStatus: status,
-                        userId: session.user.id,
-                        accountId: accountId
-                    }
+                const expenseId = crypto.randomUUID();
+
+                // 1. Prepare Expense record
+                expensesToCreate.push({
+                    id: expenseId,
+                    companyId: user.companyId,
+                    description,
+                    category,
+                    amount,
+                    expenseDate: date,
+                    paidFrom: 'Petty Cash',
+                    paymentStatus: status,
+                    userId: session.user.id,
+                    accountId: accountId,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
                 });
 
-                // 2. Decrement cash/bank account if status is PAID
+                // 2. Prepare Ledger transaction if PAID
                 if (status === 'PAID' && accountId) {
-                    await tx.account.update({
-                        where: { id: accountId },
-                        data: { balance: { decrement: amount } }
-                    });
+                    accountDecrements.set(accountId, (accountDecrements.get(accountId) || 0) + amount);
 
-                    await tx.transaction.create({
-                        data: {
-                            description: `Kharash (Bulk): ${description}`,
-                            amount: amount,
-                            type: 'EXPENSE',
-                            accountId: accountId,
-                            companyId: user.companyId,
-                            userId: session.user.id
-                        }
+                    transactionsToCreate.push({
+                        id: crypto.randomUUID(),
+                        description: `Kharash (Bulk): ${description}`,
+                        amount: amount,
+                        type: 'EXPENSE',
+                        accountId: accountId,
+                        companyId: user.companyId,
+                        userId: session.user.id,
+                        transactionDate: date,
+                        createdAt: new Date(),
+                        updatedAt: new Date()
                     });
                 }
-
-                processedExpenses.push(expense);
             }
 
-            return processedExpenses;
+            // Batch create records
+            if (expensesToCreate.length > 0) {
+                await tx.expense.createMany({ data: expensesToCreate });
+            }
+            if (transactionsToCreate.length > 0) {
+                await tx.transaction.createMany({ data: transactionsToCreate });
+            }
+
+            // Aggregated account updates
+            for (const [accId, decAmount] of accountDecrements.entries()) {
+                await tx.account.update({
+                    where: { id: accId },
+                    data: { balance: { decrement: decAmount } }
+                });
+            }
+
+            return expensesToCreate;
+        }, {
+            maxWait: 30000,
+            timeout: 120000 // Extended to 2 minutes for massive sheets
         });
 
         // Audit log
@@ -103,7 +129,7 @@ export async function POST(req: Request) {
             action: 'CREATE_EXPENSE_BULK',
             entity: 'Expense',
             entityId: session.user.id,
-            details: `Successfully processed ${results.length} expenses in bulk.`,
+            details: `Successfully processed ${results.length} expenses in bulk using batch operations.`,
             userId: session.user.id,
             companyId: user.companyId,
             userAgent: req.headers.get('user-agent') || undefined

@@ -144,7 +144,7 @@ export const authOptions = {
     error: '/login',
   },
   callbacks: {
-    async jwt({ token, user }: { token: any; user?: any }) {
+    async jwt({ token, user, trigger, session }: { token: any; user?: any; trigger?: string; session?: any }) {
       if (user) {
         const customUser = user as any;
 
@@ -158,6 +158,9 @@ export const authOptions = {
         if (customUser.planType) token.planType = customUser.planType;
         if (customUser.impersonatedBy) token.impersonatedBy = customUser.impersonatedBy;
         if (customUser.sessionToken) token.sessionToken = customUser.sessionToken;
+      } else if (trigger === 'update' && session) {
+        if (session.name) token.name = session.name;
+        if (session.email) token.email = session.email;
       }
       return token;
     },

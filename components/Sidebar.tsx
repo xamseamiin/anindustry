@@ -17,7 +17,8 @@ import {
   X,
   Menu,
   Settings,
-  UserCircle
+  UserCircle,
+  Video
 } from 'lucide-react';
 import Brand from './Brand';
 
@@ -77,6 +78,7 @@ const Sidebar: React.FC<SidebarProps> = ({ setIsSidebarOpen, isCollapsed }) => {
     { name: 'Sales Hub', href: '/manufacturing/sales', icon: <BadgeDollarSign size={20} /> },
     { name: 'Financial Hub', href: '/manufacturing/reports', icon: <Briefcase size={20} /> },
     { name: 'Employees', href: '/manufacturing/employees', icon: <Users size={20} /> },
+    { name: 'CCTV AI Counter', href: '/manufacturing/cctv-counter', icon: <Video size={20} /> },
     { name: 'Settings', href: '/manufacturing/settings', icon: <Settings size={20} /> },
     { name: 'Profile', href: '/manufacturing/profile', icon: <UserCircle size={20} /> },
   ];

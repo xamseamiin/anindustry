@@ -93,6 +93,53 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return updated;
     });
 
+    // Real-time Telegram update if fully paid
+    if (newStatus === 'PAID') {
+        const telegramMetadata = purchase.notes || '';
+        const chatIdMatch = telegramMetadata.match(/\[TelegramChatId:\s*([^\]]+)\]/);
+        const messageIdMatch = telegramMetadata.match(/\[TelegramMessageId:\s*([^\]]+)\]/);
+
+        if (chatIdMatch && messageIdMatch) {
+            const chatId = chatIdMatch[1];
+            const messageId = parseInt(messageIdMatch[1]);
+            if (!isNaN(messageId)) {
+                const cleanNote = (purchase.notes || '')
+                    .replace(/\[TelegramChatId:\s*[^\]]+\]/g, '')
+                    .replace(/\[TelegramMessageId:\s*[^\]]+\]/g, '')
+                    .replace(/\[TelegramId:\s*\d+\]/g, '')
+                    .replace(/\[Dalbaday:\s*[^\]]+\]/g, '')
+                    .replace(/\[AccountId:\s*[^\]]+\]/g, '')
+                    .replace(/\[Account:\s*[^\]]+\]/g, '')
+                    .replace(/\[ReceiptUrl:\s*[^\]]+\]/g, '')
+                    .trim();
+
+                const formattedDate = new Date(purchase.purchaseDate || purchase.createdAt).toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
+
+                // Find vendor
+                const vendor = await prisma.shopVendor.findUnique({ where: { id: purchase.vendorId } });
+
+                const captionText = `<b>AN-Industory</b>\n` +
+                                    `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement)</b>\n\n` +
+                                    `🏭 Alaab-keenaha: ${vendor ? vendor.name : 'Unknown'}\n` +
+                                    `📦 Name: ${purchase.materialName}\n` +
+                                    `📊 Qty: ${purchase.quantity} ${purchase.unit}\n` +
+                                    `💵 Price: ${Number(purchase.unitPrice).toLocaleString()} ETB\n` +
+                                    `💰 Total: ${Number(purchase.totalPrice).toLocaleString()} ETB\n` +
+                                    `📝 Sharaxaad: ${cleanNote}\n` +
+                                    `📅 Taariikhda: ${formattedDate}\n\n` +
+                                    `✅ Rasiidka waa la galiyey oo haraaga waa laga jaray.`;
+
+                const hasPhoto = telegramMetadata.includes('[ReceiptUrl:');
+                try {
+                    const { telegramSender } = await import('@/lib/telegram-sender');
+                    await telegramSender.updateMessageToPaid(chatId, messageId, captionText, hasPhoto);
+                } catch (err) {
+                    console.error("Error updating single paid Telegram message:", err);
+                }
+            }
+        }
+    }
+
     return NextResponse.json({ purchase: result, message: `Payment of ${payAmount.toLocaleString()} ETB recorded successfully` });
   } catch (error: any) {
     console.error('Error recording payment:', error);

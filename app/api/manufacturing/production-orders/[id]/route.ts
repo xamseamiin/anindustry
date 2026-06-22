@@ -91,12 +91,15 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const isCompleting = body.status === 'COMPLETED' && existingOrder.status !== 'COMPLETED';
 
     if (isCompleting) {
+      const session = await getServerSession(authOptions);
+      const userId = session?.user?.id || 'SYSTEM';
+
       // Run logic in a transaction
       const updatedOrder = await prisma.$transaction(async (tx) => {
         // 1. Deduct Raw Materials
         for (const bom of existingOrder.billOfMaterials) {
           // Find correct inventory item by name
-          const materialItem = await tx.inventoryItem.findFirst({
+          const materialItem = await tx.factoryMaterial.findFirst({
             where: {
               name: bom.materialName,
               companyId
@@ -104,15 +107,15 @@ export async function PUT(request: Request, { params }: { params: { id: string }
           });
 
           if (materialItem) {
-            await tx.inventoryItem.update({
+            await tx.factoryMaterial.update({
               where: { id: materialItem.id },
-              data: { inStock: { decrement: bom.quantity } }
+              data: { inStock: { decrement: bom.quantity * existingOrder.quantity } }
             });
           }
         }
 
         // 2. Add Finished Goods
-        const productItem = await tx.inventoryItem.findFirst({
+        const productItem = await tx.factoryMaterial.findFirst({
           where: {
             name: existingOrder.productName,
             companyId
@@ -120,22 +123,24 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         });
 
         if (productItem) {
-          await tx.inventoryItem.update({
+          await tx.factoryMaterial.update({
             where: { id: productItem.id },
             data: { inStock: { increment: existingOrder.quantity } }
           });
         } else {
           // Create if not exists (Auto-create finished good in inventory)
-          await tx.inventoryItem.create({
+          await tx.factoryMaterial.create({
             data: {
               name: existingOrder.productName,
+              sku: `FG-${Math.random().toString(36).substring(7).toUpperCase()}`,
               category: 'Finished Goods',
               unit: 'pcs',
               inStock: existingOrder.quantity,
               minStock: 0,
               purchasePrice: 0,
               sellingPrice: 0,
-              companyId
+              companyId,
+              userId: userId
             }
           });
         }
@@ -157,7 +162,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       });
 
       // Log Audit Action (Completion)
-      const session = await getServerSession(authOptions);
       if (session?.user?.id) {
         await logAudit({
           action: 'COMPLETE_PRODUCTION_ORDER',

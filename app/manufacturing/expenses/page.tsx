@@ -4,18 +4,21 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
     Plus, Search, Filter, CreditCard, DollarSign,
-    PieChart, Calendar, MoreVertical, Flag, Loader2, RefreshCcw, FileText
+    PieChart, Calendar, MoreVertical, Flag, Loader2, RefreshCcw, FileText, Trash2
 } from 'lucide-react';
+import Toast from '@/components/common/Toast';
 
 export default function FactoryExpensesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [expenses, setExpenses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
     const fetchExpenses = async () => {
         setLoading(true);
         try {
-            const res = await fetch('/api/manufacturing/expenses');
+            const res = await fetch('/api/manufacturing/expenses?t=' + Date.now());
             if (res.ok) {
                 const data = await res.json();
                 setExpenses(data.expenses || []);
@@ -24,6 +27,55 @@ export default function FactoryExpensesPage() {
             console.error("Failed to load expenses", e);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleApprove = async (id: string) => {
+        setActionLoading(id);
+        try {
+            const res = await fetch('/api/manufacturing/expenses', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, action: 'APPROVE' })
+            });
+
+            if (res.ok) {
+                setToast({ message: 'Expense approved and balance updated!', type: 'success' });
+                await fetchExpenses();
+            } else {
+                const data = await res.json();
+                setToast({ message: data.error || 'Failed to approve expense', type: 'error' });
+            }
+        } catch (e) {
+            console.error('Error approving expense:', e);
+            setToast({ message: 'Error approving expense', type: 'error' });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm("Ma hubtaa inaad tirtirto kharashkan? Haraaga koontada waa dib loogu celinayaa haddii la bixiyay.")) {
+            return;
+        }
+        setActionLoading(id);
+        try {
+            const res = await fetch(`/api/manufacturing/expenses?id=${id}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok) {
+                setToast({ message: 'Kharashkii waa la tirtiray, haraagiina waa la celiyey!', type: 'success' });
+                await fetchExpenses();
+            } else {
+                const data = await res.json();
+                setToast({ message: data.error || 'Failed to delete expense', type: 'error' });
+            }
+        } catch (e) {
+            console.error('Error deleting expense:', e);
+            setToast({ message: 'Error deleting expense', type: 'error' });
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -167,9 +219,25 @@ export default function FactoryExpensesPage() {
                                             {new Date(expense.date).toLocaleDateString()}
                                         </td>
                                         <td className="px-6 py-4 text-center">
-                                            <button className="p-2 text-gray-400 hover:text-[#3498DB] transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-                                                <MoreVertical size={18} />
-                                            </button>
+                                            <div className="flex items-center justify-center gap-2">
+                                                {expense.status === 'UNPAID' && (
+                                                    <button
+                                                        disabled={actionLoading === expense.id}
+                                                        onClick={() => handleApprove(expense.id)}
+                                                        className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-xs shadow-md shadow-green-600/20 transition-all flex items-center justify-center gap-1"
+                                                    >
+                                                        {actionLoading === expense.id ? <Loader2 size={12} className="animate-spin" /> : 'Ansixi (Approve)'}
+                                                    </button>
+                                                )}
+                                                <button
+                                                    disabled={actionLoading === expense.id}
+                                                    onClick={() => handleDelete(expense.id)}
+                                                    className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors"
+                                                    title="Tirtir (Delete)"
+                                                >
+                                                    {actionLoading === expense.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -178,6 +246,7 @@ export default function FactoryExpensesPage() {
                     )}
                 </div>
             </div>
+            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         </div>
     );
 }

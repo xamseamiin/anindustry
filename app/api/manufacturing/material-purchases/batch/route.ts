@@ -12,7 +12,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'Missing search parameter' }, { status: 400 });
     }
 
-    let purchases = [];
+    let purchases: any[] = [];
     
     // 1. Try to see if 'search' is a direct Item ID
     const sampleById = await prisma.materialPurchase.findUnique({

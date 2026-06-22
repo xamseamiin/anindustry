@@ -19,7 +19,7 @@ function getTimeOfDay(): 'subax' | 'galab' | 'habeen' {
 }
 
 // --- DATA QUERY TYPES ---
-export type DataQueryType = 'summary' | 'sales_today' | 'sales_yesterday' | 'sales_week' | 'sales_month' | 'customer_search' | 'low_stock' | 'inventory_overview' | 'employees_list' | 'accounts_overview' | 'create_customer' | 'create_employee' | 'create_product' | 'adjust_stock' | 'product_search' | 'top_customers' | 'expenses_overview' | null;
+export type DataQueryType = 'summary' | 'sales_today' | 'sales_yesterday' | 'sales_week' | 'sales_month' | 'customer_search' | 'low_stock' | 'inventory_overview' | 'employees_list' | 'accounts_overview' | 'create_customer' | 'create_employee' | 'create_product' | 'adjust_stock' | 'product_search' | 'top_customers' | 'expenses_overview' | 'duplicate_customers' | 'merge_customers' | null;
 
 export interface AiResult {
   response: AiResponse;
@@ -35,7 +35,8 @@ type Intent = 'greeting' | 'farewell' | 'thanks' | 'help' | 'what_is' | 'how_to'
   | 'query_product' | 'query_top_customers' | 'query_expenses'
   | 'action_create_customer' | 'action_create_employee' | 'action_create_product' | 'action_adjust_stock'
   | 'action_navigate' | 'troubleshoot' | 'faq_answer' | 'identity' | 'tip' | 'apology'
-  | 'industry_advice' | 'accounting_guide' | 'glossary_lookup' | 'seasonal' | 'unknown';
+  | 'industry_advice' | 'accounting_guide' | 'glossary_lookup' | 'seasonal' | 'unknown'
+  | 'query_duplicate_customers' | 'action_merge_customers';
 
 function detectIntent(input: string): Intent {
   const n = normalize(input);
@@ -234,6 +235,10 @@ function detectIntent(input: string): Intent {
     }
   }
 
+  // Duplicate and merge customers
+  if (has(n, ['duplicate', 'ku celcelis', 'ku celis', 'magacyada isku eg', 'magacyo isku eg', 'isku u eg', 'magacyada ku celceliska ah', 'macaamiisha isku u eg', 'ku celceliska macaamiisha'])) return 'query_duplicate_customers';
+  if (has(n, ['mideey', 'isku dar', 'merge', 'midoob']) && has(n, ['macmiil', 'macaamiil', 'magac', 'magacyada'])) return 'action_merge_customers';
+
   // Feature keyword fallback
   for (const f of features) { if (f.keywords.some(kw => n.includes(kw))) return 'how_to'; }
   return 'unknown';
@@ -292,6 +297,17 @@ function extractCreateCustomerParams(input: string): Record<string, string> {
   // Name is whatever remains (capitalize)
   const nameWords = cleaned.replace(/\d+/g, '').trim().split(' ').filter(w => w.length > 1);
   if (nameWords.length > 0) params.name = nameWords.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  return params;
+}
+
+// --- Extract params for merging customers ---
+export function extractMergeParams(input: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const parts = input.split(/\s+(?:iyo|and)\s+/i);
+  if (parts.length === 2) {
+    params.sourceName = parts[0].replace(/(?:mideey|isku dar|merge|midoob|macaamiisha|macmiil|magacyada|magaca|macaamiil)/gi, '').trim();
+    params.destName = parts[1].replace(/(?:mideey|isku dar|merge|midoob|macaamiisha|macmiil|magacyada|magaca|macaamiil)/gi, '').trim();
+  }
   return params;
 }
 
@@ -544,6 +560,43 @@ export function formatExpenses(data: any): AiResponse {
   return { text, links: [{ label: 'Accounting', href: '/shop/accounting' }], quickActions: ['Maanta iibkii?', 'Xaaladda dukaanka?'] };
 }
 
+export function formatDuplicateCustomers(duplicates: any[]): AiResponse {
+  if (!duplicates || duplicates.length === 0) {
+    return {
+      text: "✅ Ma jiraan macaamiil isku u eg ama ku celcelis ah dukaankaaga! Dhammaan magacyadu waa kuwo nadiif ah.",
+      quickActions: ["Maanta iibkii?", "Caawin"]
+    };
+  }
+
+  let text = `🔍 **Macaamiisha Ku Celceliska ah ee Isku u eg (${duplicates.length} Kooxood):**\n\n`;
+  duplicates.forEach((group: any, idx: number) => {
+    text += `👥 **Kooxda ${idx + 1}:**\n`;
+    group.names.forEach((name: string) => {
+      text += `   • ${name}\n`;
+    });
+    text += `💡 *Si aad u midayso, ku qor:* \n\`mideey macaamiisha ${group.names[0]} iyo ${group.names[1]}\`\n\n`;
+  });
+
+  return {
+    text,
+    quickActions: ["Macaamiisha arag", "Caawin"]
+  };
+}
+
+export function formatMergeResult(result: any): AiResponse {
+  if (result.error) {
+    return {
+      text: `❌ Midayntu way ku guuldarraysatay: ${result.error}`,
+      quickActions: ["Caawin"]
+    };
+  }
+
+  return {
+    text: `✅ **Guul! Macaamiisha waa la mideeyay!**\n\nMacmiilkii **${result.sourceName}** waxaa lagu daray **${result.destName}**.\n• Dhammaan iibkii (${result.salesCount} sale) iyo macaamilkii waa loo wareejiyay macmiilka cusub.\n• Macmiilkii hore waa la tirtiray si looga fogaado ku celcelis.`,
+    quickActions: ["Macaamiisha arag", "Maanta iibkii?"]
+  };
+}
+
 
 // --- STATIC RESPONSE BUILDERS ---
 function buildGreeting(): AiResponse { return greetings[getTimeOfDay()] || greetings.default; }
@@ -742,6 +795,8 @@ export function processMessage(input: string, userName?: string): AiResult {
     query_expenses: 'expenses_overview',
     action_create_customer: 'create_customer', action_create_employee: 'create_employee',
     action_create_product: 'create_product', action_adjust_stock: 'adjust_stock',
+    query_duplicate_customers: 'duplicate_customers',
+    action_merge_customers: 'merge_customers',
   };
 
   if (intent in dataQueries) {
@@ -752,6 +807,7 @@ export function processMessage(input: string, userName?: string): AiResult {
     if (intent === 'action_create_employee') Object.assign(queryParams, extractCreateEmployeeParams(input));
     if (intent === 'action_create_product') Object.assign(queryParams, extractCreateProductParams(input));
     if (intent === 'action_adjust_stock') Object.assign(queryParams, extractAdjustStockParams(input));
+    if (intent === 'action_merge_customers') Object.assign(queryParams, extractMergeParams(input));
     return {
       response: { text: intent.startsWith('action_') ? '⏳ Waan samaynayaa...' : '⏳ Waan raadiyaa xogta...', quickActions: [] },
       dataQuery: dataQueries[intent]!,

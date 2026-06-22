@@ -5,7 +5,7 @@ import { getSessionCompanyId, requireManufacturingAccess } from '@/app/api/manuf
 
 export const dynamic = 'force-dynamic';
 
-// GET: Fetch all outstanding vendor payables from BOTH PurchaseOrders AND MaterialPurchases
+// GET: Fetch all outstanding vendor payables from BOTH PurchaseOrders AND MaterialPurchases, AND Transaction-based debts
 export async function GET(request: Request) {
     try {
         const companyId = await getSessionCompanyId();
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
                 date: p.createdAt
             }));
 
-        // 2. Fetch MaterialPurchases with unpaid balances (NEW)
+        // 2. Fetch MaterialPurchases with unpaid balances (existing logic)
         const unpaidMaterialPurchases = await prisma.materialPurchase.findMany({
             where: {
                 companyId,
@@ -66,8 +66,129 @@ export async function GET(request: Request) {
                 date: p.purchaseDate
             }));
 
-        // 3. Combine both sources
-        const payables = [...poPayables, ...mpPayables].sort(
+        // 3. Fetch manual debts from Transactions (NEW)
+        const debtTakenTransactions = await prisma.transaction.findMany({
+            where: {
+                companyId,
+                type: 'DEBT_TAKEN',
+                OR: [
+                    { category: null },
+                    { category: { not: 'Material Purchase Debt' } }
+                ],
+                AND: [
+                    {
+                        OR: [
+                            { customerId: { not: null } },
+                            { vendorId: { not: null } }
+                        ]
+                    }
+                ]
+            },
+            include: {
+                customer: { select: { name: true, phone: true } },
+                vendor: { select: { name: true, phone: true, phoneNumber: true } }
+            },
+            orderBy: { transactionDate: 'asc' }
+        });
+
+        const debtRepaidTransactions = await prisma.transaction.findMany({
+            where: {
+                companyId,
+                type: 'DEBT_REPAID'
+            },
+            orderBy: { transactionDate: 'asc' }
+        });
+
+        // Calculate paid amount for each DEBT_TAKEN transaction
+        const paidAmounts: Record<string, number> = {};
+        debtTakenTransactions.forEach(t => {
+            paidAmounts[t.id] = 0;
+        });
+
+        const processedRepaidIds = new Set<string>();
+
+        // Step 1: Explicit matching by ID in description or note
+        debtRepaidTransactions.forEach(repaid => {
+            const matchedTaken = debtTakenTransactions.find(taken => 
+                (repaid.description && repaid.description.includes(taken.id)) ||
+                (repaid.note && repaid.note.includes(taken.id)) ||
+                (repaid.description && repaid.description.includes(`DEBT-REPAY-${taken.id}`))
+            );
+            
+            if (matchedTaken) {
+                paidAmounts[matchedTaken.id] += Number(repaid.amount);
+                processedRepaidIds.add(repaid.id);
+            }
+        });
+
+        // Step 2: FIFO matching for remaining (unlinked) repayments by customer/vendor
+        const unlinkedRepayments = debtRepaidTransactions.filter(r => !processedRepaidIds.has(r.id));
+        const customerRepayments: Record<string, number> = {};
+        const vendorRepayments: Record<string, number> = {};
+
+        unlinkedRepayments.forEach(repaid => {
+            const amount = Number(repaid.amount);
+            if (repaid.customerId) {
+                customerRepayments[repaid.customerId] = (customerRepayments[repaid.customerId] || 0) + amount;
+            } else if (repaid.vendorId) {
+                vendorRepayments[repaid.vendorId] = (vendorRepayments[repaid.vendorId] || 0) + amount;
+            }
+        });
+
+        debtTakenTransactions.forEach(taken => {
+            const totalTxAmount = Number(taken.amount);
+            const alreadyPaid = paidAmounts[taken.id];
+            let remainingToPay = totalTxAmount - alreadyPaid;
+            
+            if (remainingToPay <= 0) return;
+            
+            if (taken.customerId && customerRepayments[taken.customerId] > 0) {
+                const availableRepayment = customerRepayments[taken.customerId];
+                const applied = Math.min(remainingToPay, availableRepayment);
+                paidAmounts[taken.id] += applied;
+                customerRepayments[taken.customerId] -= applied;
+            } else if (taken.vendorId && vendorRepayments[taken.vendorId] > 0) {
+                const availableRepayment = vendorRepayments[taken.vendorId];
+                const applied = Math.min(remainingToPay, availableRepayment);
+                paidAmounts[taken.id] += applied;
+                vendorRepayments[taken.vendorId] -= applied;
+            }
+        });
+
+        const txPayables = debtTakenTransactions
+            .map(t => {
+                const total = Number(t.amount);
+                const paid = paidAmounts[t.id] || 0;
+                const debt = total - paid;
+                
+                let partyName = 'Vendor/Customer';
+                let partyPhone = '';
+                if (t.customer) {
+                    partyName = t.customer.name;
+                    partyPhone = t.customer.phone || '';
+                } else if (t.vendor) {
+                    partyName = t.vendor.name;
+                    partyPhone = t.vendor.phone || t.vendor.phoneNumber || '';
+                }
+                
+                return {
+                    id: t.id,
+                    source: 'Transaction' as const,
+                    purchaseNumber: t.description.match(/\(Ref:\s*([^)]+)\)/i)?.[1] || `DEBT-${t.id.slice(0, 6).toUpperCase()}`,
+                    materialName: t.description || 'Dayn Qaadasho',
+                    vendorName: partyName,
+                    vendorPhone: partyPhone,
+                    totalPrice: total,
+                    paidAmount: paid,
+                    debtAmount: debt,
+                    status: debt <= 0.01 ? 'PAID' : paid > 0.01 ? 'PARTIAL' : 'UNPAID',
+                    date: t.transactionDate
+                };
+            })
+            .filter(p => p.debtAmount > 0.01);
+
+        // 4. Combine all sources
+        const payables = [...poPayables, ...mpPayables, ...txPayables].sort(
             (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
         );
 
@@ -78,7 +199,7 @@ export async function GET(request: Request) {
     }
 }
 
-// POST: Pay vendor bill - handles both PurchaseOrder and MaterialPurchase sources
+// POST: Pay vendor bill - handles PurchaseOrder, MaterialPurchase, and Transaction sources
 export async function POST(request: Request) {
     try {
         const { companyId, userId } = await requireManufacturingAccess();
@@ -105,7 +226,8 @@ export async function POST(request: Request) {
             if (source === 'MaterialPurchase') {
                 // Handle MaterialPurchase payment
                 const purchase = await tx.materialPurchase.findFirst({
-                    where: { id: purchaseId, companyId }
+                    where: { id: purchaseId, companyId },
+                    include: { vendor: true }
                 });
                 if (!purchase) throw new Error('Diiwaanka lama heli karo.');
 
@@ -122,6 +244,57 @@ export async function POST(request: Request) {
                     data: { paidAmount: newPaid, paymentStatus: newStatus }
                 });
                 refNumber = purchase.invoiceNumber || purchase.materialName;
+            } else if (source === 'Transaction') {
+                // Handle repayment of a debt taken transaction
+                const debtTx = await tx.transaction.findFirst({
+                    where: { id: purchaseId, companyId }
+                });
+                if (!debtTx) throw new Error('Diiwaanka daynta lama heli karo.');
+
+                // Calculate current paid amount for this specific DEBT_TAKEN transaction
+                const previousRepayments = await tx.transaction.findMany({
+                    where: {
+                        companyId,
+                        type: 'DEBT_REPAID',
+                        OR: [
+                            { description: { contains: `DEBT-REPAY-${debtTx.id}` } },
+                            { note: { contains: debtTx.id } }
+                        ]
+                    }
+                });
+
+                const totalPreviousPaid = previousRepayments.reduce((sum, r) => sum + Number(r.amount), 0);
+                const remainingDebt = Number(debtTx.amount) - totalPreviousPaid;
+
+                if (paymentAmount > remainingDebt + 0.01) {
+                    throw new Error(`Lacagta badan: deynta hadda u dhiman waa ${remainingDebt.toLocaleString()} ETB.`);
+                }
+
+                refNumber = debtTx.description.match(/\(Ref:\s*([^)]+)\)/i)?.[1] || `DEBT-${debtTx.id.slice(0, 6).toUpperCase()}`;
+
+                // Create DEBT_REPAID transaction
+                updatedRecord = await tx.transaction.create({
+                    data: {
+                        companyId,
+                        amount: paymentAmount,
+                        type: 'DEBT_REPAID',
+                        description: `Deynbixinta: Dayn Qaadasho (Ref: DEBT-REPAY-${debtTx.id})`,
+                        note: note || `Repayment for debt transaction #${debtTx.id}`,
+                        transactionDate: new Date(),
+                        accountId,
+                        customerId: debtTx.customerId,
+                        vendorId: debtTx.vendorId,
+                        userId
+                    }
+                });
+
+                // Decrement account balance
+                const account = await tx.account.update({
+                    where: { id: accountId },
+                    data: { balance: { decrement: paymentAmount } }
+                });
+
+                return { updatedRecord, account, transaction: updatedRecord };
             } else {
                 // Handle PurchaseOrder payment (existing logic)
                 const purchase = await tx.purchaseOrder.findFirst({
@@ -144,13 +317,13 @@ export async function POST(request: Request) {
                 refNumber = purchase.poNumber;
             }
 
-            // Decrement account balance
+            // Decrement account balance for PO / MP
             const account = await tx.account.update({
                 where: { id: accountId },
                 data: { balance: { decrement: paymentAmount } }
             });
 
-            // Log Transaction
+            // Log Transaction for PO / MP
             const transaction = await tx.transaction.create({
                 data: {
                     companyId,
@@ -166,6 +339,51 @@ export async function POST(request: Request) {
 
             return { updatedRecord, account, transaction };
         });
+
+        // If the payable is a MaterialPurchase and is fully paid, update Telegram in real-time
+        if (source === 'MaterialPurchase' && result.updatedRecord && result.updatedRecord.paymentStatus === 'PAID') {
+            const purchase = result.updatedRecord;
+            const telegramMetadata = purchase.notes || '';
+            const chatIdMatch = telegramMetadata.match(/\[TelegramChatId:\s*([^\]]+)\]/);
+            const messageIdMatch = telegramMetadata.match(/\[TelegramMessageId:\s*([^\]]+)\]/);
+
+            if (chatIdMatch && messageIdMatch) {
+                const chatId = chatIdMatch[1];
+                const messageId = parseInt(messageIdMatch[1]);
+                if (!isNaN(messageId)) {
+                    const cleanNote = (purchase.notes || '')
+                        .replace(/\[TelegramChatId:\s*[^\]]+\]/g, '')
+                        .replace(/\[TelegramMessageId:\s*[^\]]+\]/g, '')
+                        .replace(/\[TelegramId:\s*\d+\]/g, '')
+                        .replace(/\[Dalbaday:\s*[^\]]+\]/g, '')
+                        .replace(/\[AccountId:\s*[^\]]+\]/g, '')
+                        .replace(/\[Account:\s*[^\]]+\]/g, '')
+                        .replace(/\[ReceiptUrl:\s*[^\]]+\]/g, '')
+                        .trim();
+
+                    const formattedDate = new Date(purchase.purchaseDate || purchase.createdAt).toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
+
+                    const captionText = `<b>AN-Industory</b>\n` +
+                                        `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement)</b>\n\n` +
+                                        `🏭 Alaab-keenaha: ${purchase.vendor ? purchase.vendor.name : 'Unknown'}\n` +
+                                        `📦 Name: ${purchase.materialName}\n` +
+                                        `📊 Qty: ${purchase.quantity} ${purchase.unit}\n` +
+                                        `💵 Price: ${Number(purchase.unitPrice).toLocaleString()} ETB\n` +
+                                        `💰 Total: ${Number(purchase.totalPrice).toLocaleString()} ETB\n` +
+                                        `📝 Sharaxaad: ${cleanNote}\n` +
+                                        `📅 Taariikhda: ${formattedDate}\n\n` +
+                                        `✅ Rasiidka waa la galiyey oo haraaga waa laga jaray.`;
+
+                    const hasPhoto = telegramMetadata.includes('[ReceiptUrl:');
+                    try {
+                        const { telegramSender } = await import('@/lib/telegram-sender');
+                        await telegramSender.updateMessageToPaid(chatId, messageId, captionText, hasPhoto);
+                    } catch (err) {
+                        console.error("Error updating payables paid Telegram message:", err);
+                    }
+                }
+            }
+        }
 
         return NextResponse.json({ 
             success: true, 
