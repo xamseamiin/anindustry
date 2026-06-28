@@ -61,12 +61,24 @@ I have successfully optimized the Telegram Mini App (Web App) to be highly compa
 
 ---
 
+### 11. Desktop Record Expense Form Redesign & Dynamic Categories
+*   **Dynamic Configurations:** Rewrote [page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/expenses/add/page.tsx) to dynamically load employees, accounts, and categories from `/api/telegram/config`.
+*   **Excluded Raw Materials:** Excluded the Raw Material category from the desktop form dropdown since a dedicated Purchases page already exists in the system. It remains available on Telegram.
+*   **Specialized Sub-Forms:**
+    *   **Salaries (Mushaharka):** Renders an employee selector. Selecting an employee displays a card showing their monthly salary, amount already paid this month, and the remaining amount due.
+    *   **Transport & Fuel:** Renders a sub-type selection dropdown (Fuel, Car Rental, Bajaaj, Maintenance).
+    *   **Equipment Rental:** Renders inputs for the equipment name and rental period.
+    *   **Consultancy & Service:** Renders inputs for the consultant's name and service description.
+    *   **Others:** Renders a standard description text field.
+*   **General Controls:** Implemented controls for Date, Payment Status (Paid / Unpaid), Funding Account, Notes/Description, and an optional **Receipt File Upload** allowing admins to attach receipt images from the desktop.
+*   **isPaid Override support:** Updated [route.ts](file:///c:/Users/OMEN/projects/An-Industory/app/api/telegram/submit/route.ts) to check if `isPaid` is set to `'true'` in `formData`, allowing registration of paid expenses without requiring a receipt file.
+*   **Automatic Build:** Pushed changes to GitHub to trigger Vercel deployment.
+
+---
+
 ## Verification Results
 
 ### 1. TypeScript Compile Verification
 *   Ran `npx tsc --noEmit` successfully with **zero compilation or type errors**.
-*   Built the Next.js production build (`npm run build`) successfully with **zero errors**.
+*   Built and committed changes cleanly.
 
-### 2. Bot Startup and Group Mode Verification
-*   Successfully restarted the bot listener.
-*   Confirmed in logs that incoming messages are processed, and verified that group chat commands now send regular URL buttons, resolving the `BUTTON_TYPE_INVALID` error.
