@@ -830,44 +830,39 @@ export default function CctvCounterPage() {
               {/* Static scan lines overlay */}
               <div className="absolute inset-0 bg-scanner-lines opacity-10 pointer-events-none z-10" />
 
-              {/* Simulated camera or live webcam stream */}
-              {isWebcamActive ? (
-                <>
-                  <video 
-                    ref={videoRef} 
-                    className="w-full h-full object-cover transform -scale-x-100" 
-                    playsInline 
-                    muted 
-                  />
-                  <canvas 
-                    ref={canvasRef} 
-                    width={640} 
-                    height={480} 
-                    className="absolute inset-0 w-full h-full pointer-events-none z-10" 
-                  />
-                </>
-              ) : isSimulating && selectedCamera?.type === 'RTSP' ? (
-                // Simulated CCTV feed graphics
-                <div className="w-full h-full relative bg-slate-950 flex items-center justify-center">
+              {/* Real webcam stream elements (always in DOM for reference binding) */}
+              <video 
+                ref={videoRef} 
+                className={`w-full h-full object-cover transform -scale-x-100 ${isWebcamActive ? 'block' : 'hidden'}`}
+                playsInline 
+                muted 
+              />
+              <canvas 
+                ref={canvasRef} 
+                width={640} 
+                height={480} 
+                className={`absolute inset-0 w-full h-full pointer-events-none z-10 ${isWebcamActive ? 'block' : 'hidden'}`}
+              />
+
+              {/* RTSP Simulation view */}
+              {!isWebcamActive && isSimulating && selectedCamera?.type === 'RTSP' && (
+                <div className="w-full h-full absolute inset-0 bg-slate-950 flex items-center justify-center z-10">
                   <div className="absolute top-4 left-4 text-[10px] text-green-500 font-mono font-bold bg-black/60 px-2 py-1 rounded">
                     ● LIVE RTSP FEED FEEDER_CAM_01
                   </div>
-                  
-                  {/* Grid Lines */}
                   <div className="absolute inset-0 border border-slate-800 opacity-20 pointer-events-none" />
-                  
-                  {/* Virtual Scanning Line */}
                   <div className="absolute top-1/2 left-0 right-0 h-1 bg-yellow-500 animate-pulse shadow-[0_0_10px_rgba(245,158,11,0.8)]" />
-                  
                   <div className="flex flex-col items-center gap-3 text-center text-slate-500">
                     <Loader2 size={32} className="animate-spin text-blue-500" />
                     <p className="text-xs font-black uppercase tracking-widest text-slate-400">AI Line Crossing Detection Active</p>
-                    <p className="text-[10px] text-slate-600 font-mono max-w-xs">{selectedCamera.url}</p>
+                    <p className="text-[10px] text-slate-600 font-mono max-w-xs">{selectedCamera?.url}</p>
                   </div>
                 </div>
-              ) : (
-                // Camera standby view
-                <div className="flex flex-col items-center gap-3 text-center p-6 text-slate-500">
+              )}
+
+              {/* Standby view */}
+              {!isWebcamActive && (!isSimulating || selectedCamera?.type !== 'RTSP') && (
+                <div className="flex flex-col items-center gap-3 text-center p-6 text-slate-500 z-10">
                   <Video size={48} className="text-slate-700 animate-pulse" />
                   <p className="text-xs font-black uppercase tracking-widest text-slate-500">Camera Feed Offline</p>
                   <p className="text-[10px] text-slate-600 max-w-xs">
