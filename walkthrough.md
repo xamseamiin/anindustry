@@ -90,9 +90,11 @@ I have successfully optimized the Telegram Mini App (Web App) to be highly compa
 *   **Employee Creation & Editing Updates:**
     *   Updated the creation form [add/page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/employees/add/page.tsx) and edit form [edit/page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/employees/%5Bid%5D/edit/page.tsx) to support setting whether an employee is linked to production output and their percentage rate.
     *   Updated the employee APIs to store and update these parameters.
+*   **Inline Quick-Add Employee Modal:** Added an inline glassmorphic **Shaqaale Cusub (New)** creation modal directly inside the Record Expense form under the Salary employee dropdown, enabling admins to create new staff members and auto-select them without leaving the page.
 *   **Employee Detail Page (Real-time Calculations):**
     *   Updated [page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/employees/%5Bid%5D/page.tsx) to display a **Production Earnings** card showing total ETB earned.
     *   Added a dedicated **Production Earnings (Wax-soo-saarka)** history tab showing daily earnings computed in real-time from completed work orders (`assignedToId`) associated with completed production orders.
+*   **Qoordheere Salary Data Repair:** Executed database repair script [fix_qordhere_salary.js](file:///c:/Users/OMEN/projects/An-Industory/scratch/fix_qordhere_salary.js) to fix the data inconsistency where employee `qoordheere` showed `9000 ETB` paid this month even though their salary expense was deleted. Set their active paid statistic back to `0 ETB` successfully.
 
 ---
 
