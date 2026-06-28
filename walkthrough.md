@@ -54,6 +54,13 @@ I have successfully optimized the Telegram Mini App (Web App) to be highly compa
 
 ---
 
+### 10. Pinned Message Optimization (`/pin` and `/miniapp` Commands)
+*   **Minimal Message:** Added a command `/pin` (and `/miniapp`) that sends a message containing only the text `mini app` (hyperlinked) and an inline button `📱 Fur Mini App` to open the Mini App.
+*   **Automatic Command Cleanup:** The bot automatically deletes the triggering `/pin` or `/miniapp` message from the chat to keep the conversation history clean.
+*   **Result:** When this message is pinned, the Telegram pinned message bar displays only the bot's logo on the left and the clean text `mini app` on the right, avoiding any other text clutter.
+
+---
+
 ## Verification Results
 
 ### 1. TypeScript Compile Verification

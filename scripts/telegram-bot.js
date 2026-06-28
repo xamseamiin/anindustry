@@ -888,6 +888,26 @@ async function handleUpdate(update) {
         }
 
         // Handle Commands
+        if (text.startsWith('/pin') || text.startsWith('/miniapp')) {
+            const shortName = process.env.TELEGRAM_WEBAPP_SHORTNAME || 'app';
+            const botLink = `https://t.me/${botUsername}/${shortName}`;
+            const buttons = [
+                { text: "📱 Fur Mini App", url: botLink }
+            ];
+            await sendBotRequest('sendMessage', {
+                chat_id: chatId,
+                text: `<a href="${botLink}">mini app</a>`,
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [buttons]
+                }
+            });
+            if (message.chat.type !== 'private') {
+                sendBotRequest('deleteMessage', { chat_id: chatId, message_id: message.message_id });
+            }
+            return;
+        }
+
         if (text.startsWith('/app') || text.startsWith('/webapp')) {
             if (process.env.TELEGRAM_WEBAPP_URL) {
                 const buttons = [];

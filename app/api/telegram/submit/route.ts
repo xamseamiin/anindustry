@@ -196,7 +196,7 @@ export async function POST(request: Request) {
                 }
 
                 // If receipt is uploaded, it is paid. Else unpaid.
-                const isPaid = !!receiptUrl;
+                const isPaid = !!receiptUrl || formData.get('isPaid') === 'true';
                 let purchaseNotes = finalNote;
                 if (receiptUrl) {
                     purchaseNotes = `${purchaseNotes}\n[ReceiptUrl: ${receiptUrl}]`;
@@ -293,7 +293,7 @@ export async function POST(request: Request) {
                 }
             }
 
-            const isPaid = !!receiptUrl;
+            const isPaid = !!receiptUrl || formData.get('isPaid') === 'true';
             const expense = await tx.expense.create({
                 data: {
                     companyId,
