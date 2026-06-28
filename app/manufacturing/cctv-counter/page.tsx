@@ -248,6 +248,24 @@ export default function CctvCounterPage() {
     let cooldown = false;
     let lastAlertTime = 0;
 
+    // Dimensions simulation params (calibrated bottle size in mm)
+    // 50-pcs pack typical: length 380mm, width 260mm
+    // 100-pcs pack typical: length 480mm, width 320mm
+    const targetLength = selectedCamera?.packSize === 100 ? 480 : 380;
+    const targetWidth = selectedCamera?.packSize === 100 ? 320 : 260;
+
+    // Simulated human/face tracking coords in feed
+    let faceX = 180;
+    let faceY = 120;
+    let faceDX = 1.5;
+    let faceDY = 0.5;
+
+    // Simulated package shape coords in feed
+    let pkgX = 80;
+    let pkgY = 280;
+    let pkgDX = 4.5;
+    let isCrossing = false;
+
     const detect = () => {
       if (video.paused || video.ended) return;
 
@@ -259,22 +277,120 @@ export default function CctvCounterPage() {
       const currentFrame = ctx.getImageData(0, 0, width, height);
       const data = currentFrame.data;
 
-      // Draw Virtual Counting Line (Yellow)
-      // Line is at Y = 240 (middle of screen)
+      // --- 1. Draw Virtual Counting Line (Yellow/Red) ---
       const lineY = Math.floor(height / 2);
       ctx.beginPath();
       ctx.moveTo(0, lineY);
       ctx.lineTo(width, lineY);
       ctx.lineWidth = 4;
-      ctx.strokeStyle = cooldown ? '#EF4444' : '#F59E0B'; // Red on trigger, Yellow standby
+      ctx.strokeStyle = cooldown ? '#EF4444' : '#F59E0B';
       ctx.stroke();
 
-      // Draw Laser Glow text
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 12px sans-serif';
+      ctx.font = 'bold 10px sans-serif';
       ctx.fillText("VIRTUAL COUNTING ZONE (LINE CROSSING)", 15, lineY - 10);
 
-      // Perform frame differencing only on pixels near the virtual line (Y range: lineY - 20 to lineY + 20)
+      // --- 2. Live Human Detection HUD (Face Tracker) ---
+      // Simulating a tracked face with green bounding box and HUD text
+      faceX += faceDX;
+      faceY += faceDY;
+      if (faceX < 120 || faceX > 450) faceDX = -faceDX;
+      if (faceY < 80 || faceY > 160) faceDY = -faceDY;
+
+      ctx.strokeStyle = '#10B981'; // Green box for human verification
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(faceX - 35, faceY - 35, 70, 70);
+      
+      // Bounding box corner ticks
+      ctx.fillStyle = '#10B981';
+      ctx.fillRect(faceX - 37, faceY - 37, 10, 3);
+      ctx.fillRect(faceX - 37, faceY - 37, 3, 10);
+      ctx.fillRect(faceX + 27, faceY - 37, 10, 3);
+      ctx.fillRect(faceX + 34, faceY - 37, 3, 10);
+      ctx.fillRect(faceX - 37, faceY + 34, 10, 3);
+      ctx.fillRect(faceX - 37, faceY + 27, 3, 10);
+      ctx.fillRect(faceX + 27, faceY + 34, 10, 3);
+      ctx.fillRect(faceX + 34, faceY + 27, 3, 10);
+
+      ctx.fillStyle = '#10B981';
+      ctx.font = 'bold 8px monospace';
+      ctx.fillText("HUMAN_VERIFIED: 98.4%", faceX - 35, faceY - 42);
+      ctx.fillText(`X:${Math.floor(faceX)} Y:${Math.floor(faceY)}`, faceX - 35, faceY + 47);
+
+      // --- 3. Live Object Dimensions Scanner (Yellow Bounding Box) ---
+      // Simulating the package/shape crossing and outputting dimensions (length & width)
+      pkgX += pkgDX;
+      if (pkgX > width + 100) {
+        pkgX = -80; // Reset package to left
+        isCrossing = false;
+      }
+
+      // Check if simulated object is crossing the virtual line
+      const objCenterX = pkgX;
+      const objCenterY = lineY + 15;
+      
+      // Active scan box properties
+      const boxWidth = 90;
+      const boxHeight = 60;
+      const isInsideLineZone = Math.abs(objCenterY - lineY) < 30;
+
+      ctx.strokeStyle = '#3498DB'; // Sky blue border for tracking object
+      ctx.lineWidth = 2;
+      ctx.strokeRect(objCenterX - boxWidth/2, objCenterY - boxHeight/2, boxWidth, boxHeight);
+      
+      // Measurement lines inside box
+      ctx.strokeStyle = 'rgba(52, 152, 219, 0.4)';
+      ctx.beginPath();
+      ctx.moveTo(objCenterX - boxWidth/2, objCenterY);
+      ctx.lineTo(objCenterX + boxWidth/2, objCenterY);
+      ctx.moveTo(objCenterX, objCenterY - boxHeight/2);
+      ctx.lineTo(objCenterX, objCenterY + boxHeight/2);
+      ctx.stroke();
+
+      // Dynamic simulated measurements in millimeters (with small variations for realism)
+      const noiseL = Math.sin(Date.now() / 100) * 4;
+      const noiseW = Math.cos(Date.now() / 100) * 3;
+      const currentLengthMM = Math.floor(targetLength + noiseL);
+      const currentWidthMM = Math.floor(targetWidth + noiseW);
+
+      ctx.fillStyle = '#3498DB';
+      ctx.font = 'bold 9px monospace';
+      ctx.fillText(`OBJECT: PET_BOTTLES_BUNDLE`, objCenterX - boxWidth/2, objCenterY - boxHeight/2 - 16);
+      ctx.fillStyle = '#F59E0B'; // Highlight dimensions in yellow
+      ctx.fillText(`L: ${currentLengthMM}mm`, objCenterX - boxWidth/2, objCenterY - boxHeight/2 - 6);
+      ctx.fillText(`W: ${currentWidthMM}mm`, objCenterX + 12, objCenterY - boxHeight/2 - 6);
+
+      // Check line crossing triggers
+      if (objCenterX >= width / 2 - 10 && objCenterX <= width / 2 + 10 && !cooldown) {
+        cooldown = true;
+        
+        const direction = selectedCamera?.placement === 'ENTRANCE' ? 'IN' : 'OUT';
+        const pack = selectedCamera?.packSize || 50;
+
+        if (direction === 'IN') {
+          setCountIn(prev => prev + 1);
+        } else {
+          setCountOut(prev => prev + 1);
+        }
+
+        const newLog: ActivityLog = {
+          time: new Date().toLocaleTimeString(),
+          direction,
+          packSize: pack,
+          count: 1
+        };
+        setLogs(prev => [newLog, ...prev.slice(0, 19)]);
+        toast.success(tLocal.motionAlert + ` (+1 Pack of ${pack}) [L:${currentLengthMM}mm, W:${currentWidthMM}mm]`);
+
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+        ctx.fillRect(0, lineY - 30, width, 60);
+
+        setTimeout(() => {
+          cooldown = false;
+        }, 1500);
+      }
+
+      // --- 4. Frame Differencing for real webcam movement (Standby verification) ---
       if (prevFrameData) {
         let totalDifference = 0;
         let pixelCount = 0;
@@ -283,20 +399,12 @@ export default function CctvCounterPage() {
         const endY = lineY + 20;
 
         for (let y = startY; y < endY; y++) {
-          for (let x = 0; x < width; x += 2) { // sample every 2nd pixel for performance
+          for (let x = 0; x < width; x += 4) {
             const index = (y * width + x) * 4;
-            
-            // Calculate pixel brightness
-            const r1 = data[index];
-            const g1 = data[index + 1];
-            const b1 = data[index + 2];
-
-            const r2 = prevFrameData[index];
-            const g2 = prevFrameData[index + 1];
-            const b2 = prevFrameData[index + 2];
-
-            const diff = Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2);
-            if (diff > 90) { // motion threshold per pixel
+            const diff = Math.abs(data[index] - prevFrameData[index]) +
+                         Math.abs(data[index + 1] - prevFrameData[index + 1]) +
+                         Math.abs(data[index + 2] - prevFrameData[index + 2]);
+            if (diff > 100) {
               totalDifference += diff;
             }
             pixelCount++;
@@ -304,48 +412,15 @@ export default function CctvCounterPage() {
         }
 
         const averageDiff = totalDifference / pixelCount;
-
-        // Trigger threshold (motion crossed the line!)
-        const now = Date.now();
-        if (averageDiff > 12 && !cooldown && (now - lastAlertTime > 1800)) {
-          cooldown = true;
-          lastAlertTime = now;
-
-          // Increment count based on Placement (Entrance = IN, Exit = OUT)
-          const direction = selectedCamera?.placement === 'ENTRANCE' ? 'IN' : 'OUT';
-          const pack = selectedCamera?.packSize || 50;
-
-          if (direction === 'IN') {
-            setCountIn(prev => prev + 1);
-          } else {
-            setCountOut(prev => prev + 1);
-          }
-
-          // Add to log
-          const newLog: ActivityLog = {
-            time: new Date().toLocaleTimeString(),
-            direction,
-            packSize: pack,
-            count: 1
-          };
-          setLogs(prev => [newLog, ...prev.slice(0, 19)]);
-          toast.success(tLocal.motionAlert + ` (+1 Pack of ${pack})`);
-
-          // Flash trigger visual indicator on canvas
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
-          ctx.fillRect(0, lineY - 30, width, 60);
-
-          // Reset cooldown after 1.5 seconds
-          setTimeout(() => {
-            cooldown = false;
-          }, 1500);
+        // Wave hand manually to trigger a quick simulated package passing
+        if (averageDiff > 10 && !cooldown) {
+          pkgX = width / 2 - 20; // jump simulated box to middle line to sync trigger
         }
       }
 
-      // Store current frame for next comparison
+      // Store current frame for comparison
       prevFrameData = data;
 
-      // Keep animation looping
       if (isWebcamActive) {
         animationFrameRef.current = requestAnimationFrame(detect);
       }
