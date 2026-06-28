@@ -180,7 +180,7 @@ export default function CctvCounterPage() {
                        Math.abs(data[idx + 1] - bgData[idx + 1]) +
                        Math.abs(data[idx + 2] - bgData[idx + 2]);
           
-          if (diff > 105) { // foreground detection threshold
+          if (diff > 135) { // foreground detection threshold
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
@@ -199,7 +199,7 @@ export default function CctvCounterPage() {
         const targetH = Math.min(height - targetY - 10, (maxY - minY) + padding * 2);
 
         // Ensure tracking box size is reasonable for products
-        if (targetW > 20 && targetH > 20 && targetW < width - 150) {
+        if (targetW > 15 && targetH > 15 && targetW < width - 50) {
           objectBox.x = targetX;
           objectBox.y = targetY;
           objectBox.w = targetW;
