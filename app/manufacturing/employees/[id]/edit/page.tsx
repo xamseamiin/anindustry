@@ -19,7 +19,9 @@ export default function EditEmployeePage() {
         department: '',
         phone: '',
         status: 'Active',
-        monthlySalary: ''
+        monthlySalary: '',
+        isPercentageLinked: false,
+        productionRate: ''
     });
 
     const departments = ['Production', 'Quality Control', 'Inventory', 'Packaging', 'Management', 'Maintenance'];
@@ -38,7 +40,9 @@ export default function EditEmployeePage() {
                             department: data.employee.department || '',
                             phone: data.employee.phone || data.employee.phoneNumber || '',
                             status: data.employee.isActive ? 'Active' : 'Inactive',
-                            monthlySalary: data.employee.monthlySalary || ''
+                            monthlySalary: data.employee.monthlySalary || '',
+                            isPercentageLinked: data.employee.isPercentageLinked || false,
+                            productionRate: data.employee.productionRate || ''
                         });
                     }
                 }
@@ -193,6 +197,38 @@ export default function EditEmployeePage() {
                                 <option value="Inactive">Inactive</option>
                             </select>
                         </div>
+
+                        <div className="flex items-center gap-2 pt-2 md:col-span-2">
+                            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={formData.isPercentageLinked}
+                                    onChange={(e) => handleInputChange('isPercentageLinked', e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                                <span className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                                    Ku xidh Waxsoosaarka (Link to Production Earnings)
+                                </span>
+                            </label>
+                        </div>
+
+                        {formData.isPercentageLinked && (
+                            <div className="md:col-span-2 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Heerka Boqolleyda Waxsoosaarka / Production Rate (%) *</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.01"
+                                    required={formData.isPercentageLinked}
+                                    value={formData.productionRate || ''}
+                                    onChange={(e) => handleInputChange('productionRate', e.target.value)}
+                                    placeholder="e.g. 2.0 (for 2% of produced bottle value)"
+                                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                />
+                                <p className="text-[10px] text-gray-400 font-medium">Qofkani wuxuu 2% (tusaale ahaan) ka heli doonaa qiimaha guud ee caag kasta oo uu soo saaro ee la dhammaystiro.</p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="pt-4 flex gap-4">

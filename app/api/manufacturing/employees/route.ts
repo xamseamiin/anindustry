@@ -89,7 +89,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { fullName, role, department, phone, monthlySalary } = body;
+        const { fullName, role, department, phone, monthlySalary, isPercentageLinked, productionRate } = body;
 
         const employee = await prisma.employee.create({
             data: {
@@ -97,8 +97,10 @@ export async function POST(req: Request) {
                 fullName,
                 role,
                 department,
-                phone, // Ensure schema has this
+                phone,
                 monthlySalary: monthlySalary ? parseFloat(monthlySalary) : 0,
+                isPercentageLinked: isPercentageLinked === true || isPercentageLinked === 'true',
+                productionRate: productionRate ? parseFloat(productionRate) : 0.0,
                 salaryPaidThisMonth: 0,
             }
         });

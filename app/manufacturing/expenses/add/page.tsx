@@ -244,7 +244,7 @@ export default function NewExpensePage() {
                 </div>
             </div>
 
-            <div className="max-w-2xl mx-auto w-full mt-4">
+            <div className="max-w-5xl mx-auto w-full mt-4">
                 {/* Premium Glassmorphic Card Container with Emerald & Sky theme borders */}
                 <div className="bg-white/80 dark:bg-slate-900/40 backdrop-blur-xl border border-gray-200 dark:border-white/10 rounded-3xl p-6 md:p-8 shadow-xl dark:shadow-2xl shadow-slate-200/50 relative overflow-hidden">
                     

@@ -60,6 +60,41 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         // Calculations for Commission (assuming 5% for display, or just total sales)
         const totalSalesAmount = employee.sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
         
+        // Calculations for production percentage workers
+        const completedWorkOrders = await prisma.workOrder.findMany({
+            where: {
+                assignedToId: params.id,
+                status: 'COMPLETED',
+                productionOrder: { status: 'COMPLETED' }
+            },
+            include: {
+                productionOrder: {
+                    include: { product: true }
+                }
+            },
+            orderBy: { endTime: 'desc' }
+        });
+
+        const productionEarningsList = completedWorkOrders.map(wo => {
+            const qty = wo.productionOrder.quantity;
+            const price = Number(wo.productionOrder.product?.sellingPrice || wo.productionOrder.product?.standardCost || 2.0);
+            const value = qty * price;
+            const rate = employee.productionRate || 0.0;
+            const earned = value * (rate / 100);
+            return {
+                id: wo.id,
+                date: wo.endTime || wo.createdAt,
+                productName: wo.productionOrder.productName,
+                quantity: qty,
+                sellingPrice: price,
+                totalValue: value,
+                rate: rate,
+                earned: earned
+            };
+        });
+
+        const totalProductionEarned = productionEarningsList.reduce((sum, item) => sum + item.earned, 0);
+
         // Return complete data
         return NextResponse.json({ 
             success: true, 
@@ -77,6 +112,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
                 },
                 commissionCalculations: {
                     totalSales: totalSalesAmount,
+                },
+                productionCalculations: {
+                    totalEarned: totalProductionEarned,
+                    earningsList: productionEarningsList
                 }
             } 
         });
@@ -103,7 +142,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         }
 
         const body = await req.json();
-        const { fullName, role, department, phone, monthlySalary, isActive } = body;
+        const { fullName, role, department, phone, monthlySalary, isActive, isPercentageLinked, productionRate } = body;
 
         const updatedEmployee = await prisma.employee.update({
             where: { id: params.id, companyId: user.companyId },
@@ -113,7 +152,9 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
                 department,
                 phone,
                 monthlySalary: monthlySalary ? parseFloat(monthlySalary) : 0,
-                isActive: isActive ?? true
+                isActive: isActive ?? true,
+                isPercentageLinked: isPercentageLinked === true || isPercentageLinked === 'true',
+                productionRate: productionRate ? parseFloat(productionRate) : 0.0
             }
         });
 

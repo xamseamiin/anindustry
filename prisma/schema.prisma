@@ -308,6 +308,8 @@ model Employee {
   phone               String?
   role                String
   monthlySalary       Decimal?
+  isPercentageLinked  Boolean              @default(false)
+  productionRate      Float                @default(0.0)
   salaryPaidThisMonth Decimal              @default(0.0) @db.Decimal(12, 2)
   lastPaymentDate     DateTime?
   isActive            Boolean              @default(true)
