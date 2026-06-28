@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Script from 'next/script';
 import { 
   Video, Play, Pause, Activity, RefreshCw, 
   CheckCircle2, HelpCircle, Loader2, Camera, ShieldCheck
@@ -17,13 +18,13 @@ export default function CctvCounterPage() {
   const [isWebcamActive, setIsWebcamActive] = useState(false);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
+  const [isOpenCvLoaded, setIsOpenCvLoaded] = useState(false);
 
   // AI analysis states
   const [aiObjectLabel, setAiObjectLabel] = useState('PET_BOTTLES_BUNDLE');
   const [aiObjectLength, setAiObjectLength] = useState(380);
   const [aiObjectWidth, setAiObjectWidth] = useState(260);
   const [aiHumanPresent, setAiHumanPresent] = useState(true);
-  const [aiBoundingBox, setAiBoundingBox] = useState<number[]>([30, 25, 70, 75]);
 
   // WebCam references
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -109,21 +110,6 @@ export default function CctvCounterPage() {
       const currentFrame = ctx.getImageData(0, 0, width, height);
       const data = currentFrame.data;
 
-      // Initialize or adapt background subtraction model
-      if (!bgData) {
-        bgData = new Float32Array(data.length);
-        for (let i = 0; i < data.length; i++) {
-          bgData[i] = data[i];
-        }
-      } else {
-        // Slowly adapt background to handle light shifts/shading
-        for (let i = 0; i < data.length; i += 4) {
-          bgData[i] += (data[i] - bgData[i]) * 0.015;
-          bgData[i + 1] += (data[i + 1] - bgData[i + 1]) * 0.015;
-          bgData[i + 2] += (data[i + 2] - bgData[i + 2]) * 0.015;
-        }
-      }
-
       // --- 1. Draw Scanner Grid Overlay ---
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
       ctx.lineWidth = 1;
@@ -160,89 +146,222 @@ export default function CctvCounterPage() {
         ctx.fillText("CLASSIFIED: SECURE", faceX - 63, faceY + 82);
       }
 
-      // --- 3. Advanced Background Subtraction Object Segmenter ---
-      let minX = width;
-      let maxX = 0;
-      let minY = height;
-      let maxY = 0;
-      let foregroundCount = 0;
+      // --- 3. Advanced OpenCV.js Tracking / Background Subtraction ---
+      const cv = (window as any).cv;
+      let usedOpenCv = false;
+      let displayLength = 380;
+      let displayWidth = 260;
 
-      // Loop through pixels, skipping the center region (faceX - 80 to faceX + 80) to ignore human face
-      for (let y = 30; y < height - 30; y += 6) {
-        for (let x = 30; x < width - 30; x += 6) {
-          // Ignore human head area
-          if (x > faceX - 85 && x < faceX + 85 && y > faceY - 100 && y < faceY + 85) {
-            continue;
-          }
-
-          const idx = (y * width + x) * 4;
-          const diff = Math.abs(data[idx] - bgData[idx]) +
-                       Math.abs(data[idx + 1] - bgData[idx + 1]) +
-                       Math.abs(data[idx + 2] - bgData[idx + 2]);
+      if (cv && cv.Mat && cv.imread) {
+        try {
+          let src = cv.imread(canvas);
+          let gray = new cv.Mat();
+          let blurred = new cv.Mat();
+          let thresh = new cv.Mat();
           
-          if (diff > 135) { // foreground detection threshold
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-            foregroundCount++;
+          // 1. Grayscale
+          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+          
+          // 2. Blur to eliminate high frequency noise
+          let ksize = new cv.Size(5, 5);
+          cv.GaussianBlur(gray, blurred, ksize, 0, 0, cv.BORDER_DEFAULT);
+          
+          // 3. Adaptive Thresholding for clean object outlines
+          cv.threshold(blurred, thresh, 80, 255, cv.THRESH_BINARY_INV);
+          
+          // 4. Find contours
+          let contours = new cv.MatVector();
+          let hierarchy = new cv.Mat();
+          cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+          
+          let maxArea = 0;
+          let bestContourIdx = -1;
+          
+          for (let i = 0; i < contours.size(); ++i) {
+            let contour = contours.get(i);
+            let area = cv.contourArea(contour);
+            
+            // Get center point to filter out human face area
+            let rect = cv.boundingRect(contour);
+            const centerX = rect.x + rect.width / 2;
+            const centerY = rect.y + rect.height / 2;
+            
+            if (centerX > faceX - 90 && centerX < faceX + 90 && centerY > faceY - 110 && centerY < faceY + 90) {
+              contour.delete();
+              continue;
+            }
+            
+            if (area > maxArea && area > 250 && area < 100000) {
+              maxArea = area;
+              bestContourIdx = i;
+            }
+            contour.delete();
+          }
+          
+          if (bestContourIdx !== -1) {
+            let bestContour = contours.get(bestContourIdx);
+            
+            // Get rotated bounding rect (supports rotated angle alignment!)
+            let rotatedRect = cv.minAreaRect(bestContour);
+            let vertices = cv.RotatedRect.points(rotatedRect);
+            
+            // Extract bounding metrics
+            const targetW = rotatedRect.size.width;
+            const targetH = rotatedRect.size.height;
+            const targetX = rotatedRect.center.x - targetW / 2;
+            const targetY = rotatedRect.center.y - targetH / 2;
+            
+            if (targetW > 15 && targetH > 15 && targetW < width - 50) {
+              objectBox.x = targetX;
+              objectBox.y = targetY;
+              objectBox.w = targetW;
+              objectBox.h = targetH;
+            }
+            
+            // Smooth gliding interpolation at 30fps
+            currentX += (objectBox.x - currentX) * 0.28;
+            currentY += (objectBox.y - currentY) * 0.28;
+            currentW += (objectBox.w - currentW) * 0.28;
+            currentH += (objectBox.h - currentH) * 0.28;
+            
+            // Convert to real-world millimeters
+            const scaleFactor = 1.25; 
+            displayLength = Math.round(currentW * scaleFactor);
+            displayWidth = Math.round(currentH * scaleFactor * 0.7);
+            
+            // Draw rotated rect boundaries
+            ctx.strokeStyle = '#3498DB';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(vertices[0].x, vertices[0].y);
+            for (let j = 1; j < 4; j++) {
+              ctx.lineTo(vertices[j].x, vertices[j].y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            
+            // Draw tracking corner vertex dots
+            ctx.fillStyle = '#E74C3C';
+            for (let j = 0; j < 4; j++) {
+              ctx.beginPath();
+              ctx.arc(vertices[j].x, vertices[j].y, 3.5, 0, 2 * Math.PI);
+              ctx.fill();
+            }
+            
+            // Draw label and size text aligned with the top vertex
+            ctx.fillStyle = '#3498DB';
+            ctx.font = 'bold 8px monospace';
+            ctx.fillText(`OPENCV_TARGET: ${aiObjectLabel}`, vertices[0].x, vertices[0].y - 15);
+            ctx.fillStyle = '#F59E0B';
+            ctx.fillText(`L: ${displayLength}mm  W: ${displayWidth}mm`, vertices[0].x, vertices[0].y - 5);
+            
+            bestContour.delete();
+            usedOpenCv = true;
+          }
+          
+          src.delete();
+          gray.delete();
+          blurred.delete();
+          thresh.delete();
+          contours.delete();
+          hierarchy.delete();
+          
+        } catch (e) {
+          console.error("OpenCV frame extraction error:", e);
+        }
+      }
+      
+      // Fallback: If OpenCV is still loading or contour is not found, use background subtraction model
+      if (!usedOpenCv) {
+        if (!bgData) {
+          bgData = new Float32Array(data.length);
+          for (let i = 0; i < data.length; i++) {
+            bgData[i] = data[i];
+          }
+        } else {
+          for (let i = 0; i < data.length; i += 4) {
+            bgData[i] += (data[i] - bgData[i]) * 0.015;
+            bgData[i + 1] += (data[i + 1] - bgData[i + 1]) * 0.015;
+            bgData[i + 2] += (data[i + 2] - bgData[i + 2]) * 0.015;
           }
         }
-      }
 
-      // If a foreground object is segmented, adjust bounding box tightly around it
-      if (foregroundCount > 6) {
-        const padding = 12;
-        const targetX = Math.max(10, minX - padding);
-        const targetY = Math.max(10, minY - padding);
-        const targetW = Math.min(width - targetX - 10, (maxX - minX) + padding * 2);
-        const targetH = Math.min(height - targetY - 10, (maxY - minY) + padding * 2);
+        let minX = width;
+        let maxX = 0;
+        let minY = height;
+        let maxY = 0;
+        let foregroundCount = 0;
 
-        // Ensure tracking box size is reasonable for products
-        if (targetW > 15 && targetH > 15 && targetW < width - 50) {
-          objectBox.x = targetX;
-          objectBox.y = targetY;
-          objectBox.w = targetW;
-          objectBox.h = targetH;
+        for (let y = 30; y < height - 30; y += 6) {
+          for (let x = 30; x < width - 30; x += 6) {
+            if (x > faceX - 85 && x < faceX + 85 && y > faceY - 100 && y < faceY + 85) {
+              continue;
+            }
+
+            const idx = (y * width + x) * 4;
+            const diff = Math.abs(data[idx] - bgData[idx]) +
+                         Math.abs(data[idx + 1] - bgData[idx + 1]) +
+                         Math.abs(data[idx + 2] - bgData[idx + 2]);
+            
+            if (diff > 135) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+              foregroundCount++;
+            }
+          }
         }
+
+        if (foregroundCount > 6) {
+          const padding = 12;
+          const targetX = Math.max(10, minX - padding);
+          const targetY = Math.max(10, minY - padding);
+          const targetW = Math.min(width - targetX - 10, (maxX - minX) + padding * 2);
+          const targetH = Math.min(height - targetY - 10, (maxY - minY) + padding * 2);
+
+          if (targetW > 15 && targetH > 15 && targetW < width - 50) {
+            objectBox.x = targetX;
+            objectBox.y = targetY;
+            objectBox.w = targetW;
+            objectBox.h = targetH;
+          }
+        }
+
+        currentX += (objectBox.x - currentX) * 0.28;
+        currentY += (objectBox.y - currentY) * 0.28;
+        currentW += (objectBox.w - currentW) * 0.28;
+        currentH += (objectBox.h - currentH) * 0.28;
+
+        const scaleFactor = 1.25; 
+        displayLength = Math.round(currentW * scaleFactor);
+        displayWidth = Math.round(currentH * scaleFactor * 0.7);
+
+        // Draw standard blue rect
+        ctx.strokeStyle = '#3498DB';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(currentX, currentY, currentW, currentH);
+
+        // Bounding box corners
+        ctx.fillStyle = '#3498DB';
+        ctx.fillRect(currentX - 2, currentY - 2, 12, 2);
+        ctx.fillRect(currentX - 2, currentY - 2, 2, 12);
+        ctx.fillRect(currentX + currentW - 10, currentY - 2, 12, 2);
+        ctx.fillRect(currentX + currentW - 1, currentY - 2, 2, 12);
+        ctx.fillRect(currentX - 2, currentY + currentH - 1, 12, 2);
+        ctx.fillRect(currentX - 2, currentY + currentH - 10, 2, 12);
+        ctx.fillRect(currentX + currentW - 10, currentY + currentH - 1, 12, 2);
+        ctx.fillRect(currentX + currentW - 1, currentY + currentH - 10, 2, 12);
+
+        ctx.fillStyle = '#3498DB';
+        ctx.font = 'bold 8px monospace';
+        ctx.fillText(`TARGET: ${aiObjectLabel}`, currentX, currentY - 14);
+        ctx.fillStyle = '#F59E0B';
+        ctx.fillText(`L: ${displayLength}mm  W: ${displayWidth}mm`, currentX, currentY - 5);
       }
-
-      // Smooth gliding interpolation at 30fps (increased speed to 0.28 for high responsiveness)
-      currentX += (objectBox.x - currentX) * 0.28;
-      currentY += (objectBox.y - currentY) * 0.28;
-      currentW += (objectBox.w - currentW) * 0.28;
-      currentH += (objectBox.h - currentH) * 0.28;
-
-      // Calibrate pixel size to millimeters dynamically based on bounding box
-      const scaleFactor = 1.25; 
-      const displayLength = Math.round(currentW * scaleFactor);
-      const displayWidth = Math.round(currentH * scaleFactor * 0.7);
-
-      // --- 4. Draw the Tracking Box with crosshair corners ---
-      ctx.strokeStyle = '#3498DB';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(currentX, currentY, currentW, currentH);
-
-      // Corner markers
-      ctx.fillStyle = '#3498DB';
-      ctx.fillRect(currentX - 2, currentY - 2, 12, 2);
-      ctx.fillRect(currentX - 2, currentY - 2, 2, 12);
-      ctx.fillRect(currentX + currentW - 10, currentY - 2, 12, 2);
-      ctx.fillRect(currentX + currentW - 1, currentY - 2, 2, 12);
-      ctx.fillRect(currentX - 2, currentY + currentH - 1, 12, 2);
-      ctx.fillRect(currentX - 2, currentY + currentH - 10, 2, 12);
-      ctx.fillRect(currentX + currentW - 10, currentY + currentH - 1, 12, 2);
-      ctx.fillRect(currentX + currentW - 1, currentY + currentH - 10, 2, 12);
-
-      // Bounding box overlay text and measurements
-      ctx.fillStyle = '#3498DB';
-      ctx.font = 'bold 8px monospace';
-      ctx.fillText(`TARGET: ${aiObjectLabel}`, currentX, currentY - 14);
-      ctx.fillStyle = '#F59E0B'; // Orange text for dimensions
-      ctx.fillText(`L: ${displayLength}mm  W: ${displayWidth}mm`, currentX, currentY - 5);
 
       // Draw crosshair lines tracking the target center point
-      ctx.strokeStyle = 'rgba(52, 152, 219, 0.25)';
+      ctx.strokeStyle = 'rgba(52, 152, 219, 0.2)';
       ctx.beginPath();
       ctx.moveTo(currentX + currentW / 2, 0);
       ctx.lineTo(currentX + currentW / 2, height);
@@ -293,8 +412,6 @@ export default function CctvCounterPage() {
         }
       }
 
-
-
       if (isWebcamActive) {
         animationFrameRef.current = requestAnimationFrame(detect);
       }
@@ -307,6 +424,19 @@ export default function CctvCounterPage() {
     <div className="relative flex flex-col gap-6 max-w-[1500px] mx-auto py-6 animate-fade-in min-h-screen text-slate-900 dark:text-white px-4">
       <Toaster position="top-right" richColors />
       
+      {/* Load OpenCV.js asynchronously */}
+      <Script 
+        src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.6.0.1/dist/opencv.js"
+        strategy="afterInteractive"
+        onLoad={() => {
+          console.log("OpenCV.js loaded successfully");
+          setIsOpenCvLoaded(true);
+        }}
+        onError={(e) => {
+          console.error("OpenCV.js script failed to load:", e);
+        }}
+      />
+
       {/* Background decoration */}
       <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
         <div className="absolute top-[-10%] right-[-5%] w-[45%] h-[45%] bg-blue-500/5 rounded-full blur-[130px]" />
@@ -323,10 +453,10 @@ export default function CctvCounterPage() {
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Local Camera</span>
               <span className="text-[10px] text-slate-400">•</span>
-              <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Gemini Multimodal Scanner</span>
+              <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">OpenCV & Gemini Hybrid Scanner</span>
             </div>
             <h1 className="text-2xl font-black tracking-tight">AI Kaamirada Wax Cabirta</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Tababarka cabirka walxaha (PET Bottles, Gacmo, Telefoono) ee tooska ah.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Tubaabarka cabirka walxaha leh cidhifyada (contours) tooska ah ee OpenCV.</p>
           </div>
         </div>
 
@@ -335,7 +465,7 @@ export default function CctvCounterPage() {
           <HelpCircle size={20} className="flex-shrink-0 mt-0.5" />
           <div>
             <strong className="block mb-0.5">Sida loo tijaabiyo</strong>
-            Soo qaado telefoonkaaga ama gacantaada tusi kamarada horteeda. Gemini AI wuxuu si toos ah u dulsaarayaa cabirka dhererka iyo ballaca milimitir (mm) dhab ah.
+            Soo qaado telefoonkaaga ama gacantaada tusi kamarada horteeda. OpenCV iyo Gemini AI waxay si toos ah u dulsaarayaan cabirka dhererka iyo ballaca milimitir (mm) dhab ah.
           </div>
         </div>
       </div>
@@ -352,9 +482,15 @@ export default function CctvCounterPage() {
                   <Activity size={16} className="text-blue-500" />
                   Shaashada Tooska Ah (Live AI Feed)
                 </h2>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
-                  Status: <span className={isWebcamActive ? "text-emerald-500" : "text-rose-500"}>{isWebcamActive ? "ACTIVE" : "OFFLINE"}</span>
-                </p>
+                <div className="flex gap-2 items-center mt-1">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase">
+                    Status: <span className={isWebcamActive ? "text-emerald-500" : "text-rose-500"}>{isWebcamActive ? "ACTIVE" : "OFFLINE"}</span>
+                  </p>
+                  <span className="text-[10px] text-slate-400">•</span>
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${isOpenCvLoaded ? "text-emerald-500" : "text-blue-400"}`}>
+                    OpenCV: {isOpenCvLoaded ? "LOADED" : "LOADING..."}
+                  </span>
+                </div>
               </div>
 
               {/* Toggle Controls */}
@@ -405,7 +541,7 @@ export default function CctvCounterPage() {
               {/* Scanning Active Overlay */}
               {isWebcamActive && (
                 <div className="absolute top-4 right-4 z-20 flex gap-2 items-center">
-                  {analyzing && <Loader2 size={12} className="animate-spin text-blue-500 animate-pulse" />}
+                  {analyzing && <Loader2 size={12} className="animate-spin text-blue-500" />}
                   <span className="bg-emerald-500 text-white text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-md shadow flex items-center gap-1.5 animate-pulse">
                     <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
                     AI ACTIVE
