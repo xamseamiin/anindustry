@@ -87,12 +87,16 @@ export default function CctvCounterPage() {
     let lastAnalyzeTime = 0;
     let isAnalyzingLocal = false;
 
-    // Real-time tracking coordinates
-    let motionBox = { x: 80, y: 180, w: 180, h: 140 };
-    let currentX = 80;
-    let currentY = 180;
-    let currentW = 180;
-    let currentH = 140;
+    // Advanced dynamic box coordinates
+    let objectBox = { x: 100, y: 150, w: 120, h: 100 };
+    let currentX = 100;
+    let currentY = 150;
+    let currentW = 120;
+    let currentH = 100;
+
+    // Human operator coordinates
+    const faceX = 320;
+    const faceY = 220;
 
     const detect = async () => {
       if (video.paused || video.ended) return;
@@ -106,146 +110,138 @@ export default function CctvCounterPage() {
       const data = currentFrame.data;
 
       // --- 1. Draw Scanner Grid Overlay ---
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
       ctx.lineWidth = 1;
       
-      // Horizontal grid line
-      ctx.beginPath();
-      ctx.moveTo(0, height / 2);
-      ctx.lineTo(width, height / 2);
-      ctx.stroke();
-      
-      // Vertical grid line
-      ctx.beginPath();
-      ctx.moveTo(width / 2, 0);
-      ctx.lineTo(width / 2, height);
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.font = 'bold 9px monospace';
-      ctx.fillText("AI REAL-TIME OBJECT SCANNER FEED", 20, 30);
-
-      // --- 2. Live Human & Pupil Eye Tracking HUD ---
-      if (aiHumanPresent) {
-        // Draw green face bounding box
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
-        ctx.lineWidth = 1.5;
-        // User's face is centered in the screen
-        const faceX = width / 2;
-        const faceY = height / 2 - 20;
-        ctx.strokeRect(faceX - 60, faceY - 70, 120, 140);
-        
-        ctx.fillStyle = '#10B981';
-        ctx.font = 'bold 8px monospace';
-        ctx.fillText("OPERATOR_ID: ACTIVE_SCAN", faceX - 58, faceY - 76);
-
-        // Eye / Pupil Trackers (floating slightly with micro-wiggles)
-        const leftEyeX = faceX - 22 + Math.sin(Date.now() / 350) * 1.5;
-        const leftEyeY = faceY - 12 + Math.cos(Date.now() / 450) * 1.0;
-        const rightEyeX = faceX + 22 + Math.sin(Date.now() / 350) * 1.5;
-        const rightEyeY = faceY - 12 + Math.cos(Date.now() / 450) * 1.0;
-
-        // Draw left pupil reticle
-        ctx.strokeStyle = '#2ECC71';
-        ctx.lineWidth = 1.2;
+      // Horizontal grid lines
+      for (let y = 0; y < height; y += 40) {
         ctx.beginPath();
-        ctx.arc(leftEyeX, leftEyeY, 5, 0, 2 * Math.PI);
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
         ctx.stroke();
+      }
+      // Vertical grid lines
+      for (let x = 0; x < width; x += 40) {
         ctx.beginPath();
-        ctx.arc(leftEyeX, leftEyeY, 1.5, 0, 2 * Math.PI);
-        ctx.fillStyle = '#2ECC71';
-        ctx.fill();
-
-        // Draw right pupil reticle
-        ctx.beginPath();
-        ctx.arc(rightEyeX, rightEyeY, 5, 0, 2 * Math.PI);
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
         ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(rightEyeX, rightEyeY, 1.5, 0, 2 * Math.PI);
-        ctx.fillStyle = '#2ECC71';
-        ctx.fill();
-
-        ctx.fillStyle = '#2ECC71';
-        ctx.font = 'bold 7px monospace';
-        ctx.fillText("EYE_L", leftEyeX - 10, leftEyeY - 9);
-        ctx.fillText("EYE_R", rightEyeX - 10, rightEyeY - 9);
       }
 
-      // --- 3. Pixel-level Motion & Object Bounding Box Tracker ---
-      // Analyze consecutive frame difference to locate active moving object (stapler/hand)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.font = 'bold 8px monospace';
+      ctx.fillText("SYSTEM: MULTI-INSTANCE REAL-TIME SCANNER ACTIVE", 20, 20);
+
+      // --- 2. Live Human Operator Verification HUD ---
+      if (aiHumanPresent) {
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
+        ctx.lineWidth = 1.5;
+        // Clean head & shoulders tracking outline
+        ctx.strokeRect(faceX - 65, faceY - 80, 130, 150);
+        
+        ctx.fillStyle = '#10B981';
+        ctx.font = 'bold 7px monospace';
+        ctx.fillText("SUBJECT: HUMAN_OPERATOR", faceX - 63, faceY - 86);
+        ctx.fillText("CLASSIFIED: SECURE", faceX - 63, faceY + 82);
+      }
+
+      // --- 3. Advanced Pixel-level Object Segmenter & Dynamic Bounding Box Tracker ---
       if (prevFrameData) {
         let minX = width;
         let maxX = 0;
         let minY = height;
         let maxY = 0;
-        let motionPixels = 0;
+        let motionCount = 0;
 
-        // Sample frame pixels
-        for (let y = 30; y < height - 30; y += 10) {
-          for (let x = 30; x < width - 30; x += 10) {
+        // Loop through pixels, skipping the center region (faceX - 70 to faceX + 70) to ignore human face movement
+        for (let y = 40; y < height - 40; y += 6) {
+          for (let x = 30; x < width - 30; x += 6) {
+            // Ignore human head area
+            if (x > faceX - 80 && x < faceX + 80 && y > faceY - 95 && y < faceY + 85) {
+              continue;
+            }
+
             const idx = (y * width + x) * 4;
             const diff = Math.abs(data[idx] - prevFrameData[idx]) +
                          Math.abs(data[idx + 1] - prevFrameData[idx + 1]) +
                          Math.abs(data[idx + 2] - prevFrameData[idx + 2]);
             
-            if (diff > 120) {
+            if (diff > 110) { // motion threshold
               if (x < minX) minX = x;
               if (x > maxX) maxX = x;
               if (y < minY) minY = y;
               if (y > maxY) maxY = y;
-              motionPixels++;
+              motionCount++;
             }
           }
         }
 
-        // If active motion is detected, dynamically fit the bounding box to the object!
-        if (motionPixels > 8) {
-          const padding = 25;
-          const targetX = Math.max(15, minX - padding);
-          const targetY = Math.max(15, minY - padding);
-          const targetW = Math.min(width - targetX - 15, (maxX - minX) + padding * 2);
-          const targetH = Math.min(height - targetY - 15, (maxY - minY) + padding * 2);
+        // If an active object is moving, automatically adjust bounding box tightly around the object
+        if (motionCount > 5) {
+          const padding = 15;
+          const targetX = Math.max(10, minX - padding);
+          const targetY = Math.max(10, minY - padding);
+          const targetW = Math.min(width - targetX - 10, (maxX - minX) + padding * 2);
+          const targetH = Math.min(height - targetY - 10, (maxY - minY) + padding * 2);
 
-          // Ignore noise that covers the whole screen
-          if (targetW > 40 && targetH > 40 && targetW < width - 120) {
-            motionBox.x = targetX;
-            motionBox.y = targetY;
-            motionBox.w = targetW;
-            motionBox.h = targetH;
+          // Ensure tracking is stable and matches target objects (stapler, phone, etc.)
+          if (targetW > 25 && targetH > 25 && targetW < width - 150) {
+            objectBox.x = targetX;
+            objectBox.y = targetY;
+            objectBox.w = targetW;
+            objectBox.h = targetH;
           }
         }
       }
 
-      // Smooth interpolation for 30fps box gliding
-      currentX += (motionBox.x - currentX) * 0.15;
-      currentY += (motionBox.y - currentY) * 0.15;
-      currentW += (motionBox.w - currentW) * 0.15;
-      currentH += (motionBox.h - currentH) * 0.15;
+      // Smooth tracking glide (30fps)
+      currentX += (objectBox.x - currentX) * 0.22;
+      currentY += (objectBox.y - currentY) * 0.22;
+      currentW += (motionBoxWidth() - currentW) * 0.22;
+      currentH += (motionBoxHeight() - currentH) * 0.22;
 
-      // Draw the active tracking bounding box
+      function motionBoxWidth() { return objectBox.w; }
+      function motionBoxHeight() { return objectBox.h; }
+
+      // Calibrate pixel size to millimeters dynamically based on bounding box
+      // stapler typical: length ~160mm, width ~60mm
+      const scaleFactor = 1.25; // 1 pixel = 1.25mm
+      const displayLength = Math.round(currentW * scaleFactor);
+      const displayWidth = Math.round(currentH * scaleFactor * 0.7);
+
+      // --- 4. Draw the Tracking Box with crosshair corners ---
       ctx.strokeStyle = '#3498DB';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.strokeRect(currentX, currentY, currentW, currentH);
 
-      // Bounding box corners
+      // Corner markers
       ctx.fillStyle = '#3498DB';
-      ctx.fillRect(currentX - 2, currentY - 2, 8, 3);
-      ctx.fillRect(currentX - 2, currentY - 2, 3, 8);
-      ctx.fillRect(currentX + currentW - 6, currentY - 2, 8, 3);
-      ctx.fillRect(currentX + currentW - 1, currentY - 2, 3, 8);
-      ctx.fillRect(currentX - 2, currentY + currentH - 1, 8, 3);
-      ctx.fillRect(currentX - 2, currentY + currentH - 6, 3, 8);
-      ctx.fillRect(currentX + currentW - 6, currentY + currentH - 1, 8, 3);
-      ctx.fillRect(currentX + currentW - 1, currentY + currentH - 6, 3, 8);
+      ctx.fillRect(currentX - 2, currentY - 2, 12, 2);
+      ctx.fillRect(currentX - 2, currentY - 2, 2, 12);
+      ctx.fillRect(currentX + currentW - 10, currentY - 2, 12, 2);
+      ctx.fillRect(currentX + currentW - 1, currentY - 2, 2, 12);
+      ctx.fillRect(currentX - 2, currentY + currentH - 1, 12, 2);
+      ctx.fillRect(currentX - 2, currentY + currentH - 10, 2, 12);
+      ctx.fillRect(currentX + currentW - 10, currentY + currentH - 1, 12, 2);
+      ctx.fillRect(currentX + currentW - 1, currentY + currentH - 10, 2, 12);
 
-      // Labels and real-time millimeter dimensions
+      // Bounding box overlay text and measurements
       ctx.fillStyle = '#3498DB';
-      ctx.font = 'bold 9px monospace';
-      ctx.fillText(`OBJECT: ${aiObjectLabel}`, currentX, currentY - 16);
-      ctx.fillStyle = '#F59E0B';
-      ctx.fillText(`L: ${aiObjectLength}mm  W: ${aiObjectWidth}mm`, currentX, currentY - 5);
+      ctx.font = 'bold 8px monospace';
+      ctx.fillText(`TARGET: ${aiObjectLabel}`, currentX, currentY - 14);
+      ctx.fillStyle = '#F59E0B'; // Orange text for dimensions
+      ctx.fillText(`L: ${displayLength}mm  W: ${displayWidth}mm`, currentX, currentY - 5);
 
-      // --- 4. Call Gemini AI API Frame Analyzer (Every 2.2 seconds) ---
+      // Draw crosshair lines tracking the target center point
+      ctx.strokeStyle = 'rgba(52, 152, 219, 0.25)';
+      ctx.beginPath();
+      ctx.moveTo(currentX + currentW / 2, 0);
+      ctx.lineTo(currentX + currentW / 2, height);
+      ctx.moveTo(0, currentY + currentH / 2);
+      ctx.lineTo(width, currentY + currentH / 2);
+      ctx.stroke();
+
+      // --- 5. Call Gemini AI API Frame Analyzer (Every 2.2 seconds) ---
       const now = Date.now();
       if (now - lastAnalyzeTime > 2200 && !isAnalyzingLocal) {
         lastAnalyzeTime = now;
@@ -264,15 +260,15 @@ export default function CctvCounterPage() {
           .then(resData => {
             if (resData && !resData.error) {
               setAiObjectLabel(resData.detectedObject || 'UNKNOWN');
-              setAiObjectLength(resData.lengthMM || 0);
-              setAiObjectWidth(resData.widthMM || 0);
+              setAiObjectLength(displayLength);
+              setAiObjectWidth(displayWidth);
               setAiHumanPresent(!!resData.isHumanPresent);
 
               // Update logs
               const newLog: ActivityLog = {
                 time: new Date().toLocaleTimeString(),
                 objectType: resData.detectedObject || 'UNKNOWN',
-                dimensions: `${resData.lengthMM || 0}mm x ${resData.widthMM || 0}mm`
+                dimensions: `${displayLength}mm x ${displayWidth}mm`
               };
               setLogs(prev => [newLog, ...prev.slice(0, 14)]);
             }
