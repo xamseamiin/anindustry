@@ -155,15 +155,30 @@ export default function CctvCounterPage() {
 
     // 2. Load configured cameras from localStorage
     const savedCams = localStorage.getItem('an_cctv_cameras');
+    let loadedCams: CameraConfig[] = [];
     if (savedCams) {
       try {
-        const parsed = JSON.parse(savedCams);
-        setCameras(parsed);
-        if (parsed.length > 0) setSelectedCamera(parsed[0]);
+        loadedCams = JSON.parse(savedCams);
       } catch (e) {
         console.error(e);
       }
     }
+    
+    if (loadedCams.length === 0) {
+      loadedCams = [{
+        id: 'default_webcam',
+        name: 'Kaamirada Laptop-ka (Webcam)',
+        url: 'Local Webcam',
+        type: 'WEBCAM',
+        placement: 'ENTRANCE',
+        packSize: 50,
+        linkedProductId: ''
+      }];
+      localStorage.setItem('an_cctv_cameras', JSON.stringify(loadedCams));
+    }
+    
+    setCameras(loadedCams);
+    setSelectedCamera(loadedCams[0]);
   }, []);
 
   // Autostart webcam on mount
@@ -283,18 +298,26 @@ export default function CctvCounterPage() {
       const currentFrame = ctx.getImageData(0, 0, width, height);
       const data = currentFrame.data;
 
-      // --- 1. Draw Virtual Counting Line (Yellow/Red) ---
+      // --- 1. Draw Live Scanning Crosshairs / Grid Overlay ---
       const lineY = Math.floor(height / 2);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 1;
+      
+      // Horizontal grid line
       ctx.beginPath();
       ctx.moveTo(0, lineY);
       ctx.lineTo(width, lineY);
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = cooldown ? '#EF4444' : '#F59E0B';
+      ctx.stroke();
+      
+      // Vertical grid line
+      ctx.beginPath();
+      ctx.moveTo(width / 2, 0);
+      ctx.lineTo(width / 2, height);
       ctx.stroke();
 
       ctx.fillStyle = '#FFFFFF';
       ctx.font = 'bold 9px monospace';
-      ctx.fillText("VIRTUAL COUNTING ZONE (LINE CROSSING)", 15, lineY - 10);
+      ctx.fillText("AI OBJECT DIMENSION SCANNER FEED", 15, 25);
 
       // --- 2. Live Human Presence Detection HUD ---
       if (aiHumanPresent) {
