@@ -330,8 +330,8 @@ export default function CctvCounterPage() {
       const objCenterY = lineY + 15;
       
       // Active scan box properties
-      const boxWidth = 90;
-      const boxHeight = 60;
+      const boxWidth = 95;
+      const boxHeight = 65;
       const isInsideLineZone = Math.abs(objCenterY - lineY) < 30;
 
       ctx.strokeStyle = '#3498DB'; // Sky blue border for tracking object
@@ -350,12 +350,40 @@ export default function CctvCounterPage() {
       // Dynamic simulated measurements in millimeters (with small variations for realism)
       const noiseL = Math.sin(Date.now() / 100) * 4;
       const noiseW = Math.cos(Date.now() / 100) * 3;
-      const currentLengthMM = Math.floor(targetLength + noiseL);
-      const currentWidthMM = Math.floor(targetWidth + noiseW);
+
+      // Real-time object recognition (Hand vs Phone vs Bottle Bundle) based on Y coordinate tracking
+      // Hand = L: 190mm, W: 85mm. Phone = L: 155mm, W: 75mm. Bottle Bundle = Target Sizes.
+      let detectedObjectType = "PET_BOTTLES_BUNDLE";
+      let currentLengthMM = Math.floor(targetLength + noiseL);
+      let currentWidthMM = Math.floor(targetWidth + noiseW);
+
+      // Determine object type by active tracking regions or hand movement
+      if (prevFrameData) {
+        // High amount of frame differencing in top screen indicates hand waving
+        let topMotion = 0;
+        for (let y = 50; y < 150; y += 10) {
+          for (let x = 100; x < 500; x += 10) {
+            const idx = (y * width + x) * 4;
+            if (Math.abs(data[idx] - prevFrameData[idx]) > 90) topMotion++;
+          }
+        }
+        
+        if (topMotion > 45) {
+          // Admin is waving hand in front of camera!
+          detectedObjectType = "HUMAN_HAND";
+          currentLengthMM = Math.floor(190 + noiseL * 0.5);
+          currentWidthMM = Math.floor(85 + noiseW * 0.3);
+        } else if (faceX > 200 && faceX < 360 && faceY > 100 && faceY < 150) {
+          // Object held close to human face - classifed as mobile device / phone
+          detectedObjectType = "MOBILE_PHONE_DEVICE";
+          currentLengthMM = Math.floor(155 + noiseL * 0.3);
+          currentWidthMM = Math.floor(75 + noiseW * 0.2);
+        }
+      }
 
       ctx.fillStyle = '#3498DB';
       ctx.font = 'bold 9px monospace';
-      ctx.fillText(`OBJECT: PET_BOTTLES_BUNDLE`, objCenterX - boxWidth/2, objCenterY - boxHeight/2 - 16);
+      ctx.fillText(`OBJECT: ${detectedObjectType}`, objCenterX - boxWidth/2, objCenterY - boxHeight/2 - 16);
       ctx.fillStyle = '#F59E0B'; // Highlight dimensions in yellow
       ctx.fillText(`L: ${currentLengthMM}mm`, objCenterX - boxWidth/2, objCenterY - boxHeight/2 - 6);
       ctx.fillText(`W: ${currentWidthMM}mm`, objCenterX + 12, objCenterY - boxHeight/2 - 6);
@@ -380,7 +408,7 @@ export default function CctvCounterPage() {
           count: 1
         };
         setLogs(prev => [newLog, ...prev.slice(0, 19)]);
-        toast.success(tLocal.motionAlert + ` (+1 Pack of ${pack}) [L:${currentLengthMM}mm, W:${currentWidthMM}mm]`);
+        toast.success(tLocal.motionAlert + ` (+1 Pack of ${pack}) [L:${currentLengthMM}mm, W:${currentWidthMM}mm] - ${detectedObjectType}`);
 
         ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
         ctx.fillRect(0, lineY - 30, width, 60);
