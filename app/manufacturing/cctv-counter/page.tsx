@@ -83,7 +83,7 @@ export default function CctvCounterPage() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let prevFrameData: Uint8ClampedArray | null = null;
+    let bgData: Float32Array | null = null;
     let lastAnalyzeTime = 0;
     let isAnalyzingLocal = false;
 
@@ -108,6 +108,21 @@ export default function CctvCounterPage() {
       const height = canvas.height;
       const currentFrame = ctx.getImageData(0, 0, width, height);
       const data = currentFrame.data;
+
+      // Initialize or adapt background subtraction model
+      if (!bgData) {
+        bgData = new Float32Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+          bgData[i] = data[i];
+        }
+      } else {
+        // Slowly adapt background to handle light shifts/shading
+        for (let i = 0; i < data.length; i += 4) {
+          bgData[i] += (data[i] - bgData[i]) * 0.015;
+          bgData[i + 1] += (data[i + 1] - bgData[i + 1]) * 0.015;
+          bgData[i + 2] += (data[i + 2] - bgData[i + 2]) * 0.015;
+        }
+      }
 
       // --- 1. Draw Scanner Grid Overlay ---
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
@@ -145,67 +160,61 @@ export default function CctvCounterPage() {
         ctx.fillText("CLASSIFIED: SECURE", faceX - 63, faceY + 82);
       }
 
-      // --- 3. Advanced Pixel-level Object Segmenter & Dynamic Bounding Box Tracker ---
-      if (prevFrameData) {
-        let minX = width;
-        let maxX = 0;
-        let minY = height;
-        let maxY = 0;
-        let motionCount = 0;
+      // --- 3. Advanced Background Subtraction Object Segmenter ---
+      let minX = width;
+      let maxX = 0;
+      let minY = height;
+      let maxY = 0;
+      let foregroundCount = 0;
 
-        // Loop through pixels, skipping the center region (faceX - 70 to faceX + 70) to ignore human face movement
-        for (let y = 40; y < height - 40; y += 6) {
-          for (let x = 30; x < width - 30; x += 6) {
-            // Ignore human head area
-            if (x > faceX - 80 && x < faceX + 80 && y > faceY - 95 && y < faceY + 85) {
-              continue;
-            }
-
-            const idx = (y * width + x) * 4;
-            const diff = Math.abs(data[idx] - prevFrameData[idx]) +
-                         Math.abs(data[idx + 1] - prevFrameData[idx + 1]) +
-                         Math.abs(data[idx + 2] - prevFrameData[idx + 2]);
-            
-            if (diff > 110) { // motion threshold
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
-              motionCount++;
-            }
+      // Loop through pixels, skipping the center region (faceX - 80 to faceX + 80) to ignore human face
+      for (let y = 30; y < height - 30; y += 6) {
+        for (let x = 30; x < width - 30; x += 6) {
+          // Ignore human head area
+          if (x > faceX - 85 && x < faceX + 85 && y > faceY - 100 && y < faceY + 85) {
+            continue;
           }
-        }
 
-        // If an active object is moving, automatically adjust bounding box tightly around the object
-        if (motionCount > 5) {
-          const padding = 15;
-          const targetX = Math.max(10, minX - padding);
-          const targetY = Math.max(10, minY - padding);
-          const targetW = Math.min(width - targetX - 10, (maxX - minX) + padding * 2);
-          const targetH = Math.min(height - targetY - 10, (maxY - minY) + padding * 2);
-
-          // Ensure tracking is stable and matches target objects (stapler, phone, etc.)
-          if (targetW > 25 && targetH > 25 && targetW < width - 150) {
-            objectBox.x = targetX;
-            objectBox.y = targetY;
-            objectBox.w = targetW;
-            objectBox.h = targetH;
+          const idx = (y * width + x) * 4;
+          const diff = Math.abs(data[idx] - bgData[idx]) +
+                       Math.abs(data[idx + 1] - bgData[idx + 1]) +
+                       Math.abs(data[idx + 2] - bgData[idx + 2]);
+          
+          if (diff > 105) { // foreground detection threshold
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            foregroundCount++;
           }
         }
       }
 
-      // Smooth tracking glide (30fps)
-      currentX += (objectBox.x - currentX) * 0.22;
-      currentY += (objectBox.y - currentY) * 0.22;
-      currentW += (motionBoxWidth() - currentW) * 0.22;
-      currentH += (motionBoxHeight() - currentH) * 0.22;
+      // If a foreground object is segmented, adjust bounding box tightly around it
+      if (foregroundCount > 6) {
+        const padding = 12;
+        const targetX = Math.max(10, minX - padding);
+        const targetY = Math.max(10, minY - padding);
+        const targetW = Math.min(width - targetX - 10, (maxX - minX) + padding * 2);
+        const targetH = Math.min(height - targetY - 10, (maxY - minY) + padding * 2);
 
-      function motionBoxWidth() { return objectBox.w; }
-      function motionBoxHeight() { return objectBox.h; }
+        // Ensure tracking box size is reasonable for products
+        if (targetW > 20 && targetH > 20 && targetW < width - 150) {
+          objectBox.x = targetX;
+          objectBox.y = targetY;
+          objectBox.w = targetW;
+          objectBox.h = targetH;
+        }
+      }
+
+      // Smooth gliding interpolation at 30fps (increased speed to 0.28 for high responsiveness)
+      currentX += (objectBox.x - currentX) * 0.28;
+      currentY += (objectBox.y - currentY) * 0.28;
+      currentW += (objectBox.w - currentW) * 0.28;
+      currentH += (objectBox.h - currentH) * 0.28;
 
       // Calibrate pixel size to millimeters dynamically based on bounding box
-      // stapler typical: length ~160mm, width ~60mm
-      const scaleFactor = 1.25; // 1 pixel = 1.25mm
+      const scaleFactor = 1.25; 
       const displayLength = Math.round(currentW * scaleFactor);
       const displayWidth = Math.round(currentH * scaleFactor * 0.7);
 
@@ -284,8 +293,7 @@ export default function CctvCounterPage() {
         }
       }
 
-      // Store current frame
-      prevFrameData = data;
+
 
       if (isWebcamActive) {
         animationFrameRef.current = requestAnimationFrame(detect);
