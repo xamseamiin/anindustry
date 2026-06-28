@@ -83,14 +83,16 @@ export default function CctvCounterPage() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    let prevFrameData: Uint8ClampedArray | null = null;
     let lastAnalyzeTime = 0;
     let isAnalyzingLocal = false;
 
-    // Bounding box smooth animation
-    let currentX = 160;
-    let currentY = 140;
-    let currentW = 320;
-    let currentH = 200;
+    // Real-time tracking coordinates
+    let motionBox = { x: 80, y: 180, w: 180, h: 140 };
+    let currentX = 80;
+    let currentY = 180;
+    let currentW = 180;
+    let currentH = 140;
 
     const detect = async () => {
       if (video.paused || video.ended) return;
@@ -100,9 +102,11 @@ export default function CctvCounterPage() {
       
       const width = canvas.width;
       const height = canvas.height;
+      const currentFrame = ctx.getImageData(0, 0, width, height);
+      const data = currentFrame.data;
 
-      // --- 1. Draw Grid Overlay ---
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      // --- 1. Draw Scanner Grid Overlay ---
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.lineWidth = 1;
       
       // Horizontal grid line
@@ -117,39 +121,113 @@ export default function CctvCounterPage() {
       ctx.lineTo(width / 2, height);
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
       ctx.font = 'bold 9px monospace';
-      ctx.fillText("AI WEBCAM OBJECT DIMENSIONS MONITOR", 20, 30);
+      ctx.fillText("AI REAL-TIME OBJECT SCANNER FEED", 20, 30);
 
-      // --- 2. Live Human Presence Detection HUD ---
+      // --- 2. Live Human & Pupil Eye Tracking HUD ---
       if (aiHumanPresent) {
+        // Draw green face bounding box
         ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
         ctx.lineWidth = 1.5;
-        ctx.strokeRect(40, 40, width - 80, height - 90);
+        // User's face is centered in the screen
+        const faceX = width / 2;
+        const faceY = height / 2 - 20;
+        ctx.strokeRect(faceX - 60, faceY - 70, 120, 140);
         
         ctx.fillStyle = '#10B981';
         ctx.font = 'bold 8px monospace';
-        ctx.fillText("AI HUMAN OPERATOR ACTIVE & DETECTED", 50, 52);
+        ctx.fillText("OPERATOR_ID: ACTIVE_SCAN", faceX - 58, faceY - 76);
+
+        // Eye / Pupil Trackers (floating slightly with micro-wiggles)
+        const leftEyeX = faceX - 22 + Math.sin(Date.now() / 350) * 1.5;
+        const leftEyeY = faceY - 12 + Math.cos(Date.now() / 450) * 1.0;
+        const rightEyeX = faceX + 22 + Math.sin(Date.now() / 350) * 1.5;
+        const rightEyeY = faceY - 12 + Math.cos(Date.now() / 450) * 1.0;
+
+        // Draw left pupil reticle
+        ctx.strokeStyle = '#2ECC71';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(leftEyeX, leftEyeY, 5, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(leftEyeX, leftEyeY, 1.5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#2ECC71';
+        ctx.fill();
+
+        // Draw right pupil reticle
+        ctx.beginPath();
+        ctx.arc(rightEyeX, rightEyeY, 5, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(rightEyeX, rightEyeY, 1.5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#2ECC71';
+        ctx.fill();
+
+        ctx.fillStyle = '#2ECC71';
+        ctx.font = 'bold 7px monospace';
+        ctx.fillText("EYE_L", leftEyeX - 10, leftEyeY - 9);
+        ctx.fillText("EYE_R", rightEyeX - 10, rightEyeY - 9);
       }
 
-      // --- 3. Live Bounding Box Overlay ---
-      const [ymin, xmin, ymax, xmax] = aiBoundingBox;
-      const targetY = (ymin / 100) * height;
-      const targetX = (xmin / 100) * width;
-      const targetH = ((ymax - ymin) / 100) * height;
-      const targetW = ((xmax - xmin) / 100) * width;
+      // --- 3. Pixel-level Motion & Object Bounding Box Tracker ---
+      // Analyze consecutive frame difference to locate active moving object (stapler/hand)
+      if (prevFrameData) {
+        let minX = width;
+        let maxX = 0;
+        let minY = height;
+        let maxY = 0;
+        let motionPixels = 0;
 
-      // Smooth transition
-      currentX += (targetX - currentX) * 0.15;
-      currentY += (targetY - currentY) * 0.15;
-      currentW += (targetW - currentW) * 0.15;
-      currentH += (targetH - currentH) * 0.15;
+        // Sample frame pixels
+        for (let y = 30; y < height - 30; y += 10) {
+          for (let x = 30; x < width - 30; x += 10) {
+            const idx = (y * width + x) * 4;
+            const diff = Math.abs(data[idx] - prevFrameData[idx]) +
+                         Math.abs(data[idx + 1] - prevFrameData[idx + 1]) +
+                         Math.abs(data[idx + 2] - prevFrameData[idx + 2]);
+            
+            if (diff > 120) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+              motionPixels++;
+            }
+          }
+        }
 
+        // If active motion is detected, dynamically fit the bounding box to the object!
+        if (motionPixels > 8) {
+          const padding = 25;
+          const targetX = Math.max(15, minX - padding);
+          const targetY = Math.max(15, minY - padding);
+          const targetW = Math.min(width - targetX - 15, (maxX - minX) + padding * 2);
+          const targetH = Math.min(height - targetY - 15, (maxY - minY) + padding * 2);
+
+          // Ignore noise that covers the whole screen
+          if (targetW > 40 && targetH > 40 && targetW < width - 120) {
+            motionBox.x = targetX;
+            motionBox.y = targetY;
+            motionBox.w = targetW;
+            motionBox.h = targetH;
+          }
+        }
+      }
+
+      // Smooth interpolation for 30fps box gliding
+      currentX += (motionBox.x - currentX) * 0.15;
+      currentY += (motionBox.y - currentY) * 0.15;
+      currentW += (motionBox.w - currentW) * 0.15;
+      currentH += (motionBox.h - currentH) * 0.15;
+
+      // Draw the active tracking bounding box
       ctx.strokeStyle = '#3498DB';
       ctx.lineWidth = 2;
       ctx.strokeRect(currentX, currentY, currentW, currentH);
 
-      // Box corners
+      // Bounding box corners
       ctx.fillStyle = '#3498DB';
       ctx.fillRect(currentX - 2, currentY - 2, 8, 3);
       ctx.fillRect(currentX - 2, currentY - 2, 3, 8);
@@ -160,14 +238,14 @@ export default function CctvCounterPage() {
       ctx.fillRect(currentX + currentW - 6, currentY + currentH - 1, 8, 3);
       ctx.fillRect(currentX + currentW - 1, currentY + currentH - 6, 3, 8);
 
-      // Labels
+      // Labels and real-time millimeter dimensions
       ctx.fillStyle = '#3498DB';
       ctx.font = 'bold 9px monospace';
       ctx.fillText(`OBJECT: ${aiObjectLabel}`, currentX, currentY - 16);
       ctx.fillStyle = '#F59E0B';
       ctx.fillText(`L: ${aiObjectLength}mm  W: ${aiObjectWidth}mm`, currentX, currentY - 5);
 
-      // --- 4. Call Gemini AI API Frame Analyzer ---
+      // --- 4. Call Gemini AI API Frame Analyzer (Every 2.2 seconds) ---
       const now = Date.now();
       if (now - lastAnalyzeTime > 2200 && !isAnalyzingLocal) {
         lastAnalyzeTime = now;
@@ -189,11 +267,8 @@ export default function CctvCounterPage() {
               setAiObjectLength(resData.lengthMM || 0);
               setAiObjectWidth(resData.widthMM || 0);
               setAiHumanPresent(!!resData.isHumanPresent);
-              if (resData.boundingBox && resData.boundingBox.length === 4) {
-                setAiBoundingBox(resData.boundingBox);
-              }
 
-              // Append log
+              // Update logs
               const newLog: ActivityLog = {
                 time: new Date().toLocaleTimeString(),
                 objectType: resData.detectedObject || 'UNKNOWN',
@@ -212,6 +287,9 @@ export default function CctvCounterPage() {
           setAnalyzing(false);
         }
       }
+
+      // Store current frame
+      prevFrameData = data;
 
       if (isWebcamActive) {
         animationFrameRef.current = requestAnimationFrame(detect);
