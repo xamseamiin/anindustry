@@ -83,6 +83,19 @@ I have successfully optimized the Telegram Mini App (Web App) to be highly compa
 
 ---
 
+### 12. Employee Production Linkage & Reverted Expense Sync
+*   **Wider Expense Form Layout:** Increased the Record Expense form container width to `max-w-5xl` so it spans and scales wider across screens.
+*   **Expense Reversion & Paid Stats Sync:** Modified the `/api/manufacturing/expenses` DELETE endpoint. If a salary expense is deleted, it now automatically decrements the employee's `salaryPaidThisMonth` statistic in the database.
+*   **Database Schema Update:** Added `isPercentageLinked` (boolean) and `productionRate` (float) to the `Employee` model in `schema.prisma`, sync'd using `npx prisma db push`.
+*   **Employee Creation & Editing Updates:**
+    *   Updated the creation form [add/page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/employees/add/page.tsx) and edit form [edit/page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/employees/%5Bid%5D/edit/page.tsx) to support setting whether an employee is linked to production output and their percentage rate.
+    *   Updated the employee APIs to store and update these parameters.
+*   **Employee Detail Page (Real-time Calculations):**
+    *   Updated [page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/employees/%5Bid%5D/page.tsx) to display a **Production Earnings** card showing total ETB earned.
+    *   Added a dedicated **Production Earnings (Wax-soo-saarka)** history tab showing daily earnings computed in real-time from completed work orders (`assignedToId`) associated with completed production orders.
+
+---
+
 ## Verification Results
 
 ### 1. TypeScript Compile Verification
