@@ -95,6 +95,12 @@ I have successfully optimized the Telegram Mini App (Web App) to be highly compa
     *   Updated [page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/employees/%5Bid%5D/page.tsx) to display a **Production Earnings** card showing total ETB earned.
     *   Added a dedicated **Production Earnings (Wax-soo-saarka)** history tab showing daily earnings computed in real-time from completed work orders (`assignedToId`) associated with completed production orders.
 *   **Qoordheere Salary Data Repair:** Executed database repair script [fix_qordhere_salary.js](file:///c:/Users/OMEN/projects/An-Industory/scratch/fix_qordhere_salary.js) to fix the data inconsistency where employee `qoordheere` showed `9000 ETB` paid this month even though their salary expense was deleted. Set their active paid statistic back to `0 ETB` successfully.
+*   **Persistent Multiple Workers on Production Entry:**
+    *   Added `productionRate` (float) to the `WorkOrder` model in `schema.prisma` and updated database schema.
+    *   Updated the **Production Entry (Manta maxaa la soo saaray)** form [add/page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/production-orders/add/page.tsx) to allow selecting **multiple employees** and configuring their specific percentage rates for that run.
+    *   Implemented **LocalStorage Persistence**: The selected workers and their rates are cached in the browser. When the page is re-opened, it automatically pre-selects the saved list, allowing edits only if a worker is absent or their rate changes.
+    *   Updated the POST API to automatically create completed `WorkOrder` records with the specific percentage rate for each selected employee.
+    *   Updated the Employee Detail API to prioritize `WorkOrder.productionRate` over the employee's default rate when calculating daily earnings.
 
 ---
 
