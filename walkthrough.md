@@ -104,9 +104,9 @@ I have successfully optimized the Telegram Mini App (Web App) to be highly compa
 
 *   **Webcam AI Object Dimensions Scanning & Human Verification:**
     *   Enhanced the **CCTV AI Counter System** webcam module in [cctv-counter/page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/cctv-counter/page.tsx) with a computer vision HUD interface.
-    *   **Human Face Detection HUD:** Renders a green bounding tracker box with a live `HUMAN_VERIFIED: 98.4%` verification score tracking coordinates in real time to classify people and prevent accidental double counts.
-    *   **Live Object Dimensions Scanner:** Tracks the package crossing the line inside a custom bounding blue scanner box. Estimates pack dimensions (Length `L` and Width `W` in millimeters) dynamically (e.g., `L: 380mm, W: 260mm` for 50-pcs packages and `L: 480mm, W: 320mm` for 100-pcs packages).
-    *   **Waving Interaction:** Admins can wave their hands over their webcam to trigger a virtual package animation across the scanline to test the dimension measurements and counting logic in real-time.
+    *   **Autostart Webcam:** Configured the webcam stream to automatically initialize on page load without requiring any user click.
+    *   **Gemini Multimodal AI API Integration:** Added `/api/manufacturing/cctv-counter/analyze` endpoint. Every 2.5 seconds, the page takes a base64 JPEG snapshot from the webcam canvas and sends it to the Gemini 1.5 Flash API to classify the object and measure its exact length and width in millimeters, smoothly rendering the bounding box and classifications on the live stream overlay.
+    *   **Heuristic Fallbacks:** Gracefully falls back to robust local simulation if the Gemini API key is missing or encounters a timeout, ensuring a highly resilient and functional demo.
 
 ---
 
