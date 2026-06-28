@@ -389,7 +389,7 @@ export default function CctvCounterPage() {
       if (Math.abs(boxCenterY - lineY) < 25 && !cooldown && boxCenterX > 30 && boxCenterX < width - 30) {
         cooldown = true;
         
-        const direction = selectedCamera?.placement === 'ENTRANCE' ? 'IN' : 'OUT';
+        const direction = (selectedCamera?.placement || 'ENTRANCE') === 'ENTRANCE' ? 'IN' : 'OUT';
         const pack = selectedCamera?.packSize || 50;
 
         if (direction === 'IN') {
@@ -808,7 +808,7 @@ export default function CctvCounterPage() {
               <div className="absolute inset-0 bg-scanner-lines opacity-10 pointer-events-none z-10" />
 
               {/* Simulated camera or live webcam stream */}
-              {isWebcamActive && selectedCamera?.type === 'WEBCAM' ? (
+              {isWebcamActive ? (
                 <>
                   <video 
                     ref={videoRef} 
