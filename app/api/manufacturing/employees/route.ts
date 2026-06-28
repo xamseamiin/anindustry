@@ -56,7 +56,9 @@ export async function GET(req: Request) {
                 role: emp.role,
                 department: emp.department || 'General',
                 status: emp.isActive ? 'Active' : 'Inactive',
-                shift: 'Morning'
+                shift: 'Morning',
+                isPercentageLinked: emp.isPercentageLinked,
+                productionRate: emp.productionRate
             };
         });
 

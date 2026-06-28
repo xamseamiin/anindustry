@@ -137,6 +137,28 @@ export async function POST(request: Request) {
                 }
             });
 
+            // Create Work Orders (daily production run percentage) for assigned employees
+            if (body.workers && Array.isArray(body.workers)) {
+                for (const w of body.workers) {
+                    await tx.workOrder.create({
+                        data: {
+                            companyId,
+                            stage: 'Production',
+                            description: `Production Run Assignment: ${productName}`,
+                            estimatedHours: 8.0,
+                            actualHours: 8.0,
+                            status: 'COMPLETED',
+                            startTime: startDate ? new Date(startDate) : new Date(),
+                            endTime: new Date(),
+                            notes: `Daily production run percentage assignment (${w.rate}%)`,
+                            assignedToId: w.employeeId,
+                            productionOrderId: order.id,
+                            productionRate: parseFloat(w.rate) || 0.0
+                        }
+                    });
+                }
+            }
+
             return order;
         });
 

@@ -79,7 +79,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
             const qty = wo.productionOrder.quantity;
             const price = Number(wo.productionOrder.product?.sellingPrice || wo.productionOrder.product?.standardCost || 2.0);
             const value = qty * price;
-            const rate = employee.productionRate || 0.0;
+            const rate = wo.productionRate || employee.productionRate || 0.0;
             const earned = value * (rate / 100);
             return {
                 id: wo.id,

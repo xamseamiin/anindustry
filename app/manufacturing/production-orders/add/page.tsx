@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { 
     ArrowLeft, Plus, Trash2, Loader2, CheckCircle2,
     Factory, X, Percent, Beaker, ChevronDown, Package,
-    Zap, ListChecks, History, Calendar, FlaskConical, Boxes
+    Zap, ListChecks, History, Calendar, FlaskConical, Boxes,
+    User
 } from 'lucide-react';
 
 export default function ProductionEntryPage() {
@@ -22,10 +23,43 @@ export default function ProductionEntryPage() {
     const [bom, setBom] = useState<any[]>([]);
     const [fetchingBOM, setFetchingBOM] = useState(false);
 
+    // Workers selection and rates state
+    const [allEmployees, setAllEmployees] = useState<any[]>([]);
+    const [selectedWorkers, setSelectedWorkers] = useState<any[]>([]);
+
     useEffect(() => {
         fetch('/api/manufacturing/products')
             .then(res => res.json())
             .then(data => setProducts(data.products || []))
+            .catch(console.error);
+
+        // Fetch active employees and load saved configurations
+        fetch('/api/manufacturing/employees')
+            .then(res => res.json())
+            .then(data => {
+                const activeEmps = (data.employees || []).filter((e: any) => e.status === 'Active');
+                setAllEmployees(activeEmps);
+
+                const saved = localStorage.getItem('anindustry_po_saved_workers');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        const validSaved = parsed.filter((s: any) => activeEmps.some((e: any) => e.id === s.employeeId));
+                        setSelectedWorkers(validSaved);
+                    } catch (e) {
+                        console.error("Failed to parse saved workers from localStorage", e);
+                    }
+                } else {
+                    // Pre-select active employees who have isPercentageLinked === true
+                    const defaultWorkers = activeEmps
+                        .filter((e: any) => e.isPercentageLinked)
+                        .map((e: any) => ({
+                            employeeId: e.id,
+                            rate: e.productionRate || 0.0
+                        }));
+                    setSelectedWorkers(defaultWorkers);
+                }
+            })
             .catch(console.error);
     }, []);
 
@@ -44,6 +78,26 @@ export default function ProductionEntryPage() {
 
     const totalEstimatedCost = bom.reduce((sum, item) => sum + (item.costPerUnit * item.quantity * (quantity / 1)), 0);
 
+    const handleWorkerCheckboxChange = (employeeId: string, checked: boolean, defaultRate: number) => {
+        let updated;
+        if (checked) {
+            updated = [...selectedWorkers, { employeeId, rate: defaultRate }];
+        } else {
+            updated = selectedWorkers.filter(w => w.employeeId !== employeeId);
+        }
+        setSelectedWorkers(updated);
+        localStorage.setItem('anindustry_po_saved_workers', JSON.stringify(updated));
+    };
+
+    const handleWorkerRateChange = (employeeId: string, rateStr: string) => {
+        const rate = parseFloat(rateStr) || 0.0;
+        const updated = selectedWorkers.map(w => 
+            w.employeeId === employeeId ? { ...w, rate } : w
+        );
+        setSelectedWorkers(updated);
+        localStorage.setItem('anindustry_po_saved_workers', JSON.stringify(updated));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -58,7 +112,8 @@ export default function ProductionEntryPage() {
                     startDate: productionDate,
                     priority,
                     status: 'COMPLETED',
-                    notes: 'Automatic production run'
+                    notes: 'Automatic production run',
+                    workers: selectedWorkers
                 })
             });
             if (response.ok) { 
@@ -152,6 +207,71 @@ export default function ProductionEntryPage() {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Workers Assignment Panel */}
+                        <div className="bg-white/30 backdrop-blur-3xl p-8 rounded-3xl border border-white/50 shadow-2xl space-y-6">
+                            <div className="flex items-center gap-3">
+                                <div className="p-3 bg-emerald-500/10 text-emerald-600 rounded-xl"><User size={24} /></div>
+                                <div>
+                                    <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em]">Shaqaalaha Waxsoosaarka (Workers Assignment)</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">Link employees and their percentage rates to this batch run</p>
+                                </div>
+                            </div>
+
+                            {allEmployees.length === 0 ? (
+                                <p className="text-xs text-slate-400 font-bold uppercase italic py-4">No active employees found to link.</p>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {allEmployees.map(emp => {
+                                        const isChecked = selectedWorkers.some(w => w.employeeId === emp.id);
+                                        const workerRecord = selectedWorkers.find(w => w.employeeId === emp.id);
+                                        const rateValue = workerRecord ? workerRecord.rate : (emp.productionRate || 0.0);
+
+                                        return (
+                                            <div key={emp.id} className={`p-4 rounded-2xl border transition-all duration-300 flex flex-col justify-between gap-3 ${isChecked ? 'bg-emerald-500/5 border-emerald-500/30 shadow-md shadow-emerald-500/5' : 'bg-white/40 border-white/40 hover:bg-white/60'}`}>
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <label className="flex items-center gap-3 cursor-pointer select-none flex-1">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={(e) => handleWorkerCheckboxChange(emp.id, e.target.checked, emp.productionRate || 0.0)}
+                                                            className="w-4 h-4 rounded border-slate-355 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                                        />
+                                                        <div>
+                                                            <h4 className="text-xs font-black text-slate-900 leading-none">{emp.name}</h4>
+                                                            <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-wider">{emp.role}</p>
+                                                        </div>
+                                                    </label>
+                                                    {emp.isPercentageLinked && (
+                                                        <span className="text-[9px] px-2 py-0.5 bg-blue-500/10 text-blue-600 rounded-md font-bold uppercase shrink-0">
+                                                            Default {emp.productionRate}%
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {isChecked && (
+                                                    <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200 border-t border-dashed border-emerald-500/10 pt-2.5">
+                                                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Percentage Rate for this batch (%)</label>
+                                                        <div className="relative">
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                min="0"
+                                                                max="100"
+                                                                value={rateValue}
+                                                                onChange={(e) => handleWorkerRateChange(emp.id, e.target.value)}
+                                                                className="w-full p-2 bg-white/70 border border-white/50 rounded-xl text-xs font-black text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 pr-8"
+                                                            />
+                                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-emerald-600">%</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
 
                         <div className="bg-white/30 backdrop-blur-3xl rounded-3xl border border-white/50 shadow-2xl overflow-hidden">
