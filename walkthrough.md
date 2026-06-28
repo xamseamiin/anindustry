@@ -72,9 +72,11 @@ I have successfully optimized the Telegram Mini App (Web App) to be highly compa
     *   **Others:** Renders a standard description text field.
 *   **General Controls:** Implemented controls for Date, Payment Status (Paid / Unpaid), Funding Account, Notes/Description, and an optional **Receipt File Upload** allowing admins to attach receipt images from the desktop.
 *   **isPaid Override support:** Updated [route.ts](file:///c:/Users/OMEN/projects/An-Industory/app/api/telegram/submit/route.ts) to check if `isPaid` is set to `'true'` in `formData`, allowing registration of paid expenses without requiring a receipt file.
-*   **Brand Styling Integration (ui-ux-pro-max):**
+*   **Brand Styling Integration & Layout Adaptations:**
     *   Applied the project's **Emerald & Sky** brand color tokens (`#10b981` / `#0ea5e9`) to replace generic blue accents.
-    *   Redesigned the container as a premium **double-bordered glassmorphism card** (`bg-slate-900/40 backdrop-blur-xl`) matching the homepage aesthetics.
+    *   Implemented **Light/Dark Adaptive Layout**: Replaced the forced dark background with semantic Tailwind classes (`bg-white/80 dark:bg-slate-900/40 text-gray-900 dark:text-white border-gray-200 dark:border-white/10`) to match the dashboard sidebar/theme seamlessly.
+    *   Added a sleek **Top Gradient Border** (`from-emerald-500 via-teal-500 to-sky-500`) on the card to serve as a signature branding boundary.
+    *   Configured the page to **Default to Utilities Category** on mount: Searches for the Utilities category ID dynamically on load and auto-selects it so the form is populated immediately.
     *   Removed low-polish emojis from select dropdowns, utilizing high-quality vector Lucide SVG icons instead to follow accessibility standards.
     *   Incorporated monospaced tabular figures for numerical data layouts, active state scales (`active:scale-[0.98]`), and smooth transitions.
 *   **Automatic Build:** Pushed changes to GitHub to trigger Vercel deployment.
