@@ -7,7 +7,8 @@ import {
     ArrowLeft, Save, Loader2, CreditCard, User, 
     Truck, Settings, Award, Layers, Calendar, 
     ClipboardList, Wrench, FileText, Image as ImageIcon, Wallet,
-    ChevronDown, DollarSign, CheckCircle2, UserCheck, AlertCircle
+    ChevronDown, DollarSign, CheckCircle2, UserCheck, AlertCircle,
+    Plus
 } from 'lucide-react';
 import Toast from '@/components/common/Toast';
 
@@ -43,6 +44,75 @@ export default function NewExpensePage() {
     const [rentalPeriod, setRentalPeriod] = useState('');
     const [consultantName, setConsultantName] = useState('');
     const [consultancyType, setConsultancyType] = useState('');
+
+    // Employee quick add modal state
+    const [isEmpModalOpen, setIsEmpModalOpen] = useState(false);
+    const [newEmpName, setNewEmpName] = useState('');
+    const [newEmpRole, setNewEmpRole] = useState('Worker');
+    const [newEmpDept, setNewEmpDept] = useState('Production');
+    const [newEmpPhone, setNewEmpPhone] = useState('');
+    const [newEmpSalary, setNewEmpSalary] = useState('');
+    const [newEmpIsPercentage, setNewEmpIsPercentage] = useState(false);
+    const [newEmpProdRate, setNewEmpProdRate] = useState('');
+    const [empSubmitting, setEmpSubmitting] = useState(false);
+
+    const resetEmpModal = () => {
+        setNewEmpName('');
+        setNewEmpRole('Worker');
+        setNewEmpDept('Production');
+        setNewEmpPhone('');
+        setNewEmpSalary('');
+        setNewEmpIsPercentage(false);
+        setNewEmpProdRate('');
+    };
+
+    const handleCreateEmployee = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setEmpSubmitting(true);
+
+        if (!newEmpName || !newEmpRole) {
+            setToast({ message: 'Fadlan buuxi magaca iyo xilka shaqaalaha.', type: 'error' });
+            setEmpSubmitting(false);
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/manufacturing/employees', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fullName: newEmpName,
+                    role: newEmpRole,
+                    department: newEmpDept,
+                    phone: newEmpPhone,
+                    monthlySalary: newEmpSalary || '0',
+                    isPercentageLinked: newEmpIsPercentage,
+                    productionRate: newEmpProdRate || '0'
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || 'Failed to create employee');
+            }
+
+            const data = await response.json();
+            const createdEmp = data.employee;
+            
+            // Append newly created employee and auto-select
+            setEmployees(prev => [...prev, createdEmp]);
+            setSelectedEmployeeId(createdEmp.id);
+            setIsEmpModalOpen(false);
+            resetEmpModal();
+
+            setToast({ message: 'Shaqaalaha cusub si guul leh ayaa loo abuuray!', type: 'success' });
+        } catch (err: any) {
+            console.error(err);
+            setToast({ message: err.message || 'Cilad ayaa dhacday marka la abuurayay shaqaalaha.', type: 'error' });
+        } finally {
+            setEmpSubmitting(false);
+        }
+    };
 
     useEffect(() => {
         const fetchConfig = async () => {
@@ -310,9 +380,18 @@ export default function NewExpensePage() {
                             {isSalary && (
                                 <div className="space-y-4">
                                     <div className="space-y-2">
-                                        <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                            <User size={11} className="text-emerald-500 dark:text-emerald-400" /> Dooro Shaqaalaha *
-                                        </label>
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                <User size={11} className="text-emerald-500 dark:text-emerald-400" /> Dooro Shaqaalaha *
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsEmpModalOpen(true)}
+                                                className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 flex items-center gap-1 transition-colors active:scale-95"
+                                            >
+                                                <Plus size={10} strokeWidth={3} /> Shaqaale Cusub (New)
+                                            </button>
+                                        </div>
                                         <div className="relative">
                                             <select
                                                 required
@@ -604,6 +683,142 @@ export default function NewExpensePage() {
 
                 </div>
             </div>
+
+            {/* Inline Employee Creation Modal Overlay */}
+            {isEmpModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 border border-gray-250 dark:border-white/10 rounded-3xl p-6 max-w-lg w-full shadow-2xl relative animate-in zoom-in-95 duration-200 overflow-hidden text-gray-900 dark:text-white">
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-sky-500" />
+                        
+                        <h3 className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+                            <User className="text-emerald-600 dark:text-emerald-400" size={18} /> Shaqaale Cusub / Add Employee
+                        </h3>
+                        <p className="text-[10px] text-gray-400 dark:text-slate-400 uppercase tracking-widest mt-1">Register new employee instantly</p>
+
+                        <form onSubmit={handleCreateEmployee} className="space-y-4 mt-5">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Full Name *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={newEmpName}
+                                    onChange={(e) => setNewEmpName(e.target.value)}
+                                    placeholder="e.g. Ahmed Ali"
+                                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-white focus:border-emerald-500 outline-none text-xs"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Role / Position *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={newEmpRole}
+                                        onChange={(e) => setNewEmpRole(e.target.value)}
+                                        placeholder="e.g. Operator"
+                                        className="w-full p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-white focus:border-emerald-500 outline-none text-xs"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Department</label>
+                                    <select
+                                        value={newEmpDept}
+                                        onChange={(e) => setNewEmpDept(e.target.value)}
+                                        className="w-full p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-white focus:border-emerald-500 outline-none text-xs cursor-pointer"
+                                    >
+                                        <option value="Production">Production</option>
+                                        <option value="Packaging">Packaging</option>
+                                        <option value="Maintenance">Maintenance</option>
+                                        <option value="Management">Management</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Phone</label>
+                                    <input
+                                        type="tel"
+                                        value={newEmpPhone}
+                                        onChange={(e) => setNewEmpPhone(e.target.value)}
+                                        placeholder="+252..."
+                                        className="w-full p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-white focus:border-emerald-500 outline-none text-xs"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Monthly Salary</label>
+                                    <input
+                                        type="number"
+                                        value={newEmpSalary}
+                                        onChange={(e) => setNewEmpSalary(e.target.value)}
+                                        placeholder="e.g. 8000"
+                                        className="w-full p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-white focus:border-emerald-500 outline-none text-xs"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-white/5">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={newEmpIsPercentage}
+                                        onChange={(e) => setNewEmpIsPercentage(e.target.checked)}
+                                        className="w-3.5 h-3.5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                    />
+                                    <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                                        Ku xidh Waxsoosaarka (Link to Production)
+                                    </span>
+                                </label>
+                            </div>
+
+                            {newEmpIsPercentage && (
+                                <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                                    <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Production Rate (%) *</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        step="0.01"
+                                        required={newEmpIsPercentage}
+                                        value={newEmpProdRate}
+                                        onChange={(e) => setNewEmpProdRate(e.target.value)}
+                                        placeholder="e.g. 2.0"
+                                        className="w-full p-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-white focus:border-emerald-500 outline-none text-xs"
+                                    />
+                                </div>
+                            )}
+
+                            <div className="pt-4 flex gap-3">
+                                <button
+                                    type="submit"
+                                    disabled={empSubmitting}
+                                    className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-800/40 text-white dark:text-slate-950 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-500/10 flex items-center justify-center gap-1 active:scale-[0.98] transition-all"
+                                >
+                                    {empSubmitting ? (
+                                        <>
+                                            <Loader2 className="animate-spin" size={10} />
+                                            Loading...
+                                        </>
+                                    ) : (
+                                        'Create'
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsEmpModalOpen(false);
+                                        resetEmpModal();
+                                    }}
+                                    className="px-5 py-3 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-slate-300 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-white/10 active:scale-[0.98] transition-all"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         </div>
