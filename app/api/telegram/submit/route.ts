@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
+import { verifyReceiptImageWithAI } from '@/lib/receipt-ai';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,7 @@ async function sendTelegramMessage(token: string, chatId: string, text: string, 
                 formData.append('chat_id', chatId);
                 formData.append('caption', text);
                 formData.append('parse_mode', 'HTML');
+                formData.append('has_spoiler', 'true');
                 if (replyMarkup) {
                     formData.append('reply_markup', JSON.stringify(replyMarkup));
                 }

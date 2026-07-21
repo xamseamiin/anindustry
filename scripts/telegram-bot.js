@@ -21,6 +21,62 @@ if (!companyId || !creatorUserId) {
 }
 
 const prisma = new PrismaClient();
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+async function verifyReceiptWithAI(imagePath, expectedAmount) {
+    try {
+        const apiKey = process.env.GOOGLE_API_KEY;
+        if (!apiKey || !fs.existsSync(imagePath)) {
+            return { isVerified: false, isMatch: true, extractedAmount: null, expectedAmount };
+        }
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+        const fileBuffer = fs.readFileSync(imagePath);
+        const imagePart = {
+            inlineData: {
+                data: fileBuffer.toString('base64'),
+                mimeType: 'image/jpeg'
+            }
+        };
+
+        const prompt = `Analyze this payment receipt screenshot or image (E-birr, Telebirr, CBE Birr, Bank transfer, paper receipt, etc.).
+Extract the numerical transaction amount, transaction ID, receiver name, and payment service name.
+Return ONLY a valid raw JSON object (with NO markdown backticks or extra text) using this exact format:
+{
+  "amount": 1220.0,
+  "transactionId": "2562913614",
+  "receiverName": "muhiyadin mahamed abdi",
+  "paymentService": "E-birr"
+}
+If any field cannot be found, use null for that field. Ensure amount is a raw number (e.g. 1220.0, not a string).`;
+
+        const response = await model.generateContent([prompt, imagePart]);
+        const responseText = response.response.text().trim().replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        let parsed = {};
+        try { parsed = JSON.parse(responseText); } catch(e) {}
+
+        const extractedAmount = typeof parsed.amount === 'number' ? parsed.amount : (parsed.amount ? parseFloat(parsed.amount) : null);
+        if (extractedAmount === null || isNaN(extractedAmount)) {
+            return { isVerified: true, isMatch: true, extractedAmount: null, expectedAmount };
+        }
+
+        const diff = Math.abs(extractedAmount - expectedAmount);
+        const isMatch = diff <= 1.0;
+
+        return {
+            isVerified: true,
+            isMatch,
+            extractedAmount,
+            expectedAmount,
+            difference: diff
+        };
+    } catch(e) {
+        console.error('AI Verification Error:', e);
+        return { isVerified: false, isMatch: true, extractedAmount: null, expectedAmount };
+    }
+}
 
 let botUsername = 'AN_Industory_bot';
 
@@ -1252,10 +1308,39 @@ async function handleUpdate(update) {
                 // Send the new photo confirmation message
                 const absolutePath = path.join(process.cwd(), 'public', receiptUrl);
                 if (fs.existsSync(absolutePath)) {
+                    let expectedAmount = 0;
+                    if (purchaseId) {
+                        const mp = await prisma.materialPurchase.findUnique({ where: { id: purchaseId } });
+                        if (mp) expectedAmount = Number(mp.totalPrice);
+                    } else if (expenseId) {
+                        const exp = await prisma.expense.findUnique({ where: { id: expenseId } });
+                        if (exp) expectedAmount = Number(exp.amount);
+                    }
+
+                    if (expectedAmount > 0) {
+                        const aiRes = await verifyReceiptWithAI(absolutePath, expectedAmount);
+                        if (aiRes.isVerified) {
+                            if (!aiRes.isMatch) {
+                                confirmationText = `<b>AN-Industory</b>\n` +
+                                                   `<b>🚨 DIGNIIN: KHALAD OOGU JIRA RASIIDKA (MISMATCH)!</b>\n\n` +
+                                                   `❌ <b>Lacagta Rasiidka:</b> ${aiRes.extractedAmount ? aiRes.extractedAmount.toLocaleString() : 'N/A'} ETB\n` +
+                                                   `💵 <b>Lacagta la Dalbaday:</b> ${expectedAmount.toLocaleString()} ETB\n` +
+                                                   `⚠️ <b>FARQIGA: ${aiRes.difference ? aiRes.difference.toLocaleString() : 0} ETB (ISMA LAHA!)</b>\n\n` +
+                                                   confirmationText;
+                            } else if (aiRes.extractedAmount !== null) {
+                                confirmationText = `<b>AN-Industory</b>\n` +
+                                                   `<b>✅ RASIIDKA WAA LA HUBUY (AI MATCH)!</b>\n\n` +
+                                                   `✅ <b>Lacagta Rasiidka:</b> ${aiRes.extractedAmount.toLocaleString()} ETB (100% Waafaqsan)\n\n` +
+                                                   confirmationText;
+                            }
+                        }
+                    }
+
                     const formData = new FormData();
                     formData.append('chat_id', chatId);
                     formData.append('caption', confirmationText);
                     formData.append('parse_mode', 'HTML');
+                    formData.append('has_spoiler', 'true');
                     
                     // No inline keyboard is attached here because it's PAID and finalized
                     const inlineKeyboard = [];

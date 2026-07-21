@@ -633,9 +633,20 @@ export default function NewExpensePage() {
                                         />
                                     </div>
                                     {receiptFile && (
-                                        <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl text-xs text-emerald-600 dark:text-emerald-400 max-w-xs truncate">
-                                            <CheckCircle2 size={12} className="shrink-0" />
-                                            <span className="italic truncate">{receiptFile.name}</span>
+                                        <div className="relative group overflow-hidden rounded-xl border border-emerald-500/30 max-h-24 w-44 shrink-0 bg-black/40 cursor-pointer"
+                                             onClick={() => {
+                                                 const url = URL.createObjectURL(receiptFile);
+                                                 window.open(url, '_blank');
+                                             }}
+                                        >
+                                            <img
+                                                src={URL.createObjectURL(receiptFile)}
+                                                alt="Receipt Preview"
+                                                className="w-full h-24 object-cover object-top opacity-80 group-hover:opacity-100 transition-opacity"
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-[10px] font-black text-white uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <span>🔍 Eeg Rasiidka</span>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
