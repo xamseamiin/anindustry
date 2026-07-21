@@ -119,6 +119,23 @@ I have successfully optimized the Telegram Mini App (Web App) to be highly compa
     *   **Custom Logo Support**: Automatically imports `logogoods.png` from the `public/` directory with fallback logic.
     *   **Print layout optimization**: Automatically hides all sidebars, navigation headers, and control forms during printing.
 
+### 14. Telegram Mini App: Haptics, Speech-to-Text (Somali), and Smart Balance Warnings
+*   **Integrated Telegram Haptic Feedback**: Added native Telegram haptics trigger helper `triggerHaptic` inside [page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/telegram-mini-app/page.tsx). It fires physical vibration feedback on:
+    *   `selection` (selectionChanged) when selecting categories/dropdown options.
+    *   `light` (impactOccurred) when quick-filling form fields using saved contacts or when speech recognition outputs text.
+    *   `success` (notificationOccurred success) upon successfully registering form submissions (both online and offline branches).
+    *   `error` (notificationOccurred error) when phone number validation fails or server submissions throw errors.
+    *   `warning` (notificationOccurred warning) when requested transaction amount exceeds the current account balance.
+*   **Somali Speech-to-Text Dictation**: Integrated the HTML5 Web Speech API `SpeechRecognition` inside the Description/Note field:
+    *   Enables dictating notes directly in the **Somali language** (`so-SO` Lang code).
+    *   Fires a light haptic vibration each time a spoken phrase is processed and appended to the text area.
+    *   Includes defensive fallback checks and updates layout states (active pulses and microphone icons) dynamically.
+*   **Smart Account Balance Limit Warning**:
+    *   Tracks the selected account's available balance in real time.
+    *   Compares the requested amount (or computed raw material total cost) against the balance.
+    *   Triggers a prominent warning banner inside the UI and triggers a Telegram warning haptic pattern if the limit is exceeded.
+*   **Git Deployment**: Staged, committed, and pushed changes to GitHub to trigger Vercel deployment. Re-verified Next.js production build and restarted the PM2 bot process on the Contabo VPS.
+
 ---
 
 ## Verification Results
