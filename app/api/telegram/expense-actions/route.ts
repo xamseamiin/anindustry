@@ -53,7 +53,7 @@ export async function PUT(request: Request) {
         }
 
         const body = await request.json();
-        const { id, amount, note, categoryId, accountId, receiptUrl } = body;
+        const { id, amount, note, paymentPhone, recipientName, categoryId, accountId, receiptUrl } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Expense ID required' }, { status: 400 });
@@ -70,18 +70,27 @@ export async function PUT(request: Request) {
 
         const oldAmount = Number(existingExpense.amount);
         const newAmount = amount !== undefined ? parseFloat(amount) : oldAmount;
-        const diff = newAmount - oldAmount; // positive means increased expense, negative means decreased expense
+        const diff = newAmount - oldAmount;
 
-        // Target account (defaults to E-Birr Merchant or expense.accountId)
         const targetAccountId = accountId || existingExpense.accountId;
+
+        // Reconstruct note with preserved tags
+        const existingNote = existingExpense.note || '';
+        const reqMatch = existingNote.match(/\[Dalbaday:[^\]]+\]/);
+        const idMatch = existingNote.match(/\[TelegramId:[^\]]+\]/);
+
+        let finalNote = (note !== undefined ? note : existingNote.replace(/\[(?:Dalbaday|TelegramId|PaymentPhone|RecipientName|Account|AccountId):[^\]]*\]/g, '')).trim();
+        if (reqMatch) finalNote += `\n${reqMatch[0]}`;
+        if (idMatch) finalNote += ` ${idMatch[0]}`;
+        if (paymentPhone) finalNote += `\n[PaymentPhone: ${paymentPhone}]`;
+        if (recipientName) finalNote += `\n[RecipientName: ${recipientName}]`;
 
         // Update in transaction
         const updatedExpense = await prisma.$transaction(async (tx) => {
-            // Adjust balance if target account exists and diff is non-zero
             if (targetAccountId && diff !== 0) {
                 await tx.account.update({
                     where: { id: targetAccountId },
-                    data: { balance: { decrement: diff } } // subtract diff from balance
+                    data: { balance: { decrement: diff } }
                 });
             }
 
@@ -95,7 +104,7 @@ export async function PUT(request: Request) {
                 where: { id },
                 data: {
                     amount: newAmount,
-                    note: note !== undefined ? note : existingExpense.note,
+                    note: finalNote,
                     categoryId: categoryId || existingExpense.categoryId,
                     category: categoryName,
                     accountId: targetAccountId,
@@ -131,11 +140,21 @@ export async function PUT(request: Request) {
             const formattedDate = new Date(existingExpense.createdAt).toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
             const cleanNote = (updatedExpense.note || '').replace(/\[(?:Dalbaday|TelegramId|PaymentPhone|RecipientName|Account|AccountId):[^\]]*\]/g, '').trim();
 
+            let contactInfoLine = '';
+            if (recipientName && paymentPhone) {
+                contactInfoLine = `👤 Loo dirayo: ${recipientName}\n📱 Lambarka: ${paymentPhone}\n`;
+            } else if (paymentPhone) {
+                contactInfoLine = `📱 Lambarka: ${paymentPhone}\n`;
+            } else if (recipientName) {
+                contactInfoLine = `👤 Loo dirayo: ${recipientName}\n`;
+            }
+
             const updatedTelegramText =
                 `<b>AN-Industory</b>\n` +
                 `<b>✅ Diiwaangelinta Kharashka (Cusboonaysiin / Updated)</b>\n\n` +
                 `📂 Qaybta: ${updatedExpense.category}\n` +
                 `💵 Lacagta la bixiyey: ${newAmount.toLocaleString()} ETB\n` +
+                contactInfoLine +
                 `💳 Koontada: ${updatedExpense.account?.name || 'E-Birr Merchant'}\n` +
                 `📝 Sharaxaad: ${cleanNote || 'Kharash'}\n` +
                 `📅 Taariikhda: ${formattedDate}\n\n` +

@@ -183,9 +183,23 @@ export default function TelegramMiniAppPage() {
     const [editingExpense, setEditingExpense] = useState<any | null>(null);
     const [editAmount, setEditAmount] = useState('');
     const [editNote, setEditNote] = useState('');
+    const [editPhone, setEditPhone] = useState('');
+    const [editRecipientName, setEditRecipientName] = useState('');
     const [editCategoryId, setEditCategoryId] = useState('');
     const [savingEdit, setSavingEdit] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    const isOwnerOfExpense = (exp: any) => {
+        if (!exp) return false;
+        if (!exp.requesterId && !exp.requesterName) return true;
+        if (requesterId && exp.requesterId && exp.requesterId === requesterId) return true;
+        if (requesterName && exp.requesterName) {
+            const currentShort = requesterName.split(' ')[0].toLowerCase();
+            const expShort = exp.requesterName.split(' ')[0].toLowerCase();
+            if (currentShort && expShort && (currentShort === expShort || exp.requesterName.toLowerCase().includes(currentShort))) return true;
+        }
+        return false;
+    };
 
     const fetchHistory = async () => {
         setLoadingHistory(true);
@@ -216,9 +230,16 @@ export default function TelegramMiniAppPage() {
 
     const handleOpenEdit = (exp: any) => {
         triggerHaptic('light');
+        if (!isOwnerOfExpense(exp)) {
+            triggerHaptic('error');
+            alert('❌ Ogolaansho ma u lihadid inaad beddesho foom uusan qofkani soo galin. Qofkii soo diwangaliyay oo kaliya ayaa beddeli kara.');
+            return;
+        }
         setEditingExpense(exp);
         setEditAmount(String(exp.amount));
         setEditNote(exp.note || '');
+        setEditPhone(exp.paymentPhone || '');
+        setEditRecipientName(exp.recipientName || '');
         setEditCategoryId(exp.categoryId || '');
     };
 
@@ -235,6 +256,8 @@ export default function TelegramMiniAppPage() {
                     id: editingExpense.id,
                     amount: editAmount,
                     note: editNote,
+                    paymentPhone: editPhone,
+                    recipientName: editRecipientName,
                     categoryId: editCategoryId
                 })
             });
@@ -564,14 +587,14 @@ export default function TelegramMiniAppPage() {
     }, [selectedEmployeeId, employees, selectedCategoryKey]);
 
     // Parse the main dropdown value to set the respective state variables
-    const handleCategoryChange = (val: string) => {
+    const handleCategoryChange = (key: string, name?: string) => {
         triggerHaptic('selection');
-        setSelectedCategoryKey(val);
+        setSelectedCategoryKey(key);
         
         // Reset states
         setSelectedEmployeeId('');
         setSelectedCategoryId('');
-        setSelectedCategoryName('');
+        setSelectedCategoryName(name || '');
         setTransportType('');
         setEquipmentName('');
         setRentalPeriod('');
@@ -590,10 +613,44 @@ export default function TelegramMiniAppPage() {
         setRecipientName('');
         setShowSavedContacts(false);
 
-        if (val.startsWith('EXPENSE_')) {
-            const [_, id, name] = val.split('_');
+        if (key.startsWith('EXPENSE_')) {
+            const parts = key.split('_');
+            const id = parts[1];
             setSelectedCategoryId(id);
-            setSelectedCategoryName(name);
+            if (!name && parts.length >= 3) {
+                setSelectedCategoryName(parts.slice(2).join('_'));
+            }
+        }
+    };
+
+    const activeCategorySavedContacts = 
+        selectedCategoryName === 'Transport & Fuel' ? savedTransportContacts :
+        selectedCategoryName === 'Equipment Rental' ? savedEquipmentContacts :
+        selectedCategoryName === 'Consultancy & Service' ? savedConsultantContacts : [];
+
+    const handleSelectSavedContact = (contact: { name: string; phone: string }) => {
+        triggerHaptic('light');
+        setRecipientName(contact.name);
+        setPaymentPhone(contact.phone);
+        setShowSavedContacts(false);
+    };
+
+    const toggleVoiceRecognition = () => {
+        if (!recognitionObj) {
+            alert('Voice recognition ma taageerayo browser-kan.');
+            return;
+        }
+        if (isListening) {
+            try { recognitionObj.stop(); } catch(e) {}
+            setIsListening(false);
+        } else {
+            try {
+                recognitionObj.start();
+                setIsListening(true);
+                triggerHaptic('medium');
+            } catch (e) {
+                console.error(e);
+            }
         }
     };
 
@@ -1101,28 +1158,36 @@ export default function TelegramMiniAppPage() {
                                                 {Number(exp.amount).toLocaleString()} ETB
                                             </span>
                                             <div className="flex items-center gap-1.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleOpenEdit(exp);
-                                                    }}
-                                                    className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-all"
-                                                    title="Edit"
-                                                >
-                                                    <Pencil size={12} />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDeleteExpense(exp.id);
-                                                    }}
-                                                    className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
-                                                    title="Delete"
-                                                >
-                                                    <Trash2 size={12} />
-                                                </button>
+                                                {isOwnerOfExpense(exp) ? (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleOpenEdit(exp);
+                                                            }}
+                                                            className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-all"
+                                                            title="Edit"
+                                                        >
+                                                            <Pencil size={12} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteExpense(exp.id);
+                                                            }}
+                                                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-[10px] text-white/40 font-bold px-1.5 py-0.5 bg-white/5 rounded border border-white/5" title="Kharashkan waxaa soo galay qof kale">
+                                                        🔒
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -1192,18 +1257,18 @@ export default function TelegramMiniAppPage() {
                                 <span>Dalabka Raw Material</span>
                             </button>
 
-                            {categories.filter(c => c.name !== 'Raw Material' && c.name !== 'Salaries').map(c => (
+                            {categories.map((cat) => (
                                 <button
-                                    key={c.id}
+                                    key={cat.id}
                                     type="button"
                                     onClick={() => {
-                                        handleCategoryChange(`EXPENSE_${c.id}_${c.name}`);
+                                        handleCategoryChange(`EXPENSE_${cat.id}`, cat.name);
                                         setDropdownOpen(false);
                                     }}
-                                    className="w-full p-3 hover:bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.05))] text-left text-sm font-bold flex items-center gap-2 border-b border-[var(--tg-theme-hint-color,rgba(255,255,255,0.05))] opacity-90 last:border-0 transition-all text-[var(--tg-theme-text-color,#ffffff)]"
+                                    className="w-full p-3 hover:bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.05))] text-left text-sm font-bold flex items-center gap-2 border-b border-[var(--tg-theme-hint-color,rgba(255,255,255,0.05))] opacity-90 transition-all text-[var(--tg-theme-text-color,#ffffff)] last:border-0"
                                 >
-                                    {getCategoryIcon(c.name)}
-                                    <span>{c.name}</span>
+                                    {getCategoryIcon(cat.name)}
+                                    <span>{cat.name}</span>
                                 </button>
                             ))}
                         </div>
@@ -1212,11 +1277,9 @@ export default function TelegramMiniAppPage() {
 
                 {/* Form Body - Hidden until Category selected */}
                 {!selectedCategoryKey ? (
-                    <div className="bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/5 rounded-2xl p-10 text-center flex flex-col items-center justify-center gap-3">
-                        <div className="p-4 bg-white/5 rounded-full text-slate-400">
-                            <Tag size={24} className="opacity-40" />
-                        </div>
-                        <p className="text-sm font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider">
+                    <div className="bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/5 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3">
+                        <Tag className="text-[var(--tg-theme-hint-color,#94a3b8)] opacity-40" size={32} />
+                        <p className="text-xs font-bold text-[var(--tg-theme-hint-color,#94a3b8)] max-w-[200px]">
                             Fadlan dooro qaybta kharashka ee kore si aad u buuxiso formka.
                         </p>
                     </div>
@@ -1243,79 +1306,173 @@ export default function TelegramMiniAppPage() {
                                     <div className="p-3 bg-white/[0.01] border border-white/5 rounded-xl flex flex-col gap-2 mt-1.5 shadow-inner text-xs">
                                         <div className="flex justify-between font-bold">
                                             <span className="text-[var(--tg-theme-hint-color,#94a3b8)]">Mushaarka Bishii:</span>
-                                            <span>{selectedEmployee.monthlySalary.toLocaleString()} ETB</span>
+                                            <span className="text-[var(--tg-theme-text-color,#ffffff)]">{selectedEmployee.monthlySalary?.toLocaleString() || 0} ETB</span>
                                         </div>
                                         <div className="flex justify-between font-bold">
-                                            <span className="text-[var(--tg-theme-hint-color,#94a3b8)]">La Siiyay Bishan:</span>
-                                            <span className="text-emerald-400">{selectedEmployee.paidThisMonth.toLocaleString()} ETB</span>
+                                            <span className="text-[var(--tg-theme-hint-color,#94a3b8)]">Lacagta La Bixiyay Bishan:</span>
+                                            <span className="text-emerald-400">{selectedEmployee.paidThisMonth?.toLocaleString() || 0} ETB</span>
                                         </div>
-                                        <div className="flex justify-between font-black border-t border-white/5 pt-2 mt-0.5">
-                                            <span className="text-[var(--tg-theme-text-color,#ffffff)]">U Dhiman:</span>
-                                            <span className="text-[var(--tg-theme-button-color,#3b82f6)]">{selectedEmployee.dueThisMonth.toLocaleString()} ETB</span>
+                                        <div className="flex justify-between font-bold pt-1 border-t border-white/5">
+                                            <span className="text-[var(--tg-theme-hint-color,#94a3b8)]">Ku Dhiiban Bishan:</span>
+                                            <span className="text-amber-400 font-extrabold">{selectedEmployee.dueThisMonth?.toLocaleString() || 0} ETB</span>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         )}
 
-                        {/* --- TAB 2: EXPENSE (Transport/Equipment/Consultancy custom fields) --- */}
+                        {/* --- TAB 2: RAW MATERIAL --- */}
+                        {isRawMaterial && (
+                            <div className="flex flex-col gap-3 animate-fade-in">
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                        <Truck size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Supplier / Dealer
+                                    </label>
+                                    {!isNewVendor ? (
+                                        <div className="flex gap-2">
+                                            <select required value={selectedVendorId} onChange={(e) => setSelectedVendorId(e.target.value)}
+                                                className="flex-1 p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                                            >
+                                                <option value="" className="bg-slate-950">Dooro Supplier...</option>
+                                                {vendors.map(v => (
+                                                    <option key={v.id} value={v.id} className="bg-slate-950">{v.name}</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" onClick={() => setIsNewVendor(true)}
+                                                className="px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold whitespace-nowrap transition-all"
+                                            >
+                                                + Cusub
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <input type="text" required value={newVendorName} onChange={(e) => setNewVendorName(e.target.value)}
+                                                placeholder="Geli magaca Supplier-ka cusub"
+                                                className="flex-1 p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                                            />
+                                            <button type="button" onClick={() => { setIsNewVendor(false); setNewVendorName(''); }}
+                                                className="px-3 py-2 bg-white/5 hover:bg-white/10 text-[var(--tg-theme-hint-color,#94a3b8)] border border-white/10 rounded-xl text-xs font-bold whitespace-nowrap transition-all"
+                                            >
+                                                Tilmaam
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                        <Package size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Magaca Alaabta (Material Name)
+                                    </label>
+                                    {!isNewMaterial ? (
+                                        <div className="flex gap-2">
+                                            <select required value={selectedMaterialName} onChange={(e) => setSelectedMaterialName(e.target.value)}
+                                                className="flex-1 p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                                            >
+                                                <option value="" className="bg-slate-950">Dooro Material...</option>
+                                                {materials.map(m => (
+                                                    <option key={m.id} value={m.name} className="bg-slate-950">{m.name} ({m.unit})</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" onClick={() => setIsNewMaterial(true)}
+                                                className="px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold whitespace-nowrap transition-all"
+                                            >
+                                                + Cusub
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <input type="text" required value={newMaterialName} onChange={(e) => setNewMaterialName(e.target.value)}
+                                                placeholder="Geli magaca alaabta cusub"
+                                                className="flex-1 p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                                            />
+                                            <button type="button" onClick={() => { setIsNewMaterial(false); setNewMaterialName(''); }}
+                                                className="px-3 py-2 bg-white/5 hover:bg-white/10 text-[var(--tg-theme-hint-color,#94a3b8)] border border-white/10 rounded-xl text-xs font-bold whitespace-nowrap transition-all"
+                                            >
+                                                Tilmaam
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                            <Hash size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Tirada (Qty)
+                                        </label>
+                                        <input type="number" step="any" required value={quantity} onChange={(e) => setQuantity(e.target.value)}
+                                            placeholder="Tusaale: 50"
+                                            className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                            <Banknote size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Qiimaha/Xabo
+                                        </label>
+                                        <input type="number" step="any" required value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)}
+                                            placeholder="Tusaale: 120"
+                                            className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- TAB 3: GENERAL EXPENSE --- */}
                         {isExpense && (
                             <div className="flex flex-col gap-3 animate-fade-in">
                                 {selectedCategoryName === 'Transport & Fuel' && (
-                                    <div className="flex flex-col gap-1.5 bg-white/[0.01] border border-white/5 rounded-xl p-3">
+                                    <div className="flex flex-col gap-1.5">
                                         <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                            <Truck size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Nooca Gaadiidka
+                                            <Truck size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Nooca Gadiidka
                                         </label>
-                                        <select required value={transportType} onChange={(e) => setTransportType(e.target.value)}
-                                            className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
-                                        >
-                                            <option value="">Dooro...</option>
-                                            <option value="Shidaal (Fuel)">Shidaal (Fuel)</option>
-                                            <option value="Kirada Gaariga (Car Rental)">Kirada Gaariga (Car Rental)</option>
-                                            <option value="Taxi (Bajaaj / Taxi)">Taxi (Bajaaj / Taxi)</option>
-                                            <option value="Dayactirka Baabuurka (Vehicle Maint.)">Dayactirka Baabuurka (Vehicle Maint.)</option>
-                                            <option value="Mid Kale (Other)">Mid Kale (Other)</option>
-                                        </select>
+                                        <input type="text" value={transportType} onChange={(e) => setTransportType(e.target.value)}
+                                            placeholder="Tusaale: Bajaj / Gadiid V8 / Shidaal"
+                                            className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                                        />
                                     </div>
                                 )}
 
                                 {selectedCategoryName === 'Equipment Rental' && (
-                                    <div className="flex flex-col gap-3 bg-white/[0.01] border border-white/5 rounded-xl p-3">
+                                    <div className="grid grid-cols-2 gap-2">
                                         <div className="flex flex-col gap-1.5">
                                             <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                                <Wrench size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Magaca Qalabka (Equipment Name)
+                                                <Wrench size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Qalabka
                                             </label>
-                                            <input type="text" required placeholder="Magaca qalabka..." value={equipmentName} onChange={(e) => setEquipmentName(e.target.value)}
-                                                className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
+                                            <input type="text" value={equipmentName} onChange={(e) => setEquipmentName(e.target.value)}
+                                                placeholder="Magaca qalabka"
+                                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
                                             />
                                         </div>
                                         <div className="flex flex-col gap-1.5">
                                             <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                                <Calendar size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Muddada Kirada
+                                                <Calendar size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Muddada
                                             </label>
-                                            <input type="text" placeholder="e.g. 3 Maalmood, 1 Bil..." value={rentalPeriod} onChange={(e) => setRentalPeriod(e.target.value)}
-                                                className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
+                                            <input type="text" value={rentalPeriod} onChange={(e) => setRentalPeriod(e.target.value)}
+                                                placeholder="Tusaale: 3 maalmood"
+                                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
                                             />
                                         </div>
                                     </div>
                                 )}
 
                                 {selectedCategoryName === 'Consultancy & Service' && (
-                                    <div className="flex flex-col gap-3 bg-white/[0.01] border border-white/5 rounded-xl p-3">
+                                    <div className="grid grid-cols-2 gap-2">
                                         <div className="flex flex-col gap-1.5">
                                             <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                                <User size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Magaca La-taliyaha (Consultant Name)
+                                                <User size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> La-taliyaha
                                             </label>
-                                            <input type="text" required placeholder="Magaca shirkada ama la-taliyaha..." value={consultantName} onChange={(e) => setConsultantName(e.target.value)}
-                                                className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
+                                            <input type="text" value={consultantName} onChange={(e) => setConsultantName(e.target.value)}
+                                                placeholder="Magaca la-taliyaha"
+                                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
                                             />
                                         </div>
                                         <div className="flex flex-col gap-1.5">
                                             <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                                <ClipboardList size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Adeegga la qabtay
+                                                <ClipboardList size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Adeegga
                                             </label>
-                                            <input type="text" placeholder="Sharaxaad kooban..." value={consultancyType} onChange={(e) => setConsultancyType(e.target.value)}
-                                                className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
+                                            <input type="text" value={consultancyType} onChange={(e) => setConsultancyType(e.target.value)}
+                                                placeholder="Tusaale: Audit / Legal"
+                                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
                                             />
                                         </div>
                                     </div>
@@ -1323,268 +1480,128 @@ export default function TelegramMiniAppPage() {
                             </div>
                         )}
 
-                        {/* --- TAB 3: RAW MATERIAL --- */}
-                        {isRawMaterial && (
-                            <div className="flex flex-col gap-3 animate-fade-in">
-                                
-                                {/* Vendor Selector */}
-                                <div className="flex flex-col gap-1.5">
-                                    <div className="flex justify-between items-center text-xs font-black uppercase tracking-wider">
-                                        <span className="text-[var(--tg-theme-hint-color,#94a3b8)] flex items-center gap-1.5"><Factory size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Supplier</span>
-                                        <button type="button" onClick={() => { setIsNewVendor(!isNewVendor); setSelectedVendorId(''); }}
-                                            className="text-[var(--tg-theme-button-color,#3b82f6)] hover:opacity-80"
-                                        >
-                                            {isNewVendor ? "Dooro mid jira" : "➕ Kordhi cusub"}
-                                        </button>
-                                    </div>
-                                    {isNewVendor ? (
-                                        <input type="text" required placeholder="Supplier-ka cusub..." value={newVendorName} onChange={(e) => setNewVendorName(e.target.value)}
-                                            className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
-                                        />
-                                    ) : (
-                                        <select required value={selectedVendorId} onChange={(e) => setSelectedVendorId(e.target.value)}
-                                            className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
-                                        >
-                                            <option value="" className="bg-slate-950">Dooro Supplier...</option>
-                                            {vendors.map(v => (
-                                                <option key={v.id} value={v.id} className="bg-slate-950">
-                                                    {v.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-
-                                {/* Material Selector */}
-                                <div className="flex flex-col gap-1.5">
-                                    <div className="flex justify-between items-center text-xs font-black uppercase tracking-wider">
-                                        <span className="text-[var(--tg-theme-hint-color,#94a3b8)] flex items-center gap-1.5"><Package size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Agabka Cayriin (Raw Material)</span>
-                                        <button type="button" onClick={() => { setIsNewMaterial(!isNewMaterial); setSelectedMaterialName(''); }}
-                                            className="text-[var(--tg-theme-button-color,#3b82f6)] hover:opacity-80"
-                                        >
-                                            {isNewMaterial ? "Dooro mid jira" : "➕ Kordhi cusub"}
-                                        </button>
-                                    </div>
-                                    {isNewMaterial ? (
-                                        <input type="text" required placeholder="Magaca Agabka cusub..." value={newMaterialName} onChange={(e) => setNewMaterialName(e.target.value)}
-                                            className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
-                                        />
-                                    ) : (
-                                        <select required value={selectedMaterialName} onChange={(e) => setSelectedMaterialName(e.target.value)}
-                                            className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
-                                        >
-                                            <option value="" className="bg-slate-950">Dooro Agabka...</option>
-                                            {materials.map(m => (
-                                                <option key={m.id} value={m.name} className="bg-slate-950">
-                                                    {m.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-
-                                {/* Qty & Unit Price Grid */}
-                                <div className="grid grid-cols-2 gap-3.5">
-                                    <div className="flex flex-col gap-1.5">
-                                        <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                            <Hash size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Tirada (Qty)
-                                        </label>
-                                        <input type="number" required placeholder="0" value={quantity} onChange={(e) => setQuantity(e.target.value)}
-                                            className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
-                                        />
-                                    </div>
-                                    <div className="flex flex-col gap-1.5">
-                                        <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                            <Banknote size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Qiimaha
-                                        </label>
-                                        <input type="number" required placeholder="0.00" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)}
-                                            className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] border border-white/10 rounded-lg text-sm font-bold outline-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Computed total display */}
-                                {calculatedTotal > 0 && (
-                                    <div className="flex flex-col gap-1.5">
-                                        <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex justify-between items-center text-xs">
-                                            <span className="font-bold text-[var(--tg-theme-hint-color,#94a3b8)]">Total Cost:</span>
-                                            <span className="font-black text-[var(--tg-theme-button-color,#3b82f6)]">{calculatedTotal.toLocaleString()} ETB</span>
-                                        </div>
-                                        {isOverLimit && activeAccount && (
-                                            <p className="text-[10px] text-red-400 font-bold">⚠️ Digniin: Total-ku wuxuu ka badan yahay haraaga koontada (Haraa: {activeAccount.balance.toLocaleString()} ETB)</p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Show normal Amount input if type is NOT Raw Material */}
+                        {/* --- COMMON FIELDS --- */}
                         {!isRawMaterial && (
-                            <div className="flex flex-col gap-1.5 animate-fade-in">
+                            <div className="flex flex-col gap-1.5">
                                 <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                    <DollarSign size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Lacagta (Amount in ETB)
+                                    <DollarSign size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Lacagta (Amount ETB)
                                 </label>
-                                <input type="number" required placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)}
-                                    className={`w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border rounded-lg text-sm font-black focus:border-[var(--tg-theme-button-color,#3b82f6)] outline-none ${isOverLimit ? 'border-red-500/50' : 'border-white/10'}`}
+                                <input type="number" step="any" required value={amount} onChange={(e) => setAmount(e.target.value)}
+                                    placeholder="Geli lacagta ETB..."
+                                    className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-emerald-400 font-extrabold border border-white/10 rounded-xl text-base outline-none focus:border-[var(--tg-theme-button-color,#3b82f6)]"
                                 />
-                                {isOverLimit && activeAccount && (
-                                    <p className="text-[10px] text-red-400 font-bold mt-1">⚠️ Digniin: Lacagtu waxay ka badan tahay haraaga koontada (Haraa: {activeAccount.balance.toLocaleString()} ETB)</p>
-                                )}
                             </div>
                         )}
 
-                        {/* Funding Account Selection */}
+                        {isRawMaterial && (
+                            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex justify-between items-center">
+                                <span className="text-xs font-bold text-emerald-400">Total-ka Alaabta:</span>
+                                <span className="text-base font-black text-emerald-400">{calculatedTotal.toLocaleString()} ETB</span>
+                            </div>
+                        )}
+
+                        {/* Payment Contact Fields */}
+                        <div className="flex flex-col gap-2 p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                            <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                    <Phone size={10} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Qofka Lacagta loo xawilayo
+                                </label>
+                                {activeCategorySavedContacts.length > 0 && (
+                                    <button type="button" onClick={() => setShowSavedContacts(!showSavedContacts)}
+                                        className="text-[10px] font-bold text-[var(--tg-theme-button-color,#3b82f6)] hover:underline"
+                                    >
+                                        {showSavedContacts ? 'Qari' : `📋 Xiriirradii Hore (${activeCategorySavedContacts.length})`}
+                                    </button>
+                                )}
+                            </div>
+
+                            {showSavedContacts && activeCategorySavedContacts.length > 0 && (
+                                <div className="flex flex-col gap-1 max-h-32 overflow-y-auto p-1 bg-black/20 rounded-lg border border-white/5">
+                                    {activeCategorySavedContacts.map((c, idx) => (
+                                        <button key={idx} type="button" onClick={() => handleSelectSavedContact(c)}
+                                            className="p-1.5 hover:bg-white/10 rounded text-left text-xs font-bold flex justify-between items-center transition-all"
+                                        >
+                                            <span>{c.name}</span>
+                                            <span className="text-[10px] text-[var(--tg-theme-hint-color,#94a3b8)]">{c.phone}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)}
+                                    placeholder="Magaca loo dirayo"
+                                    className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-xs font-bold outline-none"
+                                />
+                                <input type="tel" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)}
+                                    placeholder="Lambar (09.../07...)"
+                                    className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-xs font-bold outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Note & Voice Input */}
+                        <div className="flex flex-col gap-1.5">
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                    <FileText size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Sharaxaad / Faustina
+                                </label>
+                                <button type="button" onClick={toggleVoiceRecognition}
+                                    className={`px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 transition-all ${
+                                        isListening ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse' : 'bg-white/5 text-[var(--tg-theme-hint-color,#94a3b8)] hover:text-white border border-white/10'
+                                    }`}
+                                >
+                                    {isListening ? <MicOff size={10} /> : <Mic size={10} />}
+                                    {isListening ? 'Dhegeystaya...' : '🎙️ Cod ku qor'}
+                                </button>
+                            </div>
+                            <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
+                                placeholder="Fadlan sharaxaad yar ka bixi kharashkan..."
+                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-xs font-bold outline-none focus:border-[var(--tg-theme-button-color,#3b82f6)]"
+                            />
+                        </div>
+
+                        {/* Account Selector */}
                         <div className="flex flex-col gap-1.5">
                             <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                <Wallet size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Koontada (Payment Account)
+                                <Wallet size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Koontada Lagaga Bixinayo
                             </label>
                             <select required value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)}
-                                className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-sm font-bold outline-none"
+                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
                             >
-                                {accounts.map(a => (
-                                    <option key={a.id} value={a.id} className="bg-slate-950">
-                                        {a.name} ({a.balance.toLocaleString()} {a.currency})
+                                {accounts.map(acc => (
+                                    <option key={acc.id} value={acc.id} className="bg-slate-950">
+                                        {acc.name} ({acc.balance.toLocaleString()} {acc.currency})
                                     </option>
                                 ))}
                             </select>
                         </div>
 
-                        {/* Recipient Name - shown for non-salary types */}
-                        {!isSalary && (
-                            <div className="flex flex-col gap-1.5 animate-fade-in">
-                                <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                    <User size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Qofka Loo Dirayo (Recipient)
-                                </label>
-                                {/* Show saved contacts dropdown based on Category */}
-                                {isExpense && (
-                                    (() => {
-                                        let contactsList: {name: string; phone: string}[] = [];
-                                        if (selectedCategoryName === 'Transport & Fuel' && transportType === 'Kirada Gaariga (Car Rental)') {
-                                            contactsList = savedTransportContacts;
-                                        } else if (selectedCategoryName === 'Equipment Rental') {
-                                            contactsList = savedEquipmentContacts;
-                                        } else if (selectedCategoryName === 'Consultancy & Service') {
-                                            contactsList = savedConsultantContacts;
-                                        }
-
-                                        if (contactsList.length === 0) return null;
-
-                                        return (
-                                            <div className="flex flex-col gap-1.5 mb-1">
-                                                <button type="button" onClick={() => setShowSavedContacts(!showSavedContacts)}
-                                                    className="text-xs font-bold text-[var(--tg-theme-button-color,#3b82f6)] text-left hover:opacity-80"
-                                                >
-                                                    {showSavedContacts ? '✕ Xir' : `📋 Dadkii hore (${contactsList.length})`}
-                                                </button>
-                                                {showSavedContacts && (
-                                                    <div className="flex flex-col gap-1 bg-white/[0.02] border border-white/5 rounded-lg p-2 max-h-32 overflow-y-auto">
-                                                        {contactsList.map((c, i) => (
-                                                            <button key={i} type="button"
-                                                                onClick={() => {
-                                                                    triggerHaptic('light');
-                                                                    setRecipientName(c.name);
-                                                                    setPaymentPhone(c.phone);
-                                                                    setShowSavedContacts(false);
-                                                                }}
-                                                                className="text-left p-2 rounded-lg hover:bg-white/5 text-xs font-bold flex justify-between items-center transition-all"
-                                                            >
-                                                                <span>{c.name}</span>
-                                                                <span className="text-[var(--tg-theme-hint-color,#94a3b8)]">{c.phone}</span>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })()
-                                )}
-                                <input type="text" placeholder="Magaca qofka lacagta loo dirayo..." value={recipientName} onChange={(e) => setRecipientName(e.target.value)}
-                                    className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-sm font-bold focus:border-[var(--tg-theme-button-color,#3b82f6)] outline-none"
-                                />
-                            </div>
-                        )}
-
-                        {/* Payment Phone Number */}
-                        <div className="flex flex-col gap-1.5 animate-fade-in">
-                            <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                <Phone size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Lambarka Lacag-bixinta
-                            </label>
-                            <input type="tel" placeholder="09xxxxxxxx" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)}
-                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-sm font-bold focus:border-[var(--tg-theme-button-color,#3b82f6)] outline-none"
-                            />
-                            {isSalary && selectedEmployee?.phone && (
-                                <p className="text-[10px] text-emerald-400 font-bold">✓ Lambarka shaqaalaha: {selectedEmployee.phone}</p>
-                            )}
+                        {/* Batch Action Buttons */}
+                        <div className="flex gap-2 pt-1">
+                            <button type="button" onClick={handleAddToBatch}
+                                className="flex-1 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5"
+                            >
+                                <PlusCircle size={14} /> Ku dar Batch-ka
+                            </button>
                         </div>
 
-                        {/* Description/Note */}
-                        <div className="flex flex-col gap-1.5">
-                            <div className="flex justify-between items-center">
-                                <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                    <FileText size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Faahfaahin / Note (Sharaxaad)
-                                </label>
-                                {recognitionObj && (
-                                    <button type="button" onClick={toggleListening}
-                                        className={`flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-full border transition-all ${isListening ? 'bg-red-500/20 text-red-400 border-red-500/30 animate-pulse' : 'bg-white/5 text-[var(--tg-theme-hint-color,#94a3b8)] border-white/10'}`}
-                                    >
-                                        {isListening ? (
-                                            <>
-                                                <MicOff size={10} />
-                                                <span>Dhegeysanaya...</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Mic size={10} />
-                                                <span>Ku hadal (Somali)</span>
-                                            </>
-                                        )}
-                                    </button>
-                                )}
-                            </div>
-                            <textarea rows={2} placeholder={isListening ? 'Dhegeysanaya codkaaga, fadlan hadal...' : isSalary ? 'Sharaxaadda mushaharka...' : isRawMaterial ? 'Sharaxaadda alaabta...' : 'Sharaxaadda kharashka...'}
-                                value={note} onChange={(e) => setNote(e.target.value)}
-                                className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-sm font-bold outline-none resize-none"
-                            />
-                        </div>
-
-                        {/* Add to Batch Button */}
-                        <button type="button" onClick={handleAddToBatch}
-                            className="w-full py-2.5 px-3 bg-[var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.05))] border border-[var(--tg-theme-button-color,#2563eb)]/30 text-[var(--tg-theme-button-color,#2563eb)] rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 hover:bg-[var(--tg-theme-button-color,#2563eb)]/10 active:scale-[0.98] mt-0.5"
-                        >
-                            <PlusCircle size={13} className="text-[var(--tg-theme-button-color,#2563eb)]" />
-                            <span>➕ Ku Dar Dalab Kale (Add to List)</span>
-                        </button>
-
-                        {/* Compact Batch Preview Card */}
                         {validBatchItems.length > 0 && (
-                            <div className="p-3 bg-[var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.05))] border border-[var(--tg-theme-button-color,#2563eb)]/20 rounded-xl flex flex-col gap-2 animate-fade-in mt-0.5">
-                                <div className="flex justify-between items-center pb-1.5 border-b border-black/10 dark:border-white/10">
-                                    <div className="flex items-center gap-1.5">
-                                        <Layers size={13} className="text-[var(--tg-theme-button-color,#2563eb)]" />
-                                        <span className="text-[10px] font-black uppercase tracking-wider text-[var(--tg-theme-text-color,#ffffff)]">
-                                            Dalabaadka la Ururiyay ({validBatchItems.length})
-                                        </span>
-                                    </div>
-                                    <button type="button" onClick={handleClearBatch} className="text-[10px] text-red-500 font-bold hover:underline">
-                                        Nadiifi All
-                                    </button>
+                            <div className="p-3 bg-white/[0.02] border border-white/10 rounded-xl flex flex-col gap-2 animate-fade-in">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs font-black text-blue-400 uppercase tracking-wider">📦 Batch-ka Diiwaangashan ({validBatchItems.length})</span>
+                                    <button type="button" onClick={handleClearBatch} className="text-[10px] font-bold text-red-400 hover:underline">Zaaqa Dhammaan</button>
                                 </div>
 
-                                <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-0.5">
-                                    {validBatchItems.map((item, idx) => (
-                                        <div key={item.id} className="p-2 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.08))] border border-black/5 dark:border-white/5 rounded-lg flex justify-between items-center text-xs">
-                                            <div className="flex flex-col text-left truncate mr-2">
-                                                <span className="font-bold text-[var(--tg-theme-text-color,#ffffff)] text-[11px] truncate">
-                                                    {idx + 1}. {item.categoryName || (item.categoryKey === 'SALARY' ? 'Mushahar' : item.categoryKey === 'RAW_MATERIAL' ? 'Raw Material' : 'Kharash')}
-                                                </span>
-                                                <span className="text-[9px] text-[var(--tg-theme-hint-color,#64748b)] truncate">
-                                                    {item.recipientName ? `👤 ${item.recipientName} ` : ''}
-                                                    {item.employeeName ? `👤 ${item.employeeName} ` : ''}
-                                                    {item.note ? `• ${item.note}` : ''}
-                                                </span>
+                                <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto">
+                                    {validBatchItems.map((item) => (
+                                        <div key={item.id} className="p-2 bg-black/20 rounded-lg flex justify-between items-center text-xs font-bold border border-white/5">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] text-blue-400">{item.categoryName}</span>
+                                                <span className="text-[11px] text-white/90 line-clamp-1">{item.note || item.employeeName || item.materialName || 'Kharash'}</span>
                                             </div>
-                                            <div className="flex items-center gap-1.5 shrink-0">
-                                                <span className="font-black text-[var(--tg-theme-button-color,#2563eb)] text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-emerald-400 font-extrabold">
                                                     {item.amount.toLocaleString()} ETB
                                                 </span>
                                                 <button type="button" onClick={() => handleRemoveFromBatch(item.id)}
@@ -1596,17 +1613,12 @@ export default function TelegramMiniAppPage() {
                                         </div>
                                     ))}
                                 </div>
-
-                                <div className="flex justify-between items-center pt-1.5 border-t border-black/10 dark:border-white/10 text-xs">
-                                    <span className="font-bold text-[var(--tg-theme-hint-color,#64748b)] text-[10px]">Total-ka Wada Jirka ah:</span>
-                                    <span className="font-black text-[var(--tg-theme-button-color,#2563eb)] text-xs">{totalBatchAmount.toLocaleString()} ETB</span>
-                                </div>
                             </div>
                         )}
 
                         {/* Submit Button */}
                         <button type="submit" disabled={submitting || !selectedAccountId}
-                            className="w-full py-3.5 bg-[var(--tg-theme-button-color,#2563eb)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-xl font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-[0.99] disabled:opacity-40 transition-all flex items-center justify-center gap-2 mt-1"
+                            className="w-full py-3.5 bg-[var(--tg-theme-button-color,#3b82f6)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-xl font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-[0.99] disabled:opacity-40 transition-all flex items-center justify-center gap-2 mt-1"
                         >
                             {submitting ? (
                                 <>
@@ -1629,49 +1641,101 @@ export default function TelegramMiniAppPage() {
                 </>
             )}
 
-                {/* Edit Expense Modal Overlay */}
+                {/* Edit Expense Modal Overlay (Redesigned with Premium Dark Theme & All Fields) */}
                 {editingExpense && (
-                    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
-                        <div className="w-full max-w-md bg-[var(--tg-theme-bg-color,#0b0f19)] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 flex flex-col gap-4 shadow-2xl animate-slide-up">
+                    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
+                        <div className="w-full max-w-md bg-[var(--tg-theme-bg-color,#0b0f19)] border border-white/15 rounded-t-3xl sm:rounded-3xl p-5 flex flex-col gap-4 shadow-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
                             <div className="flex justify-between items-center border-b border-white/10 pb-3">
                                 <div>
-                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Wax ka beddel Codsiga</p>
+                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1">
+                                        <Pencil size={11} /> Wax ka beddel Codsiga
+                                    </p>
                                     <h3 className="text-base font-black text-white">{editingExpense.category}</h3>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => setEditingExpense(null)}
-                                    className="p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-white/60 hover:text-white"
+                                    className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-white/60 hover:text-white transition-all"
                                 >
                                     ✕
                                 </button>
                             </div>
 
-                            <div className="flex flex-col gap-3">
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">Lacagta (Amount ETB)</label>
+                            <div className="flex flex-col gap-3.5">
+                                {/* Amount Field */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                        <DollarSign size={11} className="text-emerald-400" /> Lacagta (Amount ETB)
+                                    </label>
                                     <input
                                         type="number"
+                                        step="any"
+                                        required
                                         value={editAmount}
                                         onChange={(e) => setEditAmount(e.target.value)}
-                                        className="w-full p-3 bg-black/20 border border-white/10 rounded-xl text-sm font-bold text-emerald-400 outline-none focus:border-blue-500"
-                                        placeholder="Geli lacagta"
+                                        className="w-full p-3 bg-white/[0.03] border border-white/10 rounded-xl text-base font-extrabold text-emerald-400 outline-none focus:border-blue-500 transition-all"
+                                        placeholder="Geli lacagta..."
                                     />
                                 </div>
 
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">Sharaxaadda (Note)</label>
+                                {/* Category Selector */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                        <Tag size={11} className="text-blue-400" /> Qaybta (Category)
+                                    </label>
+                                    <select
+                                        value={editCategoryId}
+                                        onChange={(e) => setEditCategoryId(e.target.value)}
+                                        className="w-full p-3 bg-white/[0.03] text-white border border-white/10 rounded-xl text-xs font-bold outline-none focus:border-blue-500"
+                                    >
+                                        <option value="" className="bg-slate-950">{editingExpense.category}</option>
+                                        {categories.map((c) => (
+                                            <option key={c.id} value={c.id} className="bg-slate-950">{c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Recipient Name & Payment Phone */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">👤 Loo Dirayo</label>
+                                        <input
+                                            type="text"
+                                            value={editRecipientName}
+                                            onChange={(e) => setEditRecipientName(e.target.value)}
+                                            className="w-full p-2.5 bg-white/[0.03] border border-white/10 rounded-xl text-xs font-bold text-white outline-none focus:border-blue-500"
+                                            placeholder="Magaca"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">📱 Lambarka</label>
+                                        <input
+                                            type="tel"
+                                            value={editPhone}
+                                            onChange={(e) => setEditPhone(e.target.value)}
+                                            className="w-full p-2.5 bg-white/[0.03] border border-white/10 rounded-xl text-xs font-bold text-white outline-none focus:border-blue-500"
+                                            placeholder="Lambar"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Clean Note Field */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                        <FileText size={11} className="text-blue-400" /> Sharaxaadda (Note)
+                                    </label>
                                     <textarea
                                         rows={3}
                                         value={editNote}
                                         onChange={(e) => setEditNote(e.target.value)}
-                                        className="w-full p-3 bg-black/20 border border-white/10 rounded-xl text-xs font-bold text-white outline-none focus:border-blue-500"
-                                        placeholder="Sharaxaad ka bixi kharashka"
+                                        className="w-full p-3 bg-white/[0.03] border border-white/10 rounded-xl text-xs font-bold text-white outline-none focus:border-blue-500"
+                                        placeholder="Sharaxaad ka bixi kharashka..."
                                     />
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-2 pt-3 border-t border-white/10">
                                 <button
                                     type="button"
                                     onClick={() => handleDeleteExpense(editingExpense.id)}
@@ -1686,7 +1750,7 @@ export default function TelegramMiniAppPage() {
                                     type="button"
                                     onClick={handleSaveEdit}
                                     disabled={savingEdit || !editAmount}
-                                    className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all disabled:opacity-40"
+                                    className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-lg hover:shadow-blue-500/25 active:scale-[0.99] disabled:opacity-40"
                                 >
                                     {savingEdit ? <Loader2 className="animate-spin" size={14} /> : '💾 Cusboonaysii (Save)'}
                                 </button>
