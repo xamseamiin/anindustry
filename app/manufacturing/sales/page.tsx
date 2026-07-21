@@ -72,6 +72,9 @@ export default function FactorySalesPage() {
                         <Link href="/manufacturing/accounting/bulk" className="px-6 py-3.5 bg-slate-900 text-white hover:bg-slate-800 rounded-xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/10 transition-all flex items-center gap-2 active:scale-95">
                             <ClipboardList size={18} /> Bulk Sales Import
                         </Link>
+                        <Link href="/manufacturing/sales/voucher" className="px-6 py-3.5 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-600/30 hover:bg-blue-700 transition-all flex items-center gap-2 active:scale-95">
+                            <FileText size={18} /> Voucher (Rasiidh)
+                        </Link>
                         <Link href="/manufacturing/sales/add" className="px-6 py-3.5 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-600/30 hover:bg-emerald-700 transition-all flex items-center gap-2 active:scale-95">
                             <Plus size={18} /> New Sales Order
                         </Link>

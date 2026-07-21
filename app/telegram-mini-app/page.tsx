@@ -6,7 +6,8 @@ import {
     Loader2, CheckCircle2, DollarSign, Wallet, 
     FileText, User, Tag, Truck, Settings, ShoppingBag, 
     Award, ArrowRight, Layers, Factory, Package,
-    Hash, Banknote, Calendar, ClipboardList, Wrench, Phone
+    Hash, Banknote, Calendar, ClipboardList, Wrench, Phone,
+    Mic, MicOff
 } from 'lucide-react';
 
 // Safe localStorage helpers for iOS WebView where localStorage can throw SecurityError
@@ -15,6 +16,19 @@ const safeGetItem = (key: string): string | null => {
 };
 const safeSetItem = (key: string, value: string): void => {
     try { localStorage.setItem(key, value); } catch { /* silently fail */ }
+};
+
+const triggerHaptic = (type: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection') => {
+    if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.HapticFeedback) {
+        const haptic = (window as any).Telegram.WebApp.HapticFeedback;
+        if (type === 'success' || type === 'warning' || type === 'error') {
+            haptic.notificationOccurred(type);
+        } else if (type === 'selection') {
+            haptic.selectionChanged();
+        } else {
+            haptic.impactOccurred(type);
+        }
+    }
 };
 
 // Shared Telegram scripts rendered in every return path
@@ -120,6 +134,8 @@ export default function TelegramMiniAppPage() {
     const [savedEquipmentContacts, setSavedEquipmentContacts] = useState<{name: string; phone: string}[]>([]);
     const [savedConsultantContacts, setSavedConsultantContacts] = useState<{name: string; phone: string}[]>([]);
     const [showSavedContacts, setShowSavedContacts] = useState(false);
+    const [isListening, setIsListening] = useState(false);
+    const [recognitionObj, setRecognitionObj] = useState<any>(null);
 
     const syncOfflineSubmissions = async () => {
         if (typeof window === 'undefined' || syncingOffline) return;
@@ -229,6 +245,37 @@ export default function TelegramMiniAppPage() {
         };
     }, []);
 
+    // Initialize Speech Recognition
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                const rec = new SpeechRecognition();
+                rec.continuous = true;
+                rec.interimResults = false;
+                rec.lang = 'so-SO'; // Default to Somali language detection
+
+                rec.onresult = (event: any) => {
+                    const resultIndex = event.resultIndex;
+                    const transcript = event.results[resultIndex][0].transcript;
+                    setNote(prev => prev ? `${prev} ${transcript}` : transcript);
+                    triggerHaptic('light');
+                };
+
+                rec.onend = () => {
+                    setIsListening(false);
+                };
+
+                rec.onerror = (err: any) => {
+                    console.error('Speech recognition error:', err);
+                    setIsListening(false);
+                };
+
+                setRecognitionObj(rec);
+            }
+        }
+    }, []);
+
     // Auto-fill payment phone when employee is selected
     useEffect(() => {
         if (selectedEmployeeId && selectedCategoryKey === 'SALARY') {
@@ -243,6 +290,7 @@ export default function TelegramMiniAppPage() {
 
     // Parse the main dropdown value to set the respective state variables
     const handleCategoryChange = (val: string) => {
+        triggerHaptic('selection');
         setSelectedCategoryKey(val);
         
         // Reset states
@@ -304,11 +352,37 @@ export default function TelegramMiniAppPage() {
         }
     };
 
+    const toggleListening = () => {
+        if (!recognitionObj) {
+            alert('Qalabkani ma taageerayo cod-u-beddelka qoraalka (Speech recognition not supported in this browser).');
+            return;
+        }
+
+        triggerHaptic('medium');
+        if (isListening) {
+            recognitionObj.stop();
+            setIsListening(false);
+        } else {
+            try {
+                recognitionObj.start();
+                setIsListening(true);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
 
+        if (recognitionObj && isListening) {
+            try { recognitionObj.stop(); } catch(e) {}
+            setIsListening(false);
+        }
+
         if (paymentPhone && !validatePhoneNumber(paymentPhone)) {
+            triggerHaptic('error');
             alert('Fadlan geli lambar telefoon oo sax ah (tusaale: 09xxxxxxxx ama +251... / +252...)');
             setSubmitting(false);
             return;
@@ -373,6 +447,7 @@ export default function TelegramMiniAppPage() {
             queue.push({ ...payload, id: Date.now().toString() });
             safeSetItem('offline_submissions', JSON.stringify(queue));
             
+            triggerHaptic('success');
             setSuccess(true);
             setOfflineSubmitted(true);
             setSubmitting(false);
@@ -428,13 +503,16 @@ export default function TelegramMiniAppPage() {
             });
 
             if (res.ok) {
+                triggerHaptic('success');
                 setSuccess(true);
                 setOfflineSubmitted(false);
             } else {
+                triggerHaptic('error');
                 const data = await res.json();
                 alert(data.error || 'Dalabku wuu fashilmay.');
             }
         } catch (err) {
+            triggerHaptic('error');
             console.error(err);
             alert('Cilad ayaa ku dhacday server-ka.');
         } finally {
@@ -454,6 +532,10 @@ export default function TelegramMiniAppPage() {
 
     if (success) {
         const handleBack = () => {
+            if (recognitionObj && isListening) {
+                try { recognitionObj.stop(); } catch(e) {}
+            }
+            setIsListening(false);
             setSuccess(false);
             setOfflineSubmitted(false);
             setAmount('');
@@ -513,6 +595,17 @@ export default function TelegramMiniAppPage() {
             </div>
         );
     }
+
+    const activeAccount = accounts.find(a => a.id === selectedAccountId);
+    const isRawMaterialTemp = selectedCategoryKey === 'RAW_MATERIAL';
+    const amountVal = isRawMaterialTemp ? calculatedTotal : (parseFloat(amount) || 0);
+    const isOverLimit = activeAccount && amountVal > activeAccount.balance;
+
+    useEffect(() => {
+        if (isOverLimit) {
+            triggerHaptic('warning');
+        }
+    }, [isOverLimit]);
 
     const isSalary = selectedCategoryKey === 'SALARY';
     const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
@@ -810,9 +903,14 @@ export default function TelegramMiniAppPage() {
 
                                 {/* Computed total display */}
                                 {calculatedTotal > 0 && (
-                                    <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex justify-between items-center text-xs">
-                                        <span className="font-bold text-[var(--tg-theme-hint-color,#94a3b8)]">Total Cost:</span>
-                                        <span className="font-black text-[var(--tg-theme-button-color,#3b82f6)]">{calculatedTotal.toLocaleString()} ETB</span>
+                                    <div className="flex flex-col gap-1.5">
+                                        <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex justify-between items-center text-xs">
+                                            <span className="font-bold text-[var(--tg-theme-hint-color,#94a3b8)]">Total Cost:</span>
+                                            <span className="font-black text-[var(--tg-theme-button-color,#3b82f6)]">{calculatedTotal.toLocaleString()} ETB</span>
+                                        </div>
+                                        {isOverLimit && activeAccount && (
+                                            <p className="text-[10px] text-red-400 font-bold">⚠️ Digniin: Total-ku wuxuu ka badan yahay haraaga koontada (Haraa: {activeAccount.balance.toLocaleString()} ETB)</p>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -825,8 +923,11 @@ export default function TelegramMiniAppPage() {
                                     <DollarSign size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Lacagta (Amount in ETB)
                                 </label>
                                 <input type="number" required placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)}
-                                    className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-sm font-black focus:border-[var(--tg-theme-button-color,#3b82f6)] outline-none"
+                                    className={`w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border rounded-lg text-sm font-black focus:border-[var(--tg-theme-button-color,#3b82f6)] outline-none ${isOverLimit ? 'border-red-500/50' : 'border-white/10'}`}
                                 />
+                                {isOverLimit && activeAccount && (
+                                    <p className="text-[10px] text-red-400 font-bold mt-1">⚠️ Digniin: Lacagtu waxay ka badan tahay haraaga koontada (Haraa: {activeAccount.balance.toLocaleString()} ETB)</p>
+                                )}
                             </div>
                         )}
 
@@ -878,6 +979,7 @@ export default function TelegramMiniAppPage() {
                                                         {contactsList.map((c, i) => (
                                                             <button key={i} type="button"
                                                                 onClick={() => {
+                                                                    triggerHaptic('light');
                                                                     setRecipientName(c.name);
                                                                     setPaymentPhone(c.phone);
                                                                     setShowSavedContacts(false);
@@ -915,10 +1017,29 @@ export default function TelegramMiniAppPage() {
 
                         {/* Description/Note */}
                         <div className="flex flex-col gap-1.5">
-                            <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                <FileText size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Faahfaahin / Note (Sharaxaad)
-                            </label>
-                            <textarea rows={2} placeholder={isSalary ? 'Sharaxaadda mushaharka...' : isRawMaterial ? 'Sharaxaadda alaabta...' : 'Sharaxaadda kharashka...'}
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                    <FileText size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Faahfaahin / Note (Sharaxaad)
+                                </label>
+                                {recognitionObj && (
+                                    <button type="button" onClick={toggleListening}
+                                        className={`flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-full border transition-all ${isListening ? 'bg-red-500/20 text-red-400 border-red-500/30 animate-pulse' : 'bg-white/5 text-[var(--tg-theme-hint-color,#94a3b8)] border-white/10'}`}
+                                    >
+                                        {isListening ? (
+                                            <>
+                                                <MicOff size={10} />
+                                                <span>Dhegeysanaya...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Mic size={10} />
+                                                <span>Ku hadal (Somali)</span>
+                                            </>
+                                        )}
+                                    </button>
+                                )}
+                            </div>
+                            <textarea rows={2} placeholder={isListening ? 'Dhegeysanaya codkaaga, fadlan hadal...' : isSalary ? 'Sharaxaadda mushaharka...' : isRawMaterial ? 'Sharaxaadda alaabta...' : 'Sharaxaadda kharashka...'}
                                 value={note} onChange={(e) => setNote(e.target.value)}
                                 className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-sm font-bold outline-none resize-none"
                             />

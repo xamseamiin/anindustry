@@ -108,11 +108,27 @@ I have successfully optimized the Telegram Mini App (Web App) to be highly compa
     *   **Gemini Multimodal AI API Integration:** Added `/api/manufacturing/cctv-counter/analyze` endpoint. Every 2.5 seconds, the page takes a base64 JPEG snapshot from the webcam canvas and sends it to the Gemini 1.5 Flash API to classify the object and measure its exact length and width in millimeters, smoothly rendering the bounding box and classifications on the live stream overlay.
     *   **Heuristic Fallbacks:** Gracefully falls back to robust local simulation if the Gemini API key is missing or encounters a timeout, ensuring a highly resilient and functional demo.
 
+### 13. Printable Blank 4/6-Quadrant A4 Goods Gate Pass & Sales Receipt
+*   **Voucher Navigation Button**: Added the "Voucher (Rasiidh)" action button in [page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/sales/page.tsx) next to the Bulk Sales Import button.
+*   **Specialized Voucher Page**: Created [page.tsx](file:///c:/Users/OMEN/projects/An-Industory/app/manufacturing/sales/voucher/page.tsx) to provide a blank template utility:
+    *   **Blank Layout Selector**: Supports printing/downloading either **6 copies per page (3x2 grid)** or **4 copies per page (2x2 grid)** on an A4 sheet.
+    *   **Removed Signatures**: Completely removed the "Issued By" and "Checked By" signature block at the bottom of the voucher quadrant as requested.
+    *   **Maximized Text Readability**: Enforced extra-bold solid black fonts (`text-black font-black`) to ensure maximum legibility when printed.
+    *   **Greyscale Design**: All colors (green/blue) were replaced with high-contrast black/white/grey grids to save printer ink.
+    *   **High-Quality PDF Download**: Integrated `html2pdf.js` with client-side dynamic loading and 3x scale canvas rendering to let the user download the exact A4 layout as a clean PDF sheet.
+    *   **Custom Logo Support**: Automatically imports `logogoods.png` from the `public/` directory with fallback logic.
+    *   **Print layout optimization**: Automatically hides all sidebars, navigation headers, and control forms during printing.
+
 ---
 
 ## Verification Results
 
 ### 1. TypeScript Compile Verification
 *   Ran `npx tsc --noEmit` successfully with **zero compilation or type errors**.
-*   Built and committed changes cleanly.
+
+### 2. Development Server Verification
+*   Started `npm run dev` and verified the application runs successfully on port 3001.
+
+
+
 
