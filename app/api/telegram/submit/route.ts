@@ -376,6 +376,14 @@ export async function POST(request: Request) {
             let telegramText = '';
             let replyMarkup: any = null;
 
+            // Build requester info line
+            let requesterLine = '';
+            if (requesterId) {
+                requesterLine = `🗣 <b>Dalbaday:</b> <a href="tg://user?id=${requesterId}">${requesterName}</a>\n`;
+            } else if (requesterName) {
+                requesterLine = `🗣 <b>Dalbaday:</b> ${requesterName}\n`;
+            }
+
             // Build payment contact info line
             let paymentContactLine = '';
             if (recipientName && paymentPhone) {
@@ -390,6 +398,7 @@ export async function POST(request: Request) {
                 if (result.isPaid) {
                     telegramText = `<b>AN-Industory</b>\n` +
                                    `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement - Paid)</b>\n\n` +
+                                   requesterLine +
                                    `🏭 Alaab-keenaha: ${result.supplierName}\n` +
                                    `📦 Name: ${result.materialName}\n` +
                                    `📊 Qty: ${result.quantity} ${result.materialUnit}\n` +
@@ -402,6 +411,7 @@ export async function POST(request: Request) {
                 } else {
                     telegramText = `<b>AN-Industory</b>\n` +
                                    `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement)</b>\n\n` +
+                                   requesterLine +
                                    `🏭 Alaab-keenaha: ${result.supplierName}\n` +
                                    `📦 Name: ${result.materialName}\n` +
                                    `📊 Qty: ${result.quantity} ${result.materialUnit}\n` +
@@ -423,6 +433,7 @@ export async function POST(request: Request) {
                 if (result.isPaid) {
                     telegramText = `<b>AN-Industory</b>\n` +
                                    `<b>✅ Mushahar Bixin Guulaystay!</b>\n\n` +
+                                   requesterLine +
                                    `👤 Shaqaalaha: ${result.employeeName}\n` +
                                    `💵 Lacagta: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
@@ -433,6 +444,7 @@ export async function POST(request: Request) {
                 } else {
                     telegramText = `<b>AN-Industory</b>\n` +
                                    `<b>✅ Diiwaangelinta Mushaharka (Sugaya Rasiidka)</b>\n\n` +
+                                   requesterLine +
                                    `👤 Shaqaalaha: ${result.employeeName}\n` +
                                    `💵 Lacagta la bixiyey: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
@@ -461,6 +473,7 @@ export async function POST(request: Request) {
                 if (result.isPaid) {
                     telegramText = `<b>AN-Industory</b>\n` +
                                    `<b>✅ Diiwaangelinta Kharashka Guulaystay!</b>\n\n` +
+                                   requesterLine +
                                    `📂 Qaybta: ${result.categoryName}\n` +
                                    `💵 Lacagta: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    customFieldsText +
@@ -472,6 +485,7 @@ export async function POST(request: Request) {
                 } else {
                     telegramText = `<b>AN-Industory</b>\n` +
                                    `<b>✅ Diiwaangelinta Kharashka (Sugaya Rasiidka)</b>\n\n` +
+                                   requesterLine +
                                    `📂 Qaybta: ${result.categoryName}\n` +
                                    `💵 Lacagta la bixiyey: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    customFieldsText +
