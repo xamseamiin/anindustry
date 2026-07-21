@@ -400,6 +400,8 @@ model Expense {
   materialDate    DateTime?
   purchaseOrderId String?
   workshopJobId   String?
+  telegramMessageId Int?
+  telegramChatId  String?
   workshopJob     WorkshopJob?     @relation(fields: [workshopJobId], references: [id])
   account         Account?         @relation(fields: [accountId], references: [id])
   expenseCategory ExpenseCategory? @relation(fields: [categoryId], references: [id])

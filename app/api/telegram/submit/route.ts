@@ -38,7 +38,10 @@ async function sendTelegramMessage(token: string, chatId: string, text: string, 
                     method: 'POST',
                     body: formData
                 });
-                if (response.ok) return;
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.result?.message_id || null;
+                }
             }
         }
         
@@ -52,13 +55,19 @@ async function sendTelegramMessage(token: string, chatId: string, text: string, 
         if (replyMarkup) {
             payload.reply_markup = replyMarkup;
         }
-        await fetch(url, {
+        const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
+        if (res.ok) {
+            const data = await res.json();
+            return data.result?.message_id || null;
+        }
+        return null;
     } catch (err) {
         console.error('Error sending telegram message:', err);
+        return null;
     }
 }
 
@@ -530,7 +539,15 @@ export async function POST(request: Request) {
                 }
             }
 
-            await sendTelegramMessage(token, chatId, telegramText, receiptUrl || undefined, replyMarkup);
+            const sentMsgId = await sendTelegramMessage(token, chatId, telegramText, receiptUrl || undefined, replyMarkup);
+            if (sentMsgId && !result.isPurchase && result.id) {
+                try {
+                    await prisma.expense.update({
+                        where: { id: result.id },
+                        data: { telegramMessageId: sentMsgId, telegramChatId: chatId }
+                    });
+                } catch (_) { /* non-critical */ }
+            }
         }
 
         return NextResponse.json({ success: true, data: result });

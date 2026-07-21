@@ -7,7 +7,7 @@ import {
     FileText, User, Tag, Truck, Settings, ShoppingBag, 
     Award, ArrowRight, Layers, Factory, Package,
     Hash, Banknote, Calendar, ClipboardList, Wrench, Phone,
-    Mic, MicOff, PlusCircle, Trash2
+    Mic, MicOff, PlusCircle, Trash2, Pencil
 } from 'lucide-react';
 
 // Safe localStorage helpers for iOS WebView where localStorage can throw SecurityError
@@ -170,6 +170,118 @@ export default function TelegramMiniAppPage() {
     const [showSavedContacts, setShowSavedContacts] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [recognitionObj, setRecognitionObj] = useState<any>(null);
+
+    // History & Edit states
+    const [activeTab, setActiveTab] = useState<'NEW' | 'HISTORY'>('NEW');
+    const [historyFilter, setHistoryFilter] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
+    const [historyExpenses, setHistoryExpenses] = useState<any[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+    
+    // Edit modal states
+    const [editingExpense, setEditingExpense] = useState<any | null>(null);
+    const [editAmount, setEditAmount] = useState('');
+    const [editNote, setEditNote] = useState('');
+    const [editCategoryId, setEditCategoryId] = useState('');
+    const [savingEdit, setSavingEdit] = useState(false);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    const fetchHistory = async () => {
+        setLoadingHistory(true);
+        try {
+            let url = `/api/telegram/history?filter=${historyFilter}`;
+            if (paymentPhone) url += `&phone=${encodeURIComponent(paymentPhone)}`;
+            if (historyFilter === 'custom') {
+                if (customStartDate) url += `&startDate=${encodeURIComponent(customStartDate)}`;
+                if (customEndDate) url += `&endDate=${encodeURIComponent(customEndDate)}`;
+            }
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.success && Array.isArray(data.expenses)) {
+                setHistoryExpenses(data.expenses);
+            }
+        } catch (err) {
+            console.error('Error fetching history:', err);
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'HISTORY') {
+            fetchHistory();
+        }
+    }, [activeTab, historyFilter, customStartDate, customEndDate]);
+
+    const handleOpenEdit = (exp: any) => {
+        triggerHaptic('light');
+        setEditingExpense(exp);
+        setEditAmount(String(exp.amount));
+        setEditNote(exp.note || '');
+        setEditCategoryId(exp.categoryId || '');
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingExpense) return;
+        setSavingEdit(true);
+        triggerHaptic('medium');
+
+        try {
+            const res = await fetch('/api/telegram/expense-actions', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editingExpense.id,
+                    amount: editAmount,
+                    note: editNote,
+                    categoryId: editCategoryId
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                triggerHaptic('success');
+                setEditingExpense(null);
+                fetchHistory();
+                alert('Kharashka waa la cusboonaysiiyay!');
+            } else {
+                triggerHaptic('error');
+                alert(data.error || 'Cillad ayaa dhacday.');
+            }
+        } catch (err: any) {
+            triggerHaptic('error');
+            alert('Cillad ayaa dhacday: ' + err.message);
+        } finally {
+            setSavingEdit(false);
+        }
+    };
+
+    const handleDeleteExpense = async (id: string) => {
+        if (!confirm('Ma ziirtaa inaad tirtirto kharashkan? Lacagta dib ayaa loogu soo celin doonaa E-Birr Merchant.')) return;
+        setDeletingId(id);
+        triggerHaptic('warning');
+
+        try {
+            const res = await fetch(`/api/telegram/expense-actions?id=${id}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+            if (data.success) {
+                triggerHaptic('success');
+                if (editingExpense?.id === id) setEditingExpense(null);
+                fetchHistory();
+                alert('Kharashka waa la tirtiray, haraaguna waa loo soo celiyay koontada!');
+            } else {
+                triggerHaptic('error');
+                alert(data.error || 'Cillad ayaa dhacday tirtiridda.');
+            }
+        } catch (err: any) {
+            triggerHaptic('error');
+            alert('Cillad: ' + err.message);
+        } finally {
+            setDeletingId(null);
+        }
+    };
 
     const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
 
@@ -862,7 +974,165 @@ export default function TelegramMiniAppPage() {
                     </div>
                 </div>
 
-                {/* Main Selector Dropdown */}
+                {/* Tab Switcher: Foom Cusub vs Dalabadayda */}
+                <div className="grid grid-cols-2 gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('light'); setActiveTab('NEW'); }}
+                        className={`py-2.5 px-3 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                            activeTab === 'NEW'
+                                ? 'bg-[var(--tg-theme-button-color,#3b82f6)] text-[var(--tg-theme-button-text-color,#ffffff)] shadow-md'
+                                : 'text-[var(--tg-theme-hint-color,#94a3b8)] hover:text-white'
+                        }`}
+                    >
+                        ➕ Foom Cusub
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('light'); setActiveTab('HISTORY'); }}
+                        className={`py-2.5 px-3 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                            activeTab === 'HISTORY'
+                                ? 'bg-[var(--tg-theme-button-color,#3b82f6)] text-[var(--tg-theme-button-text-color,#ffffff)] shadow-md'
+                                : 'text-[var(--tg-theme-hint-color,#94a3b8)] hover:text-white'
+                        }`}
+                    >
+                        📋 Dalabadayda
+                    </button>
+                </div>
+
+                {activeTab === 'HISTORY' ? (
+                    <div className="flex flex-col gap-3">
+                        {/* Date Filter Controls */}
+                        <div className="flex flex-col gap-2 bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/5 rounded-2xl p-3">
+                            <label className="text-[10px] font-black uppercase text-[var(--tg-theme-hint-color,#94a3b8)] tracking-wider flex items-center justify-between">
+                                <span>📅 Filter Taariikhda</span>
+                                {loadingHistory && <Loader2 className="animate-spin text-blue-400" size={12} />}
+                            </label>
+                            
+                            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                                {[
+                                    { key: 'all', label: 'Dhammaan' },
+                                    { key: 'today', label: 'Maanta' },
+                                    { key: 'week', label: 'Toddobaadkan' },
+                                    { key: 'month', label: 'Bishan' },
+                                    { key: 'custom', label: 'Taariikh Gaar Ah' }
+                                ].map((f) => (
+                                    <button
+                                        key={f.key}
+                                        type="button"
+                                        onClick={() => { triggerHaptic('light'); setHistoryFilter(f.key as any); }}
+                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border ${
+                                            historyFilter === f.key
+                                                ? 'bg-[var(--tg-theme-button-color,#3b82f6)] text-white border-transparent'
+                                                : 'bg-white/5 text-[var(--tg-theme-hint-color,#94a3b8)] border-white/5 hover:border-white/20'
+                                        }`}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {historyFilter === 'custom' && (
+                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
+                                    <div>
+                                        <span className="text-[9px] text-[var(--tg-theme-hint-color,#94a3b8)] uppercase font-bold">Ka (Start)</span>
+                                        <input
+                                            type="date"
+                                            value={customStartDate}
+                                            onChange={(e) => setCustomStartDate(e.target.value)}
+                                            className="w-full p-2 bg-black/20 border border-white/10 rounded-lg text-xs font-bold text-white outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <span className="text-[9px] text-[var(--tg-theme-hint-color,#94a3b8)] uppercase font-bold">Ilaa (End)</span>
+                                        <input
+                                            type="date"
+                                            value={customEndDate}
+                                            onChange={(e) => setCustomEndDate(e.target.value)}
+                                            className="w-full p-2 bg-black/20 border border-white/10 rounded-lg text-xs font-bold text-white outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Expense Cards List */}
+                        {loadingHistory ? (
+                            <div className="flex flex-col items-center justify-center p-8 gap-2">
+                                <Loader2 className="animate-spin text-blue-500" size={24} />
+                                <p className="text-xs font-bold opacity-60">Soo akhrinaya dalabadadii hore...</p>
+                            </div>
+                        ) : historyExpenses.length === 0 ? (
+                            <div className="bg-white/5 border border-white/5 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-2">
+                                <p className="text-2xl">📭</p>
+                                <p className="text-xs font-bold opacity-70">Wax dalab ah oo la helay ma jiraan taariikhdan.</p>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-2.5">
+                                {historyExpenses.map((exp) => (
+                                    <div
+                                        key={exp.id}
+                                        onClick={() => handleOpenEdit(exp)}
+                                        className="bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.03))] hover:bg-white/10 border border-white/10 rounded-2xl p-4 cursor-pointer transition-all flex justify-between items-start gap-3 shadow-sm hover:shadow-md"
+                                    >
+                                        <div className="flex flex-col gap-1 flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black rounded-md uppercase">
+                                                    {exp.category}
+                                                </span>
+                                                <span className="text-[10px] text-[var(--tg-theme-hint-color,#94a3b8)] font-bold">
+                                                    {new Date(exp.createdAt).toLocaleDateString('so-SO')}
+                                                </span>
+                                            </div>
+
+                                            <p className="text-xs font-bold line-clamp-2 mt-0.5">
+                                                {exp.description || exp.note || 'Kharash'}
+                                            </p>
+
+                                            {exp.employeeName && (
+                                                <p className="text-[10px] text-emerald-400 font-bold">
+                                                    👤 {exp.employeeName}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className="text-sm font-black text-emerald-400">
+                                                {Number(exp.amount).toLocaleString()} ETB
+                                            </span>
+                                            <div className="flex items-center gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenEdit(exp);
+                                                    }}
+                                                    className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-all"
+                                                    title="Edit"
+                                                >
+                                                    <Pencil size={12} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteExpense(exp.id);
+                                                    }}
+                                                    className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <>
+                        {/* Main Selector Dropdown */}
                 <div className="relative flex flex-col gap-1.5 bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/5 rounded-2xl p-4">
                     <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
                         <Layers size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Dooro Nooca Codsiga / Qaybta
@@ -1355,6 +1625,74 @@ export default function TelegramMiniAppPage() {
                             )}
                         </button>
                     </form>
+                )}
+                </>
+            )}
+
+                {/* Edit Expense Modal Overlay */}
+                {editingExpense && (
+                    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
+                        <div className="w-full max-w-md bg-[var(--tg-theme-bg-color,#0b0f19)] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 flex flex-col gap-4 shadow-2xl animate-slide-up">
+                            <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                                <div>
+                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Wax ka beddel Codsiga</p>
+                                    <h3 className="text-base font-black text-white">{editingExpense.category}</h3>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingExpense(null)}
+                                    className="p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-white/60 hover:text-white"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">Lacagta (Amount ETB)</label>
+                                    <input
+                                        type="number"
+                                        value={editAmount}
+                                        onChange={(e) => setEditAmount(e.target.value)}
+                                        className="w-full p-3 bg-black/20 border border-white/10 rounded-xl text-sm font-bold text-emerald-400 outline-none focus:border-blue-500"
+                                        placeholder="Geli lacagta"
+                                    />
+                                </div>
+
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">Sharaxaadda (Note)</label>
+                                    <textarea
+                                        rows={3}
+                                        value={editNote}
+                                        onChange={(e) => setEditNote(e.target.value)}
+                                        className="w-full p-3 bg-black/20 border border-white/10 rounded-xl text-xs font-bold text-white outline-none focus:border-blue-500"
+                                        placeholder="Sharaxaad ka bixi kharashka"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+                                <button
+                                    type="button"
+                                    onClick={() => handleDeleteExpense(editingExpense.id)}
+                                    disabled={deletingId === editingExpense.id || savingEdit}
+                                    className="py-3 px-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all"
+                                >
+                                    {deletingId === editingExpense.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                                    Tirtir
+                                </button>
+                                
+                                <button
+                                    type="button"
+                                    onClick={handleSaveEdit}
+                                    disabled={savingEdit || !editAmount}
+                                    className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all disabled:opacity-40"
+                                >
+                                    {savingEdit ? <Loader2 className="animate-spin" size={14} /> : '💾 Cusboonaysii (Save)'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </div>
         </div>
