@@ -548,11 +548,12 @@ export default function TelegramMiniAppPage() {
         const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
 
         // If user collected batch items, submit all of them
-        if (batchItems.length > 0) {
+        if (validBatchItems.length > 0) {
             let processed = 0;
             let failed = 0;
 
-            for (const item of batchItems) {
+            for (let i = 0; i < validBatchItems.length; i++) {
+                const item = validBatchItems[i];
                 const formData = new FormData();
                 formData.append('accountId', selectedAccountId);
                 formData.append('type', item.categoryKey.startsWith('EXPENSE_') ? 'EXPENSE' : item.categoryKey);
@@ -594,6 +595,11 @@ export default function TelegramMiniAppPage() {
                     } catch(err) {
                         failed++;
                     }
+                }
+
+                // Add 600ms delay between sending individual items to Telegram
+                if (isOnline && i < validBatchItems.length - 1) {
+                    await new Promise(r => setTimeout(r, 600));
                 }
             }
 
@@ -1263,69 +1269,73 @@ export default function TelegramMiniAppPage() {
 
                         {/* Add to Batch Button */}
                         <button type="button" onClick={handleAddToBatch}
-                            className="w-full py-3 bg-white/5 hover:bg-white/10 border border-emerald-500/30 text-emerald-400 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-[0.98] mt-1"
+                            className="w-full py-2.5 px-3 bg-[var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.05))] border border-[var(--tg-theme-button-color,#2563eb)]/30 text-[var(--tg-theme-button-color,#2563eb)] rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 hover:bg-[var(--tg-theme-button-color,#2563eb)]/10 active:scale-[0.98] mt-0.5"
                         >
-                            <PlusCircle size={14} className="text-emerald-400" />
-                            <span>➕ Ku Dar Dalab Kale (Add to Batch List)</span>
+                            <PlusCircle size={13} className="text-[var(--tg-theme-button-color,#2563eb)]" />
+                            <span>➕ Ku Dar Dalab Kale (Add to List)</span>
                         </button>
 
-                        {/* Batch Preview Card */}
-                        {batchItems.length > 0 && (
-                            <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl flex flex-col gap-3 animate-fade-in mt-1">
-                                <div className="flex justify-between items-center pb-2 border-b border-white/10">
-                                    <div className="flex items-center gap-2">
-                                        <Layers size={14} className="text-blue-400" />
-                                        <span className="text-xs font-black uppercase tracking-wider text-blue-400">
-                                            Dalabaadka la Ururiyay ({batchItems.length})
+                        {/* Compact Batch Preview Card */}
+                        {validBatchItems.length > 0 && (
+                            <div className="p-3 bg-[var(--tg-theme-secondary-bg-color,rgba(0,0,0,0.05))] border border-[var(--tg-theme-button-color,#2563eb)]/20 rounded-xl flex flex-col gap-2 animate-fade-in mt-0.5">
+                                <div className="flex justify-between items-center pb-1.5 border-b border-black/10 dark:border-white/10">
+                                    <div className="flex items-center gap-1.5">
+                                        <Layers size={13} className="text-[var(--tg-theme-button-color,#2563eb)]" />
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-[var(--tg-theme-text-color,#ffffff)]">
+                                            Dalabaadka la Ururiyay ({validBatchItems.length})
                                         </span>
                                     </div>
-                                    <button type="button" onClick={handleClearBatch} className="text-[10px] text-red-400 font-bold hover:underline">
-                                        Nadiifi All (Clear)
+                                    <button type="button" onClick={handleClearBatch} className="text-[10px] text-red-500 font-bold hover:underline">
+                                        Nadiifi All
                                     </button>
                                 </div>
 
-                                <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
-                                    {batchItems.map((item, idx) => (
-                                        <div key={item.id} className="p-2.5 bg-black/20 border border-white/5 rounded-xl flex justify-between items-center text-xs">
-                                            <div className="flex flex-col text-left">
-                                                <span className="font-bold text-white text-xs">{idx + 1}. {item.categoryName}</span>
-                                                <span className="text-[10px] text-[var(--tg-theme-hint-color,#94a3b8)]">
+                                <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-0.5">
+                                    {validBatchItems.map((item, idx) => (
+                                        <div key={item.id} className="p-2 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.08))] border border-black/5 dark:border-white/5 rounded-lg flex justify-between items-center text-xs">
+                                            <div className="flex flex-col text-left truncate mr-2">
+                                                <span className="font-bold text-[var(--tg-theme-text-color,#ffffff)] text-[11px] truncate">
+                                                    {idx + 1}. {item.categoryName || (item.categoryKey === 'SALARY' ? 'Mushahar' : item.categoryKey === 'RAW_MATERIAL' ? 'Raw Material' : 'Kharash')}
+                                                </span>
+                                                <span className="text-[9px] text-[var(--tg-theme-hint-color,#64748b)] truncate">
                                                     {item.recipientName ? `👤 ${item.recipientName} ` : ''}
                                                     {item.employeeName ? `👤 ${item.employeeName} ` : ''}
                                                     {item.note ? `• ${item.note}` : ''}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-2 shrink-0">
-                                                <span className="font-black text-emerald-400 text-xs">{item.amount.toLocaleString()} ETB</span>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <span className="font-black text-[var(--tg-theme-button-color,#2563eb)] text-xs">
+                                                    {item.amount.toLocaleString()} ETB
+                                                </span>
                                                 <button type="button" onClick={() => handleRemoveFromBatch(item.id)}
-                                                    className="p-1 hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                                                    className="p-1 hover:bg-red-500/20 text-red-500 rounded-md transition-all"
                                                 >
-                                                    <Trash2 size={12} />
+                                                    <Trash2 size={11} />
                                                 </button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
 
-                                <div className="flex justify-between items-center pt-2 border-t border-white/10 text-xs">
-                                    <span className="font-bold text-[var(--tg-theme-hint-color,#94a3b8)]">Total-ka Wada Jirka ah:</span>
-                                    <span className="font-black text-emerald-400 text-sm">{totalBatchAmount.toLocaleString()} ETB</span>
+                                <div className="flex justify-between items-center pt-1.5 border-t border-black/10 dark:border-white/10 text-xs">
+                                    <span className="font-bold text-[var(--tg-theme-hint-color,#64748b)] text-[10px]">Total-ka Wada Jirka ah:</span>
+                                    <span className="font-black text-[var(--tg-theme-button-color,#2563eb)] text-xs">{totalBatchAmount.toLocaleString()} ETB</span>
                                 </div>
                             </div>
                         )}
 
                         {/* Submit Button */}
                         <button type="submit" disabled={submitting || !selectedAccountId}
-                            className="w-full py-3.5 bg-[var(--tg-theme-button-color,#2563eb)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-xl font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-[0.99] disabled:opacity-40 transition-all flex items-center justify-center gap-2 mt-2"
+                            className="w-full py-3.5 bg-[var(--tg-theme-button-color,#2563eb)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-xl font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-[0.99] disabled:opacity-40 transition-all flex items-center justify-center gap-2 mt-1"
                         >
                             {submitting ? (
                                 <>
                                     <Loader2 className="animate-spin" size={14} />
                                     Diiwaangelinta waa socotaa...
                                 </>
-                            ) : batchItems.length > 0 ? (
+                            ) : validBatchItems.length > 0 ? (
                                 <>
-                                    🚀 Wada Dir Dhammaan ({batchItems.length} Dalab - {totalBatchAmount.toLocaleString()} ETB)
+                                    🚀 Wada Dir Dhammaan ({validBatchItems.length} Dalab - {totalBatchAmount.toLocaleString()} ETB)
                                 </>
                             ) : (
                                 <>
