@@ -118,8 +118,10 @@ export async function POST(request: Request) {
 
         const chatId = customChatId || defaultChatId;
 
-        // 1. Handle File Upload
+        // 1. Handle File Upload & AI Vision Verification
         let receiptUrl = '';
+        let aiVerificationResult: any = null;
+
         if (receiptFile && receiptFile.size > 0) {
             const buffer = Buffer.from(await receiptFile.arrayBuffer());
             const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'receipts');
@@ -132,13 +134,32 @@ export async function POST(request: Request) {
             const filePath = path.join(uploadsDir, cleanFileName);
             fs.writeFileSync(filePath, buffer);
             receiptUrl = `/uploads/receipts/${cleanFileName}`;
+
+            // Trigger AI Vision scan with Google Gemini 1.5 Flash
+            const expectedAmount = parseFloat(amountInput) || (parseFloat(quantityInput) * parseFloat(unitPriceInput)) || 0;
+            if (expectedAmount > 0) {
+                try {
+                    aiVerificationResult = await verifyReceiptImageWithAI(filePath, expectedAmount);
+                } catch (aiErr) {
+                    console.error('AI Receipt Vision Verification Error:', aiErr);
+                }
+            }
         }
 
-        // Build requester tags
+        // Build requester tags (Preserve requester name permanently)
         const requesterTag = `[Dalbaday: ${requesterName}] [TelegramId: ${requesterId}]`;
         let finalNote = note ? `${note}\n${requesterTag}` : requesterTag;
         if (paymentPhone) finalNote += `\n[PaymentPhone: ${paymentPhone}]`;
         if (recipientName) finalNote += `\n[RecipientName: ${recipientName}]`;
+        if (aiVerificationResult && aiVerificationResult.isVerified) {
+            finalNote += `\n[AI-Verified: ${aiVerificationResult.isMatch ? 'Match' : 'Mismatch'}]`;
+            if (aiVerificationResult.extractedAmount !== null) {
+                finalNote += ` [ExtractedAmount: ${aiVerificationResult.extractedAmount}]`;
+            }
+            if (aiVerificationResult.transactionId) {
+                finalNote += ` [TxId: ${aiVerificationResult.transactionId}]`;
+            }
+        }
 
         const isRawMaterial = type === 'RAW_MATERIAL';
 
@@ -423,6 +444,18 @@ export async function POST(request: Request) {
                 paymentContactLine = `👤 Loo dirayo: ${recipientName}\n`;
             }
 
+            let aiStatusLine = '';
+            if (aiVerificationResult && aiVerificationResult.isVerified) {
+                if (aiVerificationResult.isMatch) {
+                    aiStatusLine = `\n🤖 <b>AI Verification:</b> ✅ Rasiidka waa la xaqiijiyay (${aiVerificationResult.extractedAmount ? aiVerificationResult.extractedAmount.toLocaleString() + ' ETB' : 'Waafaqsan'})`;
+                } else {
+                    aiStatusLine = `\n🤖 <b>AI Verification:</b> ⚠️ Lacagta rasiidka ku qallan (${aiVerificationResult.extractedAmount ? aiVerificationResult.extractedAmount.toLocaleString() + ' ETB' : 'Lama helin'}) ka duwan tahay lacagta la codsaday (${aiVerificationResult.expectedAmount.toLocaleString()} ETB)!`;
+                }
+                if (aiVerificationResult.transactionId) {
+                    aiStatusLine += ` (TxID: ${aiVerificationResult.transactionId})`;
+                }
+            }
+
             if (result.isPurchase) {
                 if (result.isPaid) {
                     telegramText = `<b>AN-Industory</b>\n` +
@@ -436,6 +469,7 @@ export async function POST(request: Request) {
                                    paymentContactLine +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}` +
+                                   aiStatusLine +
                                    eBirrMerchantBalanceLine;
                 // No keyboard buttons for paid procurement
                 } else {
@@ -451,6 +485,7 @@ export async function POST(request: Request) {
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
                                    `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
+                                   aiStatusLine +
                                    eBirrMerchantBalanceLine;
                     replyMarkup = {
                         inline_keyboard: [
@@ -471,6 +506,7 @@ export async function POST(request: Request) {
                                    `💳 Koontada: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                    `📅 Taariikhda: ${formattedDate}` +
+                                   aiStatusLine +
                                    eBirrMerchantBalanceLine;
                 // No keyboard buttons for paid salaries
                 } else {
@@ -484,6 +520,7 @@ export async function POST(request: Request) {
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
                                    `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
+                                   aiStatusLine +
                                    eBirrMerchantBalanceLine;
                     replyMarkup = {
                         inline_keyboard: [
@@ -514,6 +551,7 @@ export async function POST(request: Request) {
                                    `💳 Koontada: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}` +
+                                   aiStatusLine +
                                    eBirrMerchantBalanceLine;
                 // No keyboard buttons for paid expenses
                 } else {
@@ -528,6 +566,7 @@ export async function POST(request: Request) {
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
                                    `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
+                                   aiStatusLine +
                                    eBirrMerchantBalanceLine;
                     replyMarkup = {
                         inline_keyboard: [
