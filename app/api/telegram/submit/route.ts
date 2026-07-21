@@ -279,9 +279,19 @@ export async function POST(request: Request) {
                 finalCategoryName = 'Salaries';
                 finalDescription = `Mushaharka: ${employee.fullName} (${note || 'Bixinta Mushaharka'})`;
 
+                const employeeUpdateData: any = {
+                    salaryPaidThisMonth: { increment: amount }
+                };
+
+                // If employee doesn't have a phone number, save it!
+                if (paymentPhone && !employee.phone && !employee.phoneNumber) {
+                    employeeUpdateData.phone = paymentPhone;
+                    employeeUpdateData.phoneNumber = paymentPhone;
+                }
+
                 await tx.employee.update({
                     where: { id: employee.id },
-                    data: { salaryPaidThisMonth: { increment: amount } }
+                    data: employeeUpdateData
                 });
             } else {
                 const category = await tx.expenseCategory.findUnique({ where: { id: categoryId } });

@@ -52,6 +52,14 @@ const getCategoryIcon = (name: string) => {
     }
 };
 
+const validatePhoneNumber = (phone: string): boolean => {
+    if (!phone) return true; // Optional field
+    const clean = phone.replace(/[\s-]/g, '');
+    // Starts with +251 (Eth), +252 (Som), or local prefix 09, 07, 06, 05 followed by 7 to 10 digits
+    const pattern = /^(\+251|\+252|09|07|06|05)\d{7,10}$/;
+    return pattern.test(clean);
+};
+
 export default function TelegramMiniAppPage() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -107,8 +115,10 @@ export default function TelegramMiniAppPage() {
     const [paymentPhone, setPaymentPhone] = useState('');
     const [recipientName, setRecipientName] = useState('');
     
-    // Saved transport contacts (localStorage)
-    const [savedContacts, setSavedContacts] = useState<{name: string; phone: string}[]>([]);
+    // Saved contacts by category (localStorage)
+    const [savedTransportContacts, setSavedTransportContacts] = useState<{name: string; phone: string}[]>([]);
+    const [savedEquipmentContacts, setSavedEquipmentContacts] = useState<{name: string; phone: string}[]>([]);
+    const [savedConsultantContacts, setSavedConsultantContacts] = useState<{name: string; phone: string}[]>([]);
     const [showSavedContacts, setShowSavedContacts] = useState(false);
 
     const syncOfflineSubmissions = async () => {
@@ -185,9 +195,10 @@ export default function TelegramMiniAppPage() {
                 clearTimeout(timeoutId);
                 setLoading(false);
                 syncOfflineSubmissions();
-                // Load saved transport contacts from localStorage
-                const contacts = JSON.parse(safeGetItem('saved_transport_contacts') || '[]');
-                setSavedContacts(contacts);
+                // Load saved contacts from localStorage
+                setSavedTransportContacts(JSON.parse(safeGetItem('saved_transport_contacts') || '[]'));
+                setSavedEquipmentContacts(JSON.parse(safeGetItem('saved_equipment_contacts') || '[]'));
+                setSavedConsultantContacts(JSON.parse(safeGetItem('saved_consultant_contacts') || '[]'));
             });
 
         // Telegram WebApp Initialization
@@ -266,9 +277,47 @@ export default function TelegramMiniAppPage() {
     const selectedEmployee = employees.find(e => e.id === selectedEmployeeId);
     const calculatedTotal = (parseFloat(quantity) || 0) * (parseFloat(unitPrice) || 0);
 
+    const saveContactIfNew = (categoryName: string, name: string, phone: string) => {
+        if (!name || !phone) return;
+        let storageKey = '';
+        let setter: any = null;
+
+        if (categoryName === 'Transport & Fuel') {
+            storageKey = 'saved_transport_contacts';
+            setter = setSavedTransportContacts;
+        } else if (categoryName === 'Equipment Rental') {
+            storageKey = 'saved_equipment_contacts';
+            setter = setSavedEquipmentContacts;
+        } else if (categoryName === 'Consultancy & Service') {
+            storageKey = 'saved_consultant_contacts';
+            setter = setSavedConsultantContacts;
+        }
+
+        if (storageKey && setter) {
+            const contacts = JSON.parse(safeGetItem(storageKey) || '[]');
+            const exists = contacts.some((c: any) => c.name === name && c.phone === phone);
+            if (!exists) {
+                contacts.push({ name, phone });
+                safeSetItem(storageKey, JSON.stringify(contacts));
+                setter(contacts);
+            }
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
+
+        if (paymentPhone && !validatePhoneNumber(paymentPhone)) {
+            alert('Fadlan geli lambar telefoon oo sax ah (tusaale: 09xxxxxxxx ama +251... / +252...)');
+            setSubmitting(false);
+            return;
+        }
+
+        // Save contact immediately so it's available even if offline submission
+        if (recipientName && paymentPhone) {
+            saveContactIfNew(selectedCategoryName, recipientName, paymentPhone);
+        }
 
         const isSalary = selectedCategoryKey === 'SALARY';
         const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
@@ -370,17 +419,6 @@ export default function TelegramMiniAppPage() {
                 } else if (selectedCategoryName === 'Consultancy & Service') {
                     formData.append('consultantName', consultantName);
                     formData.append('consultancyType', consultancyType);
-                }
-            }
-
-            // Save transport contact for future reuse
-            if (selectedCategoryName === 'Transport & Fuel' && transportType === 'Kirada Gaariga (Car Rental)' && recipientName) {
-                const contacts = JSON.parse(safeGetItem('saved_transport_contacts') || '[]');
-                const exists = contacts.some((c: any) => c.name === recipientName && c.phone === paymentPhone);
-                if (!exists) {
-                    contacts.push({ name: recipientName, phone: paymentPhone });
-                    safeSetItem('saved_transport_contacts', JSON.stringify(contacts));
-                    setSavedContacts(contacts);
                 }
             }
 
@@ -814,32 +852,47 @@ export default function TelegramMiniAppPage() {
                                 <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
                                     <User size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Qofka Loo Dirayo (Recipient)
                                 </label>
-                                {/* Show saved contacts dropdown for Car Rental */}
-                                {isExpense && selectedCategoryName === 'Transport & Fuel' && transportType === 'Kirada Gaariga (Car Rental)' && savedContacts.length > 0 && (
-                                    <div className="flex flex-col gap-1.5 mb-1">
-                                        <button type="button" onClick={() => setShowSavedContacts(!showSavedContacts)}
-                                            className="text-xs font-bold text-[var(--tg-theme-button-color,#3b82f6)] text-left hover:opacity-80"
-                                        >
-                                            {showSavedContacts ? '✕ Xir' : `📋 Dadkii hore (${savedContacts.length})`}
-                                        </button>
-                                        {showSavedContacts && (
-                                            <div className="flex flex-col gap-1 bg-white/[0.02] border border-white/5 rounded-lg p-2 max-h-32 overflow-y-auto">
-                                                {savedContacts.map((c, i) => (
-                                                    <button key={i} type="button"
-                                                        onClick={() => {
-                                                            setRecipientName(c.name);
-                                                            setPaymentPhone(c.phone);
-                                                            setShowSavedContacts(false);
-                                                        }}
-                                                        className="text-left p-2 rounded-lg hover:bg-white/5 text-xs font-bold flex justify-between items-center transition-all"
-                                                    >
-                                                        <span>{c.name}</span>
-                                                        <span className="text-[var(--tg-theme-hint-color,#94a3b8)]">{c.phone}</span>
-                                                    </button>
-                                                ))}
+                                {/* Show saved contacts dropdown based on Category */}
+                                {isExpense && (
+                                    (() => {
+                                        let contactsList: {name: string; phone: string}[] = [];
+                                        if (selectedCategoryName === 'Transport & Fuel' && transportType === 'Kirada Gaariga (Car Rental)') {
+                                            contactsList = savedTransportContacts;
+                                        } else if (selectedCategoryName === 'Equipment Rental') {
+                                            contactsList = savedEquipmentContacts;
+                                        } else if (selectedCategoryName === 'Consultancy & Service') {
+                                            contactsList = savedConsultantContacts;
+                                        }
+
+                                        if (contactsList.length === 0) return null;
+
+                                        return (
+                                            <div className="flex flex-col gap-1.5 mb-1">
+                                                <button type="button" onClick={() => setShowSavedContacts(!showSavedContacts)}
+                                                    className="text-xs font-bold text-[var(--tg-theme-button-color,#3b82f6)] text-left hover:opacity-80"
+                                                >
+                                                    {showSavedContacts ? '✕ Xir' : `📋 Dadkii hore (${contactsList.length})`}
+                                                </button>
+                                                {showSavedContacts && (
+                                                    <div className="flex flex-col gap-1 bg-white/[0.02] border border-white/5 rounded-lg p-2 max-h-32 overflow-y-auto">
+                                                        {contactsList.map((c, i) => (
+                                                            <button key={i} type="button"
+                                                                onClick={() => {
+                                                                    setRecipientName(c.name);
+                                                                    setPaymentPhone(c.phone);
+                                                                    setShowSavedContacts(false);
+                                                                }}
+                                                                className="text-left p-2 rounded-lg hover:bg-white/5 text-xs font-bold flex justify-between items-center transition-all"
+                                                            >
+                                                                <span>{c.name}</span>
+                                                                <span className="text-[var(--tg-theme-hint-color,#94a3b8)]">{c.phone}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
+                                        );
+                                    })()
                                 )}
                                 <input type="text" placeholder="Magaca qofka lacagta loo dirayo..." value={recipientName} onChange={(e) => setRecipientName(e.target.value)}
                                     className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-sm font-bold focus:border-[var(--tg-theme-button-color,#3b82f6)] outline-none"
