@@ -17,6 +17,17 @@ const safeGetItem = (key: string): string | null => {
 const safeSetItem = (key: string, value: string): void => {
     try { localStorage.setItem(key, value); } catch { /* silently fail */ }
 };
+const safeParseJSON = <T,>(key: string, fallback: T): T => {
+    try {
+        if (typeof window === 'undefined') return fallback;
+        const val = localStorage.getItem(key);
+        if (!val || val === 'undefined' || val === 'null') return fallback;
+        const parsed = JSON.parse(val);
+        return parsed ?? fallback;
+    } catch {
+        return fallback;
+    }
+};
 
 interface BatchItem {
     id: string;
@@ -164,22 +175,23 @@ export default function TelegramMiniAppPage() {
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            const saved = safeGetItem('telegram_mini_app_batch_items');
-            if (saved) {
-                try {
-                    setBatchItems(JSON.parse(saved));
-                } catch(e) {}
+            const saved = safeParseJSON<BatchItem[]>('telegram_mini_app_batch_items', []);
+            if (Array.isArray(saved)) {
+                setBatchItems(saved);
+            } else {
+                setBatchItems([]);
             }
         }
     }, []);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            safeSetItem('telegram_mini_app_batch_items', JSON.stringify(batchItems));
+            safeSetItem('telegram_mini_app_batch_items', JSON.stringify(Array.isArray(batchItems) ? batchItems : []));
         }
     }, [batchItems]);
 
-    const totalBatchAmount = batchItems.reduce((sum, item) => sum + item.amount, 0);
+    const validBatchItems = Array.isArray(batchItems) ? batchItems : [];
+    const totalBatchAmount = validBatchItems.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0);
 
     const handleAddToBatch = () => {
         triggerHaptic('light');
@@ -285,7 +297,7 @@ export default function TelegramMiniAppPage() {
         const isOnline = navigator.onLine;
         if (!isOnline) return;
 
-        const queue = JSON.parse(safeGetItem('offline_submissions') || '[]');
+        const queue = safeParseJSON<any[]>('offline_submissions', []);
         if (queue.length === 0) return;
 
         setSyncingOffline(true);
@@ -355,9 +367,9 @@ export default function TelegramMiniAppPage() {
                 setLoading(false);
                 syncOfflineSubmissions();
                 // Load saved contacts from localStorage
-                setSavedTransportContacts(JSON.parse(safeGetItem('saved_transport_contacts') || '[]'));
-                setSavedEquipmentContacts(JSON.parse(safeGetItem('saved_equipment_contacts') || '[]'));
-                setSavedConsultantContacts(JSON.parse(safeGetItem('saved_consultant_contacts') || '[]'));
+                setSavedTransportContacts(safeParseJSON<{name: string; phone: string}[]>('saved_transport_contacts', []));
+                setSavedEquipmentContacts(safeParseJSON<{name: string; phone: string}[]>('saved_equipment_contacts', []));
+                setSavedConsultantContacts(safeParseJSON<{name: string; phone: string}[]>('saved_consultant_contacts', []));
             });
 
         // Telegram WebApp Initialization
@@ -494,7 +506,7 @@ export default function TelegramMiniAppPage() {
         }
 
         if (storageKey && setter) {
-            const contacts = JSON.parse(safeGetItem(storageKey) || '[]');
+            const contacts = safeParseJSON<any[]>(storageKey, []);
             const exists = contacts.some((c: any) => c.name === name && c.phone === phone);
             if (!exists) {
                 contacts.push({ name, phone });
@@ -567,7 +579,7 @@ export default function TelegramMiniAppPage() {
                 formData.append('requesterId', requesterId);
 
                 if (!isOnline) {
-                    const queue = JSON.parse(safeGetItem('offline_submissions') || '[]');
+                    const queue = safeParseJSON<any[]>('offline_submissions', []);
                     const offlineObj: any = {};
                     formData.forEach((value, key) => { offlineObj[key] = value; });
                     offlineObj.id = Math.random().toString(36).substring(7);
@@ -658,7 +670,7 @@ export default function TelegramMiniAppPage() {
             }
 
             // Save to offline queue
-            const queue = JSON.parse(safeGetItem('offline_submissions') || '[]');
+            const queue = safeParseJSON<any[]>('offline_submissions', []);
             queue.push({ ...payload, id: Date.now().toString() });
             safeSetItem('offline_submissions', JSON.stringify(queue));
             
