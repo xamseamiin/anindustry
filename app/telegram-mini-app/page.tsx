@@ -425,8 +425,6 @@ export default function TelegramMiniAppPage() {
             const emp = employees.find(e => e.id === selectedEmployeeId);
             if (emp?.phone) {
                 setPaymentPhone(emp.phone);
-            } else {
-                setPaymentPhone('');
             }
         }
     }, [selectedEmployeeId, employees, selectedCategoryKey]);
@@ -467,6 +465,17 @@ export default function TelegramMiniAppPage() {
 
     const selectedEmployee = employees.find(e => e.id === selectedEmployeeId);
     const calculatedTotal = (parseFloat(quantity) || 0) * (parseFloat(unitPrice) || 0);
+
+    const activeAccount = accounts.find(a => a.id === selectedAccountId);
+    const isRawMaterialTemp = selectedCategoryKey === 'RAW_MATERIAL';
+    const amountVal = isRawMaterialTemp ? calculatedTotal : (parseFloat(amount) || 0);
+    const isOverLimit = activeAccount && amountVal > activeAccount.balance;
+
+    useEffect(() => {
+        if (isOverLimit) {
+            triggerHaptic('warning');
+        }
+    }, [isOverLimit]);
 
     const saveContactIfNew = (categoryName: string, name: string, phone: string) => {
         if (!name || !phone) return;
@@ -801,17 +810,6 @@ export default function TelegramMiniAppPage() {
             </div>
         );
     }
-
-    const activeAccount = accounts.find(a => a.id === selectedAccountId);
-    const isRawMaterialTemp = selectedCategoryKey === 'RAW_MATERIAL';
-    const amountVal = isRawMaterialTemp ? calculatedTotal : (parseFloat(amount) || 0);
-    const isOverLimit = activeAccount && amountVal > activeAccount.balance;
-
-    useEffect(() => {
-        if (isOverLimit) {
-            triggerHaptic('warning');
-        }
-    }, [isOverLimit]);
 
     const isSalary = selectedCategoryKey === 'SALARY';
     const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
