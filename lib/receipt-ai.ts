@@ -41,7 +41,12 @@ export async function verifyReceiptImageWithAI(
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        let model;
+        try {
+            model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        } catch (e) {
+            model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        }
 
         const fileBuffer = fs.readFileSync(imagePath);
         const imagePart = {
@@ -62,7 +67,14 @@ Return ONLY a valid raw JSON object (with NO markdown backticks or extra text) u
 }
 If any field cannot be found, use null for that field. Ensure amount is a raw number (e.g. 1220.0, not a string).`;
 
-        const response = await model.generateContent([prompt, imagePart]);
+        let response;
+        try {
+            response = await model.generateContent([prompt, imagePart]);
+        } catch (mErr) {
+            console.warn('Gemini 2.5 Flash model failed, retrying with gemini-2.0-flash:', mErr);
+            const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+            response = await fallbackModel.generateContent([prompt, imagePart]);
+        }
         const responseText = response.response.text().trim().replace(/^```json\s*/, '').replace(/\s*```$/, '');
         
         let parsed: any = {};
