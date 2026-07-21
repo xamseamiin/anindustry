@@ -7,7 +7,7 @@ import {
     FileText, User, Tag, Truck, Settings, ShoppingBag, 
     Award, ArrowRight, Layers, Factory, Package,
     Hash, Banknote, Calendar, ClipboardList, Wrench, Phone,
-    Mic, MicOff
+    Mic, MicOff, PlusCircle, Trash2
 } from 'lucide-react';
 
 // Safe localStorage helpers for iOS WebView where localStorage can throw SecurityError
@@ -17,6 +17,29 @@ const safeGetItem = (key: string): string | null => {
 const safeSetItem = (key: string, value: string): void => {
     try { localStorage.setItem(key, value); } catch { /* silently fail */ }
 };
+
+interface BatchItem {
+    id: string;
+    categoryKey: string;
+    categoryName: string;
+    amount: number;
+    note: string;
+    paymentPhone: string;
+    recipientName: string;
+    employeeId?: string;
+    employeeName?: string;
+    vendorId?: string;
+    newVendorName?: string;
+    materialName?: string;
+    newMaterialName?: string;
+    quantity?: string;
+    unitPrice?: string;
+    transportType?: string;
+    equipmentName?: string;
+    rentalPeriod?: string;
+    consultantName?: string;
+    consultancyType?: string;
+}
 
 const triggerHaptic = (type: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection') => {
     if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.HapticFeedback) {
@@ -136,6 +159,126 @@ export default function TelegramMiniAppPage() {
     const [showSavedContacts, setShowSavedContacts] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [recognitionObj, setRecognitionObj] = useState<any>(null);
+
+    const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const saved = safeGetItem('telegram_mini_app_batch_items');
+            if (saved) {
+                try {
+                    setBatchItems(JSON.parse(saved));
+                } catch(e) {}
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            safeSetItem('telegram_mini_app_batch_items', JSON.stringify(batchItems));
+        }
+    }, [batchItems]);
+
+    const totalBatchAmount = batchItems.reduce((sum, item) => sum + item.amount, 0);
+
+    const handleAddToBatch = () => {
+        triggerHaptic('light');
+
+        if (!selectedCategoryKey) {
+            triggerHaptic('error');
+            alert('Fadlan dooro nooca codsiga (Category).');
+            return;
+        }
+
+        const isSalaryKey = selectedCategoryKey === 'SALARY';
+        const isRawMaterialKey = selectedCategoryKey === 'RAW_MATERIAL';
+
+        if (isSalaryKey && !selectedEmployeeId) {
+            triggerHaptic('error');
+            alert('Fadlan dooro shaqaalaha.');
+            return;
+        }
+
+        if (paymentPhone && !validatePhoneNumber(paymentPhone)) {
+            triggerHaptic('error');
+            alert('Fadlan geli lambar telefoon oo sax ah.');
+            return;
+        }
+
+        let itemAmount = 0;
+        if (isRawMaterialKey) {
+            itemAmount = calculatedTotal;
+            if (itemAmount <= 0) {
+                triggerHaptic('error');
+                alert('Fadlan geli tirada iyo qiimaha alaabta.');
+                return;
+            }
+        } else {
+            itemAmount = parseFloat(amount) || 0;
+            if (itemAmount <= 0) {
+                triggerHaptic('error');
+                alert('Fadlan geli lacagta (Amount).');
+                return;
+            }
+        }
+
+        const selectedEmp = employees.find(e => e.id === selectedEmployeeId);
+        const newItem: BatchItem = {
+            id: Math.random().toString(36).substring(7),
+            categoryKey: selectedCategoryKey,
+            categoryName: selectedCategoryName,
+            amount: itemAmount,
+            note: note,
+            paymentPhone: paymentPhone,
+            recipientName: recipientName,
+            employeeId: selectedEmployeeId || undefined,
+            employeeName: selectedEmp ? selectedEmp.fullName : undefined,
+            vendorId: selectedVendorId || undefined,
+            newVendorName: newVendorName || undefined,
+            materialName: selectedMaterialName || undefined,
+            newMaterialName: newMaterialName || undefined,
+            quantity: quantity || undefined,
+            unitPrice: unitPrice || undefined,
+            transportType: transportType || undefined,
+            equipmentName: equipmentName || undefined,
+            rentalPeriod: rentalPeriod || undefined,
+            consultantName: consultantName || undefined,
+            consultancyType: consultancyType || undefined
+        };
+
+        if (recipientName && paymentPhone) {
+            saveContactIfNew(selectedCategoryName, recipientName, paymentPhone);
+        }
+
+        setBatchItems(prev => [...prev, newItem]);
+
+        // Reset current input fields so user can add another request immediately
+        setAmount('');
+        setNote('');
+        setQuantity('');
+        setUnitPrice('');
+        setSelectedEmployeeId('');
+        setRecipientName('');
+        setPaymentPhone('');
+        setNewVendorName('');
+        setNewMaterialName('');
+        setTransportType('');
+        setEquipmentName('');
+        setRentalPeriod('');
+        setConsultantName('');
+        setConsultancyType('');
+        setShowSavedContacts(false);
+    };
+
+    const handleRemoveFromBatch = (id: string) => {
+        triggerHaptic('light');
+        setBatchItems(prev => prev.filter(item => item.id !== id));
+    };
+
+    const handleClearBatch = () => {
+        triggerHaptic('light');
+        setBatchItems([]);
+    };
 
     const syncOfflineSubmissions = async () => {
         if (typeof window === 'undefined' || syncingOffline) return;
@@ -381,6 +524,71 @@ export default function TelegramMiniAppPage() {
             setIsListening(false);
         }
 
+        const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
+
+        // If user collected batch items, submit all of them
+        if (batchItems.length > 0) {
+            let processed = 0;
+            let failed = 0;
+
+            for (const item of batchItems) {
+                const formData = new FormData();
+                formData.append('accountId', selectedAccountId);
+                formData.append('type', item.categoryKey.startsWith('EXPENSE_') ? 'EXPENSE' : item.categoryKey);
+                if (item.categoryKey.startsWith('EXPENSE_')) {
+                    formData.append('categoryId', item.categoryKey.replace('EXPENSE_', ''));
+                }
+                formData.append('amount', item.amount.toString());
+                formData.append('note', item.note || '');
+                if (item.paymentPhone) formData.append('paymentPhone', item.paymentPhone);
+                if (item.recipientName) formData.append('recipientName', item.recipientName);
+                if (item.employeeId) formData.append('employeeId', item.employeeId);
+                if (item.vendorId) formData.append('vendorId', item.vendorId);
+                if (item.newVendorName) formData.append('newVendorName', item.newVendorName);
+                if (item.materialName) formData.append('materialName', item.materialName);
+                if (item.newMaterialName) formData.append('newMaterialName', item.newMaterialName);
+                if (item.quantity) formData.append('quantity', item.quantity);
+                if (item.unitPrice) formData.append('unitPrice', item.unitPrice);
+                if (item.transportType) formData.append('transportType', item.transportType);
+                if (item.equipmentName) formData.append('equipmentName', item.equipmentName);
+                if (item.rentalPeriod) formData.append('rentalPeriod', item.rentalPeriod);
+                if (item.consultantName) formData.append('consultantName', item.consultantName);
+                if (item.consultancyType) formData.append('consultancyType', item.consultancyType);
+                formData.append('requesterName', requesterName);
+                formData.append('requesterId', requesterId);
+
+                if (!isOnline) {
+                    const queue = JSON.parse(safeGetItem('offline_submissions') || '[]');
+                    const offlineObj: any = {};
+                    formData.forEach((value, key) => { offlineObj[key] = value; });
+                    offlineObj.id = Math.random().toString(36).substring(7);
+                    queue.push(offlineObj);
+                    safeSetItem('offline_submissions', JSON.stringify(queue));
+                    processed++;
+                } else {
+                    try {
+                        const res = await fetch('/api/telegram/submit', { method: 'POST', body: formData });
+                        if (res.ok) processed++;
+                        else failed++;
+                    } catch(err) {
+                        failed++;
+                    }
+                }
+            }
+
+            setSubmitting(false);
+            setBatchItems([]);
+            if (failed === 0) {
+                triggerHaptic('success');
+                setSuccess(true);
+                setOfflineSubmitted(!isOnline);
+            } else {
+                triggerHaptic('error');
+                alert(`Waxaa diiwaangashay ${processed} dalab, ${failed} dalabna way fashilmeen.`);
+            }
+            return;
+        }
+
         if (paymentPhone && !validatePhoneNumber(paymentPhone)) {
             triggerHaptic('error');
             alert('Fadlan geli lambar telefoon oo sax ah (tusaale: 09xxxxxxxx ama +251... / +252...)');
@@ -395,8 +603,6 @@ export default function TelegramMiniAppPage() {
 
         const isSalary = selectedCategoryKey === 'SALARY';
         const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
-
-        const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
 
         if (!isOnline) {
             const payload: any = {
@@ -1045,6 +1251,59 @@ export default function TelegramMiniAppPage() {
                             />
                         </div>
 
+                        {/* Add to Batch Button */}
+                        <button type="button" onClick={handleAddToBatch}
+                            className="w-full py-3 bg-white/5 hover:bg-white/10 border border-emerald-500/30 text-emerald-400 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-[0.98] mt-1"
+                        >
+                            <PlusCircle size={14} className="text-emerald-400" />
+                            <span>➕ Ku Dar Dalab Kale (Add to Batch List)</span>
+                        </button>
+
+                        {/* Batch Preview Card */}
+                        {batchItems.length > 0 && (
+                            <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl flex flex-col gap-3 animate-fade-in mt-1">
+                                <div className="flex justify-between items-center pb-2 border-b border-white/10">
+                                    <div className="flex items-center gap-2">
+                                        <Layers size={14} className="text-blue-400" />
+                                        <span className="text-xs font-black uppercase tracking-wider text-blue-400">
+                                            Dalabaadka la Ururiyay ({batchItems.length})
+                                        </span>
+                                    </div>
+                                    <button type="button" onClick={handleClearBatch} className="text-[10px] text-red-400 font-bold hover:underline">
+                                        Nadiifi All (Clear)
+                                    </button>
+                                </div>
+
+                                <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
+                                    {batchItems.map((item, idx) => (
+                                        <div key={item.id} className="p-2.5 bg-black/20 border border-white/5 rounded-xl flex justify-between items-center text-xs">
+                                            <div className="flex flex-col text-left">
+                                                <span className="font-bold text-white text-xs">{idx + 1}. {item.categoryName}</span>
+                                                <span className="text-[10px] text-[var(--tg-theme-hint-color,#94a3b8)]">
+                                                    {item.recipientName ? `👤 ${item.recipientName} ` : ''}
+                                                    {item.employeeName ? `👤 ${item.employeeName} ` : ''}
+                                                    {item.note ? `• ${item.note}` : ''}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <span className="font-black text-emerald-400 text-xs">{item.amount.toLocaleString()} ETB</span>
+                                                <button type="button" onClick={() => handleRemoveFromBatch(item.id)}
+                                                    className="p-1 hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="flex justify-between items-center pt-2 border-t border-white/10 text-xs">
+                                    <span className="font-bold text-[var(--tg-theme-hint-color,#94a3b8)]">Total-ka Wada Jirka ah:</span>
+                                    <span className="font-black text-emerald-400 text-sm">{totalBatchAmount.toLocaleString()} ETB</span>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Submit Button */}
                         <button type="submit" disabled={submitting || !selectedAccountId}
                             className="w-full py-3.5 bg-[var(--tg-theme-button-color,#2563eb)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-xl font-black text-sm uppercase tracking-widest hover:opacity-90 active:scale-[0.99] disabled:opacity-40 transition-all flex items-center justify-center gap-2 mt-2"
@@ -1053,6 +1312,10 @@ export default function TelegramMiniAppPage() {
                                 <>
                                     <Loader2 className="animate-spin" size={14} />
                                     Diiwaangelinta waa socotaa...
+                                </>
+                            ) : batchItems.length > 0 ? (
+                                <>
+                                    🚀 Wada Dir Dhammaan ({batchItems.length} Dalab - {totalBatchAmount.toLocaleString()} ETB)
                                 </>
                             ) : (
                                 <>
