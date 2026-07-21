@@ -98,6 +98,10 @@ export async function POST(request: Request) {
         const consultantName = formData.get('consultantName') as string;
         const consultancyType = formData.get('consultancyType') as string;
 
+        // Payment recipient fields
+        const paymentPhone = formData.get('paymentPhone') as string || '';
+        const recipientName = formData.get('recipientName') as string || '';
+
         // Requester metadata
         const requesterName = formData.get('requesterName') as string || 'WebApp User';
         const requesterId = formData.get('requesterId') as string || '';
@@ -123,6 +127,8 @@ export async function POST(request: Request) {
         // Build requester tags
         const requesterTag = `[Dalbaday: ${requesterName}] [TelegramId: ${requesterId}]`;
         let finalNote = note ? `${note}\n${requesterTag}` : requesterTag;
+        if (paymentPhone) finalNote += `\n[PaymentPhone: ${paymentPhone}]`;
+        if (recipientName) finalNote += `\n[RecipientName: ${recipientName}]`;
 
         const isRawMaterial = type === 'RAW_MATERIAL';
 
@@ -360,6 +366,16 @@ export async function POST(request: Request) {
             let telegramText = '';
             let replyMarkup: any = null;
 
+            // Build payment contact info line
+            let paymentContactLine = '';
+            if (recipientName && paymentPhone) {
+                paymentContactLine = `👤 Loo dirayo: ${recipientName}\n📱 Lambarka: ${paymentPhone}\n`;
+            } else if (paymentPhone) {
+                paymentContactLine = `📱 Lambarka: ${paymentPhone}\n`;
+            } else if (recipientName) {
+                paymentContactLine = `👤 Loo dirayo: ${recipientName}\n`;
+            }
+
             if (result.isPurchase) {
                 if (result.isPaid) {
                     telegramText = `<b>AN-Industory</b>\n` +
@@ -369,6 +385,7 @@ export async function POST(request: Request) {
                                    `📊 Qty: ${result.quantity} ${result.materialUnit}\n` +
                                    `💵 Price: ${Number(result.unitPrice).toLocaleString()} ETB\n` +
                                    `💰 Total: ${Number(result.totalPrice).toLocaleString()} ETB\n` +
+                                   paymentContactLine +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}`;
                 // No keyboard buttons for paid procurement
@@ -380,6 +397,7 @@ export async function POST(request: Request) {
                                    `📊 Qty: ${result.quantity} ${result.materialUnit}\n` +
                                    `💵 Price: ${Number(result.unitPrice).toLocaleString()} ETB\n` +
                                    `💰 Total: ${Number(result.totalPrice).toLocaleString()} ETB\n` +
+                                   paymentContactLine +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
                                    `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...`;
@@ -397,6 +415,7 @@ export async function POST(request: Request) {
                                    `<b>✅ Mushahar Bixin Guulaystay!</b>\n\n` +
                                    `👤 Shaqaalaha: ${result.employeeName}\n` +
                                    `💵 Lacagta: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                   (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
                                    `💳 Koontada: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                    `📅 Taariikhda: ${formattedDate}`;
@@ -406,6 +425,7 @@ export async function POST(request: Request) {
                                    `<b>✅ Diiwaangelinta Mushaharka (Sugaya Rasiidka)</b>\n\n` +
                                    `👤 Shaqaalaha: ${result.employeeName}\n` +
                                    `💵 Lacagta la bixiyey: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                   (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
                                    `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
@@ -434,6 +454,7 @@ export async function POST(request: Request) {
                                    `📂 Qaybta: ${result.categoryName}\n` +
                                    `💵 Lacagta: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    customFieldsText +
+                                   paymentContactLine +
                                    `💳 Koontada: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}`;
@@ -444,6 +465,7 @@ export async function POST(request: Request) {
                                    `📂 Qaybta: ${result.categoryName}\n` +
                                    `💵 Lacagta la bixiyey: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    customFieldsText +
+                                   paymentContactLine +
                                    `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +

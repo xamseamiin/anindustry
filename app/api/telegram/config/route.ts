@@ -38,6 +38,7 @@ export async function GET() {
                 id: e.id,
                 fullName: e.fullName,
                 role: e.role,
+                phone: e.phone || e.phoneNumber || '',
                 monthlySalary: Number(e.monthlySalary || 0),
                 paidThisMonth: Number(e.salaryPaidThisMonth || 0),
                 dueThisMonth: Math.max(0, Number(e.monthlySalary || 0) - Number(e.salaryPaidThisMonth || 0))

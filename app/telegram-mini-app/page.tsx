@@ -6,7 +6,7 @@ import {
     Loader2, CheckCircle2, DollarSign, Wallet, 
     FileText, User, Tag, Truck, Settings, ShoppingBag, 
     Award, ArrowRight, Layers, Factory, Package,
-    Hash, Banknote, Calendar, ClipboardList, Wrench
+    Hash, Banknote, Calendar, ClipboardList, Wrench, Phone
 } from 'lucide-react';
 
 // Safe localStorage helpers for iOS WebView where localStorage can throw SecurityError
@@ -103,6 +103,14 @@ export default function TelegramMiniAppPage() {
     const [quantity, setQuantity] = useState('');
     const [unitPrice, setUnitPrice] = useState('');
 
+    // Payment contact fields
+    const [paymentPhone, setPaymentPhone] = useState('');
+    const [recipientName, setRecipientName] = useState('');
+    
+    // Saved transport contacts (localStorage)
+    const [savedContacts, setSavedContacts] = useState<{name: string; phone: string}[]>([]);
+    const [showSavedContacts, setShowSavedContacts] = useState(false);
+
     const syncOfflineSubmissions = async () => {
         if (typeof window === 'undefined' || syncingOffline) return;
         const isOnline = navigator.onLine;
@@ -177,6 +185,9 @@ export default function TelegramMiniAppPage() {
                 clearTimeout(timeoutId);
                 setLoading(false);
                 syncOfflineSubmissions();
+                // Load saved transport contacts from localStorage
+                const contacts = JSON.parse(safeGetItem('saved_transport_contacts') || '[]');
+                setSavedContacts(contacts);
             });
 
         // Telegram WebApp Initialization
@@ -207,6 +218,18 @@ export default function TelegramMiniAppPage() {
         };
     }, []);
 
+    // Auto-fill payment phone when employee is selected
+    useEffect(() => {
+        if (selectedEmployeeId && selectedCategoryKey === 'SALARY') {
+            const emp = employees.find(e => e.id === selectedEmployeeId);
+            if (emp?.phone) {
+                setPaymentPhone(emp.phone);
+            } else {
+                setPaymentPhone('');
+            }
+        }
+    }, [selectedEmployeeId, employees, selectedCategoryKey]);
+
     // Parse the main dropdown value to set the respective state variables
     const handleCategoryChange = (val: string) => {
         setSelectedCategoryKey(val);
@@ -229,6 +252,9 @@ export default function TelegramMiniAppPage() {
         setQuantity('');
         setUnitPrice('');
         setAmount('');
+        setPaymentPhone('');
+        setRecipientName('');
+        setShowSavedContacts(false);
 
         if (val.startsWith('EXPENSE_')) {
             const [_, id, name] = val.split('_');
@@ -257,6 +283,9 @@ export default function TelegramMiniAppPage() {
                 requesterName: requesterName,
                 requesterId: requesterId
             };
+
+            payload.paymentPhone = paymentPhone;
+            payload.recipientName = recipientName;
 
             if (isSalary) {
                 payload.type = 'SALARY';
@@ -308,6 +337,8 @@ export default function TelegramMiniAppPage() {
             formData.append('chatId', chatId);
             formData.append('requesterName', requesterName);
             formData.append('requesterId', requesterId);
+            if (paymentPhone) formData.append('paymentPhone', paymentPhone);
+            if (recipientName) formData.append('recipientName', recipientName);
 
             if (isSalary) {
                 formData.append('type', 'SALARY');
@@ -339,6 +370,17 @@ export default function TelegramMiniAppPage() {
                 } else if (selectedCategoryName === 'Consultancy & Service') {
                     formData.append('consultantName', consultantName);
                     formData.append('consultancyType', consultancyType);
+                }
+            }
+
+            // Save transport contact for future reuse
+            if (selectedCategoryName === 'Transport & Fuel' && transportType === 'Kirada Gaariga (Car Rental)' && recipientName) {
+                const contacts = JSON.parse(safeGetItem('saved_transport_contacts') || '[]');
+                const exists = contacts.some((c: any) => c.name === recipientName && c.phone === paymentPhone);
+                if (!exists) {
+                    contacts.push({ name: recipientName, phone: paymentPhone });
+                    safeSetItem('saved_transport_contacts', JSON.stringify(contacts));
+                    setSavedContacts(contacts);
                 }
             }
 
@@ -388,6 +430,9 @@ export default function TelegramMiniAppPage() {
             setQuantity('');
             setUnitPrice('');
             setSelectedCategoryKey('');
+            setPaymentPhone('');
+            setRecipientName('');
+            setShowSavedContacts(false);
         };
 
         const handleClose = () => {
@@ -761,6 +806,58 @@ export default function TelegramMiniAppPage() {
                                     </option>
                                 ))}
                             </select>
+                        </div>
+
+                        {/* Recipient Name - shown for non-salary types */}
+                        {!isSalary && (
+                            <div className="flex flex-col gap-1.5 animate-fade-in">
+                                <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                    <User size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Qofka Loo Dirayo (Recipient)
+                                </label>
+                                {/* Show saved contacts dropdown for Car Rental */}
+                                {isExpense && selectedCategoryName === 'Transport & Fuel' && transportType === 'Kirada Gaariga (Car Rental)' && savedContacts.length > 0 && (
+                                    <div className="flex flex-col gap-1.5 mb-1">
+                                        <button type="button" onClick={() => setShowSavedContacts(!showSavedContacts)}
+                                            className="text-xs font-bold text-[var(--tg-theme-button-color,#3b82f6)] text-left hover:opacity-80"
+                                        >
+                                            {showSavedContacts ? '✕ Xir' : `📋 Dadkii hore (${savedContacts.length})`}
+                                        </button>
+                                        {showSavedContacts && (
+                                            <div className="flex flex-col gap-1 bg-white/[0.02] border border-white/5 rounded-lg p-2 max-h-32 overflow-y-auto">
+                                                {savedContacts.map((c, i) => (
+                                                    <button key={i} type="button"
+                                                        onClick={() => {
+                                                            setRecipientName(c.name);
+                                                            setPaymentPhone(c.phone);
+                                                            setShowSavedContacts(false);
+                                                        }}
+                                                        className="text-left p-2 rounded-lg hover:bg-white/5 text-xs font-bold flex justify-between items-center transition-all"
+                                                    >
+                                                        <span>{c.name}</span>
+                                                        <span className="text-[var(--tg-theme-hint-color,#94a3b8)]">{c.phone}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                <input type="text" placeholder="Magaca qofka lacagta loo dirayo..." value={recipientName} onChange={(e) => setRecipientName(e.target.value)}
+                                    className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-sm font-bold focus:border-[var(--tg-theme-button-color,#3b82f6)] outline-none"
+                                />
+                            </div>
+                        )}
+
+                        {/* Payment Phone Number */}
+                        <div className="flex flex-col gap-1.5 animate-fade-in">
+                            <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                <Phone size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Lambarka Lacag-bixinta
+                            </label>
+                            <input type="tel" placeholder="09xxxxxxxx" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)}
+                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-sm font-bold focus:border-[var(--tg-theme-button-color,#3b82f6)] outline-none"
+                            />
+                            {isSalary && selectedEmployee?.phone && (
+                                <p className="text-[10px] text-emerald-400 font-bold">✓ Lambarka shaqaalaha: {selectedEmployee.phone}</p>
+                            )}
                         </div>
 
                         {/* Description/Note */}
