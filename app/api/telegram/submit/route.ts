@@ -371,7 +371,26 @@ export async function POST(request: Request) {
             };
         });
 
-        // 3. Send Telegram Notification
+        // 3. Fetch E-Birr Merchant live balance (deposit minus all expenses linked to it)
+        let eBirrMerchantBalanceLine = '';
+        try {
+            const EBIRR_MERCHANT_NAME = 'E-Birr Merchant';
+            const eBirrMerchantAcc = await prisma.account.findFirst({
+                where: { companyId, name: EBIRR_MERCHANT_NAME, isActive: true }
+            });
+            if (eBirrMerchantAcc) {
+                // Sum all pending (unpaid) expenses on the E-Birr Merchant account
+                const pendingExpensesAgg = await prisma.expense.aggregate({
+                    where: { accountId: eBirrMerchantAcc.id, companyId, paymentStatus: { not: 'PAID' } },
+                    _sum: { amount: true }
+                });
+                const pendingTotal = Number(pendingExpensesAgg._sum?.amount ?? 0);
+                const liveBalance = Number(eBirrMerchantAcc.balance) - pendingTotal;
+                eBirrMerchantBalanceLine = `\n💳 <b>E-Birr Merchant Balance:</b> ${liveBalance.toLocaleString()} ETB\n   (Hadhka saxda ah ka dib dalabyadii la diray)`;
+            }
+        } catch (_) { /* Don't break submission if balance fetch fails */ }
+
+        // 4. Send Telegram Notification
         if (token && chatId) {
             const formattedDate = new Date().toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
             let telegramText = '';
@@ -407,7 +426,8 @@ export async function POST(request: Request) {
                                    `💰 Total: ${Number(result.totalPrice).toLocaleString()} ETB\n` +
                                    paymentContactLine +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
-                                   `📅 Taariikhda: ${formattedDate}`;
+                                   `📅 Taariikhda: ${formattedDate}` +
+                                   eBirrMerchantBalanceLine;
                 // No keyboard buttons for paid procurement
                 } else {
                     telegramText = `<b>AN-Industory</b>\n` +
@@ -421,7 +441,8 @@ export async function POST(request: Request) {
                                    paymentContactLine +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
-                                   `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...`;
+                                   `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
+                                   eBirrMerchantBalanceLine;
                     replyMarkup = {
                         inline_keyboard: [
                             [
@@ -440,7 +461,8 @@ export async function POST(request: Request) {
                                    (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
                                    `💳 Koontada: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
-                                   `📅 Taariikhda: ${formattedDate}`;
+                                   `📅 Taariikhda: ${formattedDate}` +
+                                   eBirrMerchantBalanceLine;
                 // No keyboard buttons for paid salaries
                 } else {
                     telegramText = `<b>AN-Industory</b>\n` +
@@ -452,7 +474,8 @@ export async function POST(request: Request) {
                                    `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
-                                   `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...`;
+                                   `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
+                                   eBirrMerchantBalanceLine;
                     replyMarkup = {
                         inline_keyboard: [
                             [
@@ -481,7 +504,8 @@ export async function POST(request: Request) {
                                    paymentContactLine +
                                    `💳 Koontada: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
-                                   `📅 Taariikhda: ${formattedDate}`;
+                                   `📅 Taariikhda: ${formattedDate}` +
+                                   eBirrMerchantBalanceLine;
                 // No keyboard buttons for paid expenses
                 } else {
                     telegramText = `<b>AN-Industory</b>\n` +
@@ -494,7 +518,8 @@ export async function POST(request: Request) {
                                    `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
-                                   `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...`;
+                                   `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
+                                   eBirrMerchantBalanceLine;
                     replyMarkup = {
                         inline_keyboard: [
                             [
