@@ -372,28 +372,38 @@ export default function TelegramMiniAppPage() {
                 setSavedConsultantContacts(safeParseJSON<{name: string; phone: string}[]>('saved_consultant_contacts', []));
             });
 
-        // Telegram WebApp Initialization
-        if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
-            const webapp = (window as any).Telegram.WebApp;
-            webapp.ready();
-            webapp.expand();
-            
-            // Extract Chat ID if available in initDataUnsafe
-            const tgInitData = webapp.initDataUnsafe;
-            if (tgInitData?.chat?.id) {
-                setChatId(tgInitData.chat.id.toString());
-            }
+        // Robust Telegram WebApp Initialization with retry loop
+        let attempts = 0;
+        const initTgUser = () => {
+            attempts++;
+            if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
+                const webapp = (window as any).Telegram.WebApp;
+                try { webapp.ready(); } catch(e) {}
+                try { webapp.expand(); } catch(e) {}
+                
+                const tgInitData = webapp.initDataUnsafe;
+                if (tgInitData?.chat?.id) {
+                    setChatId(tgInitData.chat.id.toString());
+                }
 
-            if (tgInitData?.user) {
-                const user = tgInitData.user;
-                const fullName = (user.first_name || '') + (user.last_name ? ' ' + user.last_name : '');
-                const formattedName = fullName + (user.username ? ` (@${user.username})` : '');
-                setRequesterName(formattedName || 'User');
-                setRequesterId(user.id.toString());
+                if (tgInitData?.user) {
+                    const user = tgInitData.user;
+                    const fullName = (user.first_name || '') + (user.last_name ? ' ' + user.last_name : '');
+                    const formattedName = fullName.trim() + (user.username ? ` (@${user.username})` : '');
+                    setRequesterName(formattedName || user.first_name || 'Telegram User');
+                    if (user.id) setRequesterId(user.id.toString());
+                }
             }
-        }
+        };
+
+        initTgUser();
+        const tgInterval = setInterval(() => {
+            initTgUser();
+            if (attempts >= 10) clearInterval(tgInterval);
+        }, 300);
 
         return () => {
+            clearInterval(tgInterval);
             if (typeof window !== 'undefined') {
                 window.removeEventListener('online', handleOnline);
             }

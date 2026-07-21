@@ -1340,7 +1340,6 @@ async function handleUpdate(update) {
                     formData.append('chat_id', chatId);
                     formData.append('caption', confirmationText);
                     formData.append('parse_mode', 'HTML');
-                    formData.append('has_spoiler', 'true');
                     
                     // No inline keyboard is attached here because it's PAID and finalized
                     const inlineKeyboard = [];

@@ -26,7 +26,6 @@ async function sendTelegramMessage(token: string, chatId: string, text: string, 
                 formData.append('chat_id', chatId);
                 formData.append('caption', text);
                 formData.append('parse_mode', 'HTML');
-                formData.append('has_spoiler', 'true');
                 if (replyMarkup) {
                     formData.append('reply_markup', JSON.stringify(replyMarkup));
                 }
