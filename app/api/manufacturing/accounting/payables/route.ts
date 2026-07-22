@@ -351,7 +351,34 @@ export async function POST(request: Request) {
                 const chatId = chatIdMatch[1];
                 const messageId = parseInt(messageIdMatch[1]);
                 if (!isNaN(messageId)) {
-                    const cleanNote = (purchase.notes || '')
+                    const noteStr = purchase.notes || '';
+                    const reqMatch = noteStr.match(/\[Dalbaday:\s*([^\]]+)\]/);
+                    const idMatch = noteStr.match(/\[TelegramId:\s*([^\]]+)\]/);
+                    const phoneMatch = noteStr.match(/\[PaymentPhone:\s*([^\]]+)\]/);
+                    const recipMatch = noteStr.match(/\[RecipientName:\s*([^\]]+)\]/);
+
+                    const requesterName = reqMatch ? reqMatch[1].trim() : '';
+                    const requesterId = idMatch ? idMatch[1].trim() : '';
+                    const paymentPhone = phoneMatch ? phoneMatch[1].trim() : '';
+                    const recipientName = recipMatch ? recipMatch[1].trim() : '';
+
+                    let requesterLine = '';
+                    if (requesterId) {
+                        requesterLine = `🗣 <b>Dalbaday:</b> <a href="tg://user?id=${requesterId}">${requesterName}</a>\n`;
+                    } else if (requesterName) {
+                        requesterLine = `🗣 <b>Dalbaday:</b> ${requesterName}\n`;
+                    }
+
+                    let paymentContactLine = '';
+                    if (recipientName && paymentPhone) {
+                        paymentContactLine = `👤 Loo dirayo: ${recipientName}\n📱 Lambarka: ${paymentPhone}\n`;
+                    } else if (paymentPhone) {
+                        paymentContactLine = `📱 Lambarka: ${paymentPhone}\n`;
+                    } else if (recipientName) {
+                        paymentContactLine = `👤 Loo dirayo: ${recipientName}\n`;
+                    }
+
+                    const cleanNote = noteStr
                         .replace(/\[TelegramChatId:\s*[^\]]+\]/g, '')
                         .replace(/\[TelegramMessageId:\s*[^\]]+\]/g, '')
                         .replace(/\[TelegramId:\s*\d+\]/g, '')
@@ -359,17 +386,21 @@ export async function POST(request: Request) {
                         .replace(/\[AccountId:\s*[^\]]+\]/g, '')
                         .replace(/\[Account:\s*[^\]]+\]/g, '')
                         .replace(/\[ReceiptUrl:\s*[^\]]+\]/g, '')
+                        .replace(/\[PaymentPhone:\s*[^\]]+\]/g, '')
+                        .replace(/\[RecipientName:\s*[^\]]+\]/g, '')
                         .trim();
 
                     const formattedDate = new Date(purchase.purchaseDate || purchase.createdAt).toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
 
                     const captionText = `<b>AN-Industory</b>\n` +
-                                        `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement)</b>\n\n` +
+                                        `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement - Paid)</b>\n\n` +
+                                        requesterLine +
                                         `🏭 Alaab-keenaha: ${purchase.vendor ? purchase.vendor.name : 'Unknown'}\n` +
                                         `📦 Name: ${purchase.materialName}\n` +
                                         `📊 Qty: ${purchase.quantity} ${purchase.unit}\n` +
                                         `💵 Price: ${Number(purchase.unitPrice).toLocaleString()} ETB\n` +
                                         `💰 Total: ${Number(purchase.totalPrice).toLocaleString()} ETB\n` +
+                                        paymentContactLine +
                                         `📝 Sharaxaad: ${cleanNote}\n` +
                                         `📅 Taariikhda: ${formattedDate}\n\n` +
                                         `✅ Rasiidka waa la galiyey oo haraaga waa laga jaray.`;

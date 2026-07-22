@@ -184,23 +184,51 @@ export async function PUT(req: Request) {
                 return { updatedExpense, transaction };
             });
 
-            // If this was created from Telegram, try to update the Telegram message in real-time
             const telegramMetadata = expense.note || '';
             const chatIdMatch = telegramMetadata.match(/\[TelegramChatId:\s*([^\]]+)\]/);
-            const messageIdMatch = telegramMetadata.match(/\[TelegramMessageId:\s*([^\]]+)\]/);
+            const messageIdMatch = expense.note?.match(/\[TelegramMessageId:\s*([^\]]+)\]/);
 
             if (chatIdMatch && messageIdMatch) {
                 const chatId = chatIdMatch[1];
                 const messageId = parseInt(messageIdMatch[1]);
                 if (!isNaN(messageId)) {
-                    const cleanNote = (expense.note || '')
+                    const noteStr = expense.note || '';
+                    const reqMatch = noteStr.match(/\[Dalbaday:\s*([^\]]+)\]/);
+                    const idMatch = noteStr.match(/\[TelegramId:\s*([^\]]+)\]/);
+                    const phoneMatch = noteStr.match(/\[PaymentPhone:\s*([^\]]+)\]/);
+                    const recipMatch = noteStr.match(/\[RecipientName:\s*([^\]]+)\]/);
+
+                    const requesterName = reqMatch ? reqMatch[1].trim() : '';
+                    const requesterId = idMatch ? idMatch[1].trim() : '';
+                    const paymentPhone = phoneMatch ? phoneMatch[1].trim() : '';
+                    const recipientName = recipMatch ? recipMatch[1].trim() : '';
+
+                    let requesterLine = '';
+                    if (requesterId) {
+                        requesterLine = `🗣 <b>Dalbaday:</b> <a href="tg://user?id=${requesterId}">${requesterName}</a>\n`;
+                    } else if (requesterName) {
+                        requesterLine = `🗣 <b>Dalbaday:</b> ${requesterName}\n`;
+                    }
+
+                    let paymentContactLine = '';
+                    if (recipientName && paymentPhone) {
+                        paymentContactLine = `👤 Loo dirayo: ${recipientName}\n📱 Lambarka: ${paymentPhone}\n`;
+                    } else if (paymentPhone) {
+                        paymentContactLine = `📱 Lambarka: ${paymentPhone}\n`;
+                    } else if (recipientName) {
+                        paymentContactLine = `👤 Loo dirayo: ${recipientName}\n`;
+                    }
+
+                    const cleanNote = noteStr
+                        .replace(/\[TelegramId:\s*[^\]]+\]/g, '')
                         .replace(/\[TelegramChatId:\s*[^\]]+\]/g, '')
                         .replace(/\[TelegramMessageId:\s*[^\]]+\]/g, '')
-                        .replace(/\[TelegramId:\s*\d+\]/g, '')
                         .replace(/\[Dalbaday:\s*[^\]]+\]/g, '')
                         .replace(/\[AccountId:\s*[^\]]+\]/g, '')
                         .replace(/\[Account:\s*[^\]]+\]/g, '')
                         .replace(/\[ReceiptUrl:\s*[^\]]+\]/g, '')
+                        .replace(/\[PaymentPhone:\s*[^\]]+\]/g, '')
+                        .replace(/\[RecipientName:\s*[^\]]+\]/g, '')
                         .trim();
 
                     const formattedDate = new Date(expense.createdAt).toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
@@ -209,16 +237,19 @@ export async function PUT(req: Request) {
                     if (expense.employeeId) {
                         const employee = await prisma.employee.findUnique({ where: { id: expense.employeeId } });
                         captionText = `<b>AN-Industory</b>\n` +
-                                      `<b>✅ Diiwaangelinta Mushaharka (Waala Bixiyey)</b>\n\n` +
+                                      `<b>✅ Mushahar Bixin Guulaystay!</b>\n\n` +
+                                      requesterLine +
                                       `👤 Shaqaalaha: ${employee ? employee.fullName : 'Unknown'}\n` +
                                       `💵 Lacagta la bixiyey: ${Number(expense.amount).toLocaleString()} ETB\n` +
+                                      (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
                                       `💳 Koontada la doortay: ${expense.paidFrom}\n` +
                                       `📝 Sharaxaad: ${cleanNote || 'Mushaharka bisha'}\n` +
                                       `📅 Taariikhda: ${formattedDate}\n\n` +
                                       `✅ Rasiidka waa la galiyey oo haraaga waa laga jaray.`;
                     } else {
                         captionText = `<b>AN-Industory</b>\n` +
-                                      `<b>✅ Diiwaangelinta Kharashka (Waala Bixiyey)</b>\n\n` +
+                                      `<b>✅ Diiwaangelinta Kharashka Guulaystay!</b>\n\n` +
+                                      requesterLine +
                                       `📂 Qaybta: ${expense.category}\n` +
                                       `💵 Lacagta la bixiyey: ${Number(expense.amount).toLocaleString()} ETB\n`;
 
@@ -236,7 +267,8 @@ export async function PUT(req: Request) {
                             captionText += `🏭 Alaab-keenaha: ${expense.supplierName}\n📦 Name: ${matName}\n`;
                         }
 
-                        captionText += `💳 Koontada la doortay: ${expense.paidFrom}\n` +
+                        captionText += paymentContactLine +
+                                      `💳 Koontada la doortay: ${expense.paidFrom}\n` +
                                       `📝 Sharaxaad: ${cleanNote}\n` +
                                       `📅 Taariikhda: ${formattedDate}\n\n` +
                                       `✅ Rasiidka waa la galiyey oo haraaga waa laga jaray.`;

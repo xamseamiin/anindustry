@@ -31,7 +31,12 @@ async function verifyReceiptWithAI(imagePath, expectedAmount) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        let model;
+        try {
+            model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        } catch (e) {
+            model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        }
 
         const fileBuffer = fs.readFileSync(imagePath);
         const imagePart = {
@@ -52,7 +57,14 @@ Return ONLY a valid raw JSON object (with NO markdown backticks or extra text) u
 }
 If any field cannot be found, use null for that field. Ensure amount is a raw number (e.g. 1220.0, not a string).`;
 
-        const response = await model.generateContent([prompt, imagePart]);
+        let response;
+        try {
+            response = await model.generateContent([prompt, imagePart]);
+        } catch (mErr) {
+            console.warn('Gemini 2.5 Flash model failed, retrying with gemini-2.0-flash:', mErr);
+            const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+            response = await fallbackModel.generateContent([prompt, imagePart]);
+        }
         const responseText = response.response.text().trim().replace(/^```json\s*/, '').replace(/\s*```$/, '');
         let parsed = {};
         try { parsed = JSON.parse(responseText); } catch(e) {}
@@ -100,6 +112,20 @@ function cleanNoteForTelegram(rawNote) {
         .replace(/\[Dalbaday:\s*[^\]]*\]/g, '')
         .replace(/\[ReceiptUrl:\s*[^\]]*\]/g, '')
         .trim();
+}
+
+function parseMetadata(note) {
+    if (!note) return { requesterName: '', requesterId: '', paymentPhone: '', recipientName: '' };
+    const reqMatch = note.match(/\[Dalbaday:\s*([^\]]+)\]/);
+    const idMatch = note.match(/\[TelegramId:\s*([^\]]+)\]/);
+    const phoneMatch = note.match(/\[PaymentPhone:\s*([^\]]+)\]/);
+    const recipMatch = note.match(/\[RecipientName:\s*([^\]]+)\]/);
+    return {
+        requesterName: reqMatch ? reqMatch[1].trim() : '',
+        requesterId: idMatch ? idMatch[1].trim() : '',
+        paymentPhone: phoneMatch ? phoneMatch[1].trim() : '',
+        recipientName: recipMatch ? recipMatch[1].trim() : ''
+    };
 }
 
 async function verifyRequesterPermission(query, recordId, isPurchase = false) {
@@ -1242,14 +1268,33 @@ async function handleUpdate(update) {
                     });
                     if (mp) {
                         const cleanNote = cleanNoteForTelegram(mp.notes);
+                        const meta = parseMetadata(mp.notes);
+                        
+                        let requesterLine = '';
+                        if (meta.requesterId) {
+                            requesterLine = `🗣 <b>Dalbaday:</b> <a href="tg://user?id=${meta.requesterId}">${meta.requesterName}</a>\n`;
+                        } else if (meta.requesterName) {
+                            requesterLine = `🗣 <b>Dalbaday:</b> ${meta.requesterName}\n`;
+                        }
+
+                        let paymentContactLine = '';
+                        if (meta.recipientName && meta.paymentPhone) {
+                            paymentContactLine = `👤 Loo dirayo: ${meta.recipientName}\n📱 Lambarka: ${meta.paymentPhone}\n`;
+                        } else if (meta.paymentPhone) {
+                            paymentContactLine = `📱 Lambarka: ${meta.paymentPhone}\n`;
+                        } else if (meta.recipientName) {
+                            paymentContactLine = `👤 Loo dirayo: ${meta.recipientName}\n`;
+                        }
 
                         confirmationText = `<b>AN-Industory</b>\n` +
-                                           `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement)</b>\n\n` +
+                                           `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement - Paid)</b>\n\n` +
+                                           requesterLine +
                                            `🏭 Alaab-keenaha: ${mp.vendor.name}\n` +
                                            `📦 Name: ${mp.materialName}\n` +
                                            `📊 Qty: ${mp.quantity} ${mp.unit}\n` +
                                            `💵 Price: ${Number(mp.unitPrice).toLocaleString()} ETB\n` +
                                            `💰 Total: ${Number(mp.totalPrice).toLocaleString()} ETB\n` +
+                                           paymentContactLine +
                                            `📝 Sharaxaad: ${cleanNote}\n` +
                                            `📅 Taariikhda: ${formattedDate}\n\n` +
                                            `✅ Lacagtaas waa la diray.`;
@@ -1262,12 +1307,31 @@ async function handleUpdate(update) {
 
                     if (exp) {
                         const cleanNote = cleanNoteForTelegram(exp.note);
+                        const meta = parseMetadata(exp.note);
+                        
+                        let requesterLine = '';
+                        if (meta.requesterId) {
+                            requesterLine = `🗣 <b>Dalbaday:</b> <a href="tg://user?id=${meta.requesterId}">${meta.requesterName}</a>\n`;
+                        } else if (meta.requesterName) {
+                            requesterLine = `🗣 <b>Dalbaday:</b> ${meta.requesterName}\n`;
+                        }
+
+                        let paymentContactLine = '';
+                        if (meta.recipientName && meta.paymentPhone) {
+                            paymentContactLine = `👤 Loo dirayo: ${meta.recipientName}\n📱 Lambarka: ${meta.paymentPhone}\n`;
+                        } else if (meta.paymentPhone) {
+                            paymentContactLine = `📱 Lambarka: ${meta.paymentPhone}\n`;
+                        } else if (meta.recipientName) {
+                            paymentContactLine = `👤 Loo dirayo: ${meta.recipientName}\n`;
+                        }
 
                         if (exp.employeeId) {
                             confirmationText = `<b>AN-Industory</b>\n` +
-                                               `<b>✅ Diiwaangelinta Mushaharka (Waala Bixiyey)</b>\n\n` +
+                                               `<b>✅ Mushahar Bixin Guulaystay!</b>\n\n` +
+                                               requesterLine +
                                                `👤 Shaqaalaha: ${exp.employee.fullName}\n` +
                                                `💵 Lacagta la bixiyey: ${Number(exp.amount).toLocaleString()} ETB\n` +
+                                               (meta.paymentPhone ? `📱 Lambarka: ${meta.paymentPhone}\n` : '') +
                                                `💳 Koontada la doortay: ${exp.paidFrom} (Haraa: ${Number(exp.account.balance).toLocaleString()} ETB)\n` +
                                                `📝 Sharaxaad: ${cleanNote || 'Mushaharka bisha'}\n` +
                                                `📅 Taariikhda: ${formattedDate}\n\n` +
@@ -1289,10 +1353,12 @@ async function handleUpdate(update) {
                             }
 
                             confirmationText = `<b>AN-Industory</b>\n` +
-                                               `<b>✅ Diiwaangelinta Kharashka (Waala Bixiyey)</b>\n\n` +
+                                               `<b>✅ Diiwaangelinta Kharashka Guulaystay!</b>\n\n` +
+                                               requesterLine +
                                                `📂 Qaybta: ${exp.category}\n` +
                                                `💵 Lacagta la bixiyey: ${Number(exp.amount).toLocaleString()} ETB\n` +
                                                customFieldsText +
+                                               paymentContactLine +
                                                `💳 Koontada la doortay: ${exp.paidFrom} (Haraa: ${Number(exp.account.balance).toLocaleString()} ETB)\n` +
                                                `📝 Sharaxaad: ${cleanNote}\n` +
                                                `📅 Taariikhda: ${formattedDate}\n\n` +
