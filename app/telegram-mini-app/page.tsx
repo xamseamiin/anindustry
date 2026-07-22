@@ -7,7 +7,7 @@ import {
     FileText, User, Tag, Truck, Settings, ShoppingBag, 
     Award, ArrowRight, Layers, Factory, Package,
     Hash, Banknote, Calendar, ClipboardList, Wrench, Phone,
-    Mic, MicOff, PlusCircle, Trash2, Pencil
+    Mic, MicOff, PlusCircle, Trash2, Pencil, AlertTriangle
 } from 'lucide-react';
 
 // Safe localStorage helpers for iOS WebView where localStorage can throw SecurityError
@@ -108,6 +108,52 @@ const validatePhoneNumber = (phone: string): boolean => {
     return pattern.test(clean);
 };
 
+const CustomAlertModal = ({ isOpen, onClose, type = 'error', title, message }: any) => {
+    if (!isOpen) return null;
+
+    const isSuccess = type === 'success';
+    const isWarning = type === 'warning';
+    
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md animate-fade-in" onClick={onClose} />
+            <div className="bg-slate-900/90 border border-white/20 backdrop-blur-3xl rounded-3xl p-6 w-full max-w-sm relative z-10 shadow-2xl animate-in zoom-in-95 duration-200 text-center flex flex-col items-center gap-4">
+                <div className={`p-4 rounded-2xl shadow-xl flex items-center justify-center ${
+                    isSuccess 
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                        : isWarning 
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                }`}>
+                    {isSuccess ? <CheckCircle2 size={36} /> : isWarning ? <AlertTriangle size={36} /> : <AlertTriangle size={36} />}
+                </div>
+
+                <div className="space-y-1.5">
+                    <h3 className="text-base font-black text-white tracking-tight">
+                        {title || (isSuccess ? 'Guul' : isWarning ? 'Digniin' : 'Cillad / Warning')}
+                    </h3>
+                    <p className="text-xs font-bold text-slate-300 leading-relaxed">
+                        {message}
+                    </p>
+                </div>
+
+                <button
+                    onClick={onClose}
+                    className={`w-full py-3.5 px-6 rounded-2xl font-black text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg ${
+                        isSuccess
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                            : isWarning
+                            ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30'
+                            : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+                    }`}
+                >
+                    Fahmay (OK)
+                </button>
+            </div>
+        </div>
+    );
+};
+
 export default function TelegramMiniAppPage() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -115,6 +161,22 @@ export default function TelegramMiniAppPage() {
     const [offlineSubmitted, setOfflineSubmitted] = useState(false);
     const [syncingOffline, setSyncingOffline] = useState(false);
     const [dropdownOpen, setDropdownOpen] = useState(false);
+
+    // Custom Glassmorphism Alert State
+    const [alertModal, setAlertModal] = useState<{ isOpen: boolean; type: 'error' | 'success' | 'warning' | 'info'; title?: string; message: string }>({
+        isOpen: false,
+        type: 'error',
+        message: ''
+    });
+
+    const showAlert = (message: string, type: 'error' | 'success' | 'warning' | 'info' = 'error', title?: string) => {
+        setAlertModal({
+            isOpen: true,
+            type,
+            title,
+            message
+        });
+    };
     
     // Master data
     const [employees, setEmployees] = useState<any[]>([]);
@@ -225,7 +287,7 @@ export default function TelegramMiniAppPage() {
         triggerHaptic('light');
         if (!isOwnerOfExpense(exp)) {
             triggerHaptic('error');
-            alert('❌ Ogolaansho ma u lihadid inaad beddesho foom uusan qofkani soo galin. Qofkii soo diwangaliyay oo kaliya ayaa beddeli kara.');
+            showAlert('❌ Ogolaansho ma u lihadid inaad beddesho foom uusan qofkani soo galin. Qofkii soo diwangaliyay oo kaliya ayaa beddeli kara.', 'error', 'Ma aha Ogol');
             return;
         }
         setEditingExpense(exp);
@@ -259,14 +321,14 @@ export default function TelegramMiniAppPage() {
                 triggerHaptic('success');
                 setEditingExpense(null);
                 fetchHistory();
-                alert('Kharashka waa la cusboonaysiiyay!');
+                showAlert('Kharashka waa la cusboonaysiiyay!', 'success');
             } else {
                 triggerHaptic('error');
-                alert(data.error || 'Cillad ayaa dhacday.');
+                showAlert(data.error || 'Cillad ayaa dhacday.', 'error');
             }
         } catch (err: any) {
             triggerHaptic('error');
-            alert('Cillad ayaa dhacday: ' + err.message);
+            showAlert('Cillad ayaa dhacday: ' + err.message, 'error');
         } finally {
             setSavingEdit(false);
         }
@@ -286,14 +348,14 @@ export default function TelegramMiniAppPage() {
                 triggerHaptic('success');
                 if (editingExpense?.id === id) setEditingExpense(null);
                 fetchHistory();
-                alert('Kharashka waa la tirtiray, haraaguna waa loo soo celiyay koontada!');
+                showAlert('Kharashka waa la tirtiray, haraaguna waa loo soo celiyay koontada!', 'success');
             } else {
                 triggerHaptic('error');
-                alert(data.error || 'Cillad ayaa dhacday tirtiridda.');
+                showAlert(data.error || 'Cillad ayaa dhacday tirtiridda.', 'error');
             }
         } catch (err: any) {
             triggerHaptic('error');
-            alert('Cillad: ' + err.message);
+            showAlert('Cillad: ' + err.message, 'error');
         } finally {
             setDeletingId(null);
         }
@@ -326,7 +388,7 @@ export default function TelegramMiniAppPage() {
 
         if (!selectedCategoryKey) {
             triggerHaptic('error');
-            alert('Fadlan dooro nooca codsiga (Category).');
+            showAlert('Fadlan dooro nooca codsiga (Category).', 'warning');
             return;
         }
 
@@ -335,13 +397,13 @@ export default function TelegramMiniAppPage() {
 
         if (isSalaryKey && !selectedEmployeeId) {
             triggerHaptic('error');
-            alert('Fadlan dooro shaqaalaha.');
+            showAlert('Fadlan dooro shaqaalaha.', 'warning');
             return;
         }
 
         if (paymentPhone && !validatePhoneNumber(paymentPhone)) {
             triggerHaptic('error');
-            alert('Fadlan geli lambar telefoon oo sax ah.');
+            showAlert('Fadlan geli lambar telefoon oo sax ah.', 'warning');
             return;
         }
 
@@ -350,14 +412,14 @@ export default function TelegramMiniAppPage() {
             itemAmount = calculatedTotal;
             if (itemAmount <= 0) {
                 triggerHaptic('error');
-                alert('Fadlan geli tirada iyo qiimaha alaabta.');
+                showAlert('Fadlan geli tirada iyo qiimaha alaabta.', 'warning');
                 return;
             }
         } else {
             itemAmount = parseFloat(amount) || 0;
             if (itemAmount <= 0) {
                 triggerHaptic('error');
-                alert('Fadlan geli lacagta (Amount).');
+                showAlert('Fadlan geli lacagta (Amount).', 'warning');
                 return;
             }
         }
@@ -915,12 +977,12 @@ export default function TelegramMiniAppPage() {
             } else {
                 triggerHaptic('error');
                 const data = await res.json();
-                alert(data.error || 'Dalabku wuu fashilmay.');
+                showAlert(data.error || 'Dalabku wuu fashilmay.', 'error');
             }
         } catch (err) {
             triggerHaptic('error');
             console.error(err);
-            alert('Cilad ayaa ku dhacday server-ka.');
+            showAlert('Cilad ayaa ku dhacday server-ka.', 'error');
         } finally {
             setSubmitting(false);
         }
@@ -1755,6 +1817,15 @@ export default function TelegramMiniAppPage() {
                         </div>
                     </div>
                 )}
+
+                {/* Custom Glassmorphism Alert Modal */}
+                <CustomAlertModal 
+                    isOpen={alertModal.isOpen} 
+                    onClose={() => setAlertModal(prev => ({ ...prev, isOpen: false }))} 
+                    type={alertModal.type} 
+                    title={alertModal.title} 
+                    message={alertModal.message} 
+                />
             </div>
         </div>
     );

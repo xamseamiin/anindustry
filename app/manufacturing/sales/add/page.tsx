@@ -7,8 +7,54 @@ import {
     ArrowLeft, Plus, Trash2, Loader2, CheckCircle2,
     Wallet, X, Percent, Banknote, ChevronDown, CreditCard,
     DollarSign, Receipt, Landmark, Calendar, UserPlus, ShoppingBag,
-    History as HistoryIcon, Sparkles, UploadCloud
+    History as HistoryIcon, Sparkles, UploadCloud, AlertTriangle
 } from 'lucide-react';
+
+const CustomAlertModal = ({ isOpen, onClose, type = 'error', title, message }: any) => {
+    if (!isOpen) return null;
+
+    const isSuccess = type === 'success';
+    const isWarning = type === 'warning';
+    
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md animate-fade-in" onClick={onClose} />
+            <div className="bg-slate-900/90 border border-white/20 backdrop-blur-3xl rounded-3xl p-6 w-full max-w-sm relative z-10 shadow-2xl animate-in zoom-in-95 duration-200 text-center flex flex-col items-center gap-4">
+                <div className={`p-4 rounded-2xl shadow-xl flex items-center justify-center ${
+                    isSuccess 
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                        : isWarning 
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                }`}>
+                    {isSuccess ? <CheckCircle2 size={36} /> : isWarning ? <AlertTriangle size={36} /> : <AlertTriangle size={36} />}
+                </div>
+
+                <div className="space-y-1.5">
+                    <h3 className="text-base font-black text-white tracking-tight">
+                        {title || (isSuccess ? 'Guul' : isWarning ? 'Digniin' : 'Cillad / Warning')}
+                    </h3>
+                    <p className="text-xs font-bold text-slate-300 leading-relaxed">
+                        {message}
+                    </p>
+                </div>
+
+                <button
+                    onClick={onClose}
+                    className={`w-full py-3.5 px-6 rounded-2xl font-black text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg ${
+                        isSuccess
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                            : isWarning
+                            ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30'
+                            : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+                    }`}
+                >
+                    Fahmay (OK)
+                </button>
+            </div>
+        </div>
+    );
+};
 
 const Modal = ({ isOpen, onClose, title, children }: any) => {
     if (!isOpen) return null;
@@ -36,6 +82,22 @@ export default function NewSalesOrderPage() {
     const [products, setProducts] = useState<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [accounts, setAccounts] = useState<any[]>([]);
+
+    // Custom Glassmorphism Alert State
+    const [alertModal, setAlertModal] = useState<{ isOpen: boolean; type: 'error' | 'success' | 'warning' | 'info'; title?: string; message: string }>({
+        isOpen: false,
+        type: 'error',
+        message: ''
+    });
+
+    const showAlert = (message: string, type: 'error' | 'success' | 'warning' | 'info' = 'error', title?: string) => {
+        setAlertModal({
+            isOpen: true,
+            type,
+            title,
+            message
+        });
+    };
 
     const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
     const [customerId, setCustomerId] = useState('');
@@ -95,7 +157,7 @@ export default function NewSalesOrderPage() {
 
             if (!res.ok) {
                 const errData = await res.json();
-                alert(errData.error || 'Failed to scan receipt image.');
+                showAlert(errData.error || 'Failed to scan receipt image.', 'error');
                 setScanningReceipt(false);
                 return;
             }
@@ -183,11 +245,11 @@ export default function NewSalesOrderPage() {
                     }
                 }
             } else {
-                alert(extracted?.message || 'Gemini AI was unable to parse the receipt image.');
+                showAlert(extracted?.message || 'Gemini AI was unable to parse the receipt image.', 'error');
             }
         } catch (err: any) {
             console.error('Scan sales receipt error:', err);
-            alert('Cilad ayaa ku dhacday scanning-ka rasiidka.');
+            showAlert('Cilad ayaa ku dhacday scanning-ka rasiidka.', 'error');
         } finally {
             setScanningReceipt(false);
         }
@@ -256,7 +318,7 @@ export default function NewSalesOrderPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        if (!customerId || !paymentMethod) { alert('Please fill in all fields.'); setLoading(false); return; }
+        if (!customerId || !paymentMethod) { showAlert('Fadlan geli macmiilka iyo nooca lacag bixinta.', 'warning'); setLoading(false); return; }
 
         try {
             const response = await fetch('/api/manufacturing/sales', {
@@ -576,6 +638,14 @@ export default function NewSalesOrderPage() {
                         <button onClick={handleAddAccount} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-600/20 active:scale-95">Link Account</button>
                     </div>
                 </Modal>
+
+                <CustomAlertModal 
+                    isOpen={alertModal.isOpen} 
+                    onClose={() => setAlertModal(prev => ({ ...prev, isOpen: false }))} 
+                    type={alertModal.type} 
+                    title={alertModal.title} 
+                    message={alertModal.message} 
+                />
             </div>
         </div>
     );
