@@ -190,15 +190,8 @@ export default function TelegramMiniAppPage() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
     const isOwnerOfExpense = (exp: any) => {
-        if (!exp) return false;
-        if (!exp.requesterId && !exp.requesterName) return true;
-        if (requesterId && exp.requesterId && exp.requesterId === requesterId) return true;
-        if (requesterName && exp.requesterName) {
-            const currentShort = requesterName.split(' ')[0].toLowerCase();
-            const expShort = exp.requesterName.split(' ')[0].toLowerCase();
-            if (currentShort && expShort && (currentShort === expShort || exp.requesterName.toLowerCase().includes(currentShort))) return true;
-        }
-        return false;
+        // Allow all users in Telegram group to view/edit/upload receipts as requested
+        return true;
     };
 
     const fetchHistory = async () => {

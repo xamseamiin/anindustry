@@ -71,7 +71,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { customerId, items, date, accountId, paidAmount, paymentStatus } = body;
+        const { customerId, items, date, accountId, paidAmount, paymentStatus, receiptUrl } = body;
 
         const total = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
         const invoiceNumber = `AN-${Date.now().toString().slice(-6)}`;
@@ -111,6 +111,7 @@ export async function POST(req: Request) {
                     companyId: user.companyId,
                     customerId: customerId || null,
                     accountId: accountId || null,
+                    receiptUrl: receiptUrl || null,
                     subtotal: total,
                     tax: 0,
                     total: total,

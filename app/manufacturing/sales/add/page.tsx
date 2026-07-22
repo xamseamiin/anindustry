@@ -7,7 +7,7 @@ import {
     ArrowLeft, Plus, Trash2, Loader2, CheckCircle2,
     Wallet, X, Percent, Banknote, ChevronDown, CreditCard,
     DollarSign, Receipt, Landmark, Calendar, UserPlus, ShoppingBag,
-    History as HistoryIcon
+    History as HistoryIcon, Sparkles, UploadCloud
 } from 'lucide-react';
 
 const Modal = ({ isOpen, onClose, title, children }: any) => {
@@ -45,6 +45,12 @@ export default function NewSalesOrderPage() {
     const [discount, setDiscount] = useState<number>(0);
     const [items, setItems] = useState([{ id: 1, productId: '', productName: '', quantity: 1, unitPrice: 0 }]);
 
+    // AI Sales Receipt Scanner States
+    const [scanningReceipt, setScanningReceipt] = useState(false);
+    const [scannedReceiptUrl, setScannedReceiptUrl] = useState('');
+    const [scanMessage, setScanMessage] = useState('');
+    const [scanSuccess, setScanSuccess] = useState(false);
+
     const [showCustomerModal, setShowCustomerModal] = useState(false);
     const [showAccountModal, setShowAccountModal] = useState(false);
     const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', address: '' });
@@ -69,6 +75,123 @@ export default function NewSalesOrderPage() {
         };
         fetchData();
     }, []);
+
+    const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setScanningReceipt(true);
+        setScanMessage('Gemini 2.5 AI visual scanner is reading sales receipt details...');
+        setScanSuccess(false);
+
+        try {
+            const formData = new FormData();
+            formData.append('receiptFile', file);
+
+            const res = await fetch('/api/manufacturing/sales/scan-receipt', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                alert(errData.error || 'Failed to scan receipt image.');
+                setScanningReceipt(false);
+                return;
+            }
+
+            const responseData = await res.json();
+            if (responseData.receiptUrl) {
+                setScannedReceiptUrl(responseData.receiptUrl);
+            }
+
+            const extracted = responseData.data;
+            if (extracted && extracted.isSuccess) {
+                setScanSuccess(true);
+                setScanMessage('✅ Rasiidka waa la scan gareeyay! Macluumaadka iibka waxaa lagu buuxiyay foomka si toos ah.');
+
+                // 1. Auto-fill Date
+                if (extracted.date) {
+                    setSaleDate(extracted.date);
+                }
+
+                // 2. Auto-match or Create Customer
+                if (extracted.customerName) {
+                    const matchCust = customers.find(c => 
+                        c.name.toLowerCase().includes(extracted.customerName.toLowerCase()) || 
+                        extracted.customerName.toLowerCase().includes(c.name.toLowerCase())
+                    );
+                    if (matchCust) {
+                        setCustomerId(matchCust.id);
+                    } else {
+                        try {
+                            const newCustRes = await fetch('/api/manufacturing/customers', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ name: extracted.customerName, phone: extracted.customerPhone || '' })
+                            });
+                            if (newCustRes.ok) {
+                                const newCustData = await newCustRes.json();
+                                setCustomers(prev => [...prev, newCustData.customer]);
+                                setCustomerId(newCustData.customer.id);
+                            }
+                        } catch (e) {
+                            console.error('Error auto-creating customer:', e);
+                        }
+                    }
+                }
+
+                // 3. Auto-match Product / Material & Quantities
+                if (extracted.productName || extracted.quantity || extracted.unitPrice) {
+                    let matchedProduct = null;
+                    if (extracted.productName) {
+                        matchedProduct = products.find(p => 
+                            p.name.toLowerCase().includes(extracted.productName.toLowerCase()) || 
+                            extracted.productName.toLowerCase().includes(p.name.toLowerCase())
+                        );
+                    }
+
+                    setItems([{
+                        id: Date.now(),
+                        productId: matchedProduct ? matchedProduct.id : (products[0]?.id || ''),
+                        productName: matchedProduct ? matchedProduct.name : (extracted.productName || products[0]?.name || 'Item'),
+                        quantity: extracted.quantity || 1,
+                        unitPrice: extracted.unitPrice || (matchedProduct ? Number(matchedProduct.sellingPrice) : (extracted.totalAmount ? extracted.totalAmount / (extracted.quantity || 1) : 0))
+                    }]);
+                }
+
+                // 4. Auto-set Paid Amount & Payment Method
+                if (extracted.paidAmount !== null && extracted.paidAmount !== undefined) {
+                    setPaidAmount(extracted.paidAmount);
+                }
+
+                if (extracted.paymentMethod) {
+                    setPaymentMethod(extracted.paymentMethod);
+                } else if (extracted.paidAmount > 0) {
+                    setPaymentMethod('CASH');
+                }
+
+                // 5. Auto-match Deposit Account
+                if (extracted.accountName && accounts.length > 0) {
+                    const accNameLower = extracted.accountName.toLowerCase();
+                    const matchedAcc = accounts.find(a => 
+                        a.name.toLowerCase().includes(accNameLower) || 
+                        accNameLower.includes(a.name.toLowerCase())
+                    );
+                    if (matchedAcc) {
+                        setAccountId(matchedAcc.id);
+                    }
+                }
+            } else {
+                alert(extracted?.message || 'Gemini AI was unable to parse the receipt image.');
+            }
+        } catch (err: any) {
+            console.error('Scan sales receipt error:', err);
+            alert('Cilad ayaa ku dhacday scanning-ka rasiidka.');
+        } finally {
+            setScanningReceipt(false);
+        }
+    };
 
     const addItem = () => setItems([...items, { id: Date.now(), productId: '', productName: '', quantity: 1, unitPrice: 0 }]);
     const removeItem = (id: number) => items.length > 1 && setItems(items.filter(i => i.id !== id));
@@ -147,6 +270,7 @@ export default function NewSalesOrderPage() {
                     paidAmount: (paymentMethod === 'CASH' || paymentMethod === 'CARD') ? grandTotal : paidAmount,
                     discount,
                     total: grandTotal,
+                    receiptUrl: scannedReceiptUrl || null,
                     items: items.map(i => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice }))
                 })
             });
@@ -192,6 +316,41 @@ export default function NewSalesOrderPage() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* AI Sales Receipt Scanner Card */}
+                    <div className="lg:col-span-3 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 backdrop-blur-3xl p-6 rounded-3xl border border-emerald-500/20 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="flex items-center gap-4">
+                            <div className="p-4 bg-emerald-500 text-white rounded-2xl shadow-xl shadow-emerald-500/30 flex items-center justify-center">
+                                <Sparkles size={28} className="animate-pulse" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                    📸 AI Sales Receipt Scanner (Gemini 2.5)
+                                </h3>
+                                <p className="text-xs font-bold text-slate-500">
+                                    Soo geli rasiidka iibka si AI-da ay toos u akhriso magaca macmiilka, tirada, qiimaha, iyo koontada lacagta ku shubmeysa!
+                                </p>
+                                {scanMessage && (
+                                    <p className={`text-xs font-black mt-2 flex items-center gap-1.5 ${scanSuccess ? 'text-emerald-600' : 'text-slate-600 animate-pulse'}`}>
+                                        {scanMessage}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 w-full md:w-auto justify-end">
+                            {scannedReceiptUrl && (
+                                <a href={scannedReceiptUrl} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/80 rounded-xl border border-slate-200 text-xs font-black text-emerald-600 flex items-center gap-1.5 hover:bg-white transition-all shadow-md">
+                                    <Receipt size={14} /> Eeg Rasiidka
+                                </a>
+                            )}
+                            <label className="cursor-pointer px-6 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-600/30 transition-all active:scale-95 flex items-center justify-center gap-2.5 whitespace-nowrap">
+                                {scanningReceipt ? <Loader2 className="animate-spin" size={18} /> : <UploadCloud size={18} />}
+                                {scanningReceipt ? 'AI-da ayaa baareysa...' : '📸 Soo Geli Rasiidka Iibka'}
+                                <input type="file" accept="image/*" onChange={handleReceiptUpload} disabled={scanningReceipt} className="hidden" />
+                            </label>
+                        </div>
+                    </div>
+
                     {/* Main Workspace */}
                     <div className="lg:col-span-2 space-y-8">
                         {/* Customer Info (Glassy) */}
