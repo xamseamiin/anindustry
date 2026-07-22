@@ -444,18 +444,14 @@ async function handleUpdate(update) {
             stateKey = `${chatId}_${userId}`;
             state = userStates[stateKey];
             
-            // Check permissions for finished receipts
-            if (data.startsWith('edit_') || data.startsWith('del_') || data.startsWith('rcpt_') || data.startsWith('cancel_rcpt_')) {
+            // Check permissions for editing or deleting (anyone can upload a receipt)
+            if (data.startsWith('edit_') || data.startsWith('del_')) {
                 let recordId = '';
                 let isPurchase = false;
                 if (data.startsWith('edit_mp_')) { recordId = data.substring(8); isPurchase = true; }
                 else if (data.startsWith('edit_')) recordId = data.substring(5);
                 else if (data.startsWith('del_mp_')) { recordId = data.substring(7); isPurchase = true; }
                 else if (data.startsWith('del_')) recordId = data.substring(4);
-                else if (data.startsWith('rcpt_mp_')) { recordId = data.substring(8); isPurchase = true; }
-                else if (data.startsWith('rcpt_')) recordId = data.substring(5);
-                else if (data.startsWith('cancel_rcpt_mp_')) { recordId = data.substring(15); isPurchase = true; }
-                else if (data.startsWith('cancel_rcpt_')) recordId = data.substring(12);
 
                 const hasPermission = await verifyRequesterPermission(query, recordId, isPurchase);
                 if (!hasPermission) return;
