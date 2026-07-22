@@ -576,12 +576,13 @@ export default function TelegramMiniAppPage() {
         }
     }, []);
 
-    // Auto-fill payment phone when employee is selected
+    // Auto-fill payment phone and recipient name when employee is selected
     useEffect(() => {
         if (selectedEmployeeId && selectedCategoryKey === 'SALARY') {
             const emp = employees.find(e => e.id === selectedEmployeeId);
-            if (emp?.phone) {
-                setPaymentPhone(emp.phone);
+            if (emp) {
+                if (emp.phone) setPaymentPhone(emp.phone);
+                setRecipientName(emp.fullName);
             }
         }
     }, [selectedEmployeeId, employees, selectedCategoryKey]);
@@ -1501,44 +1502,46 @@ export default function TelegramMiniAppPage() {
                         )}
 
                         {/* Payment Contact Fields */}
-                        <div className="flex flex-col gap-2 p-3 bg-white/[0.02] border border-white/5 rounded-xl">
-                            <div className="flex justify-between items-center">
-                                <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                    <Phone size={10} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Qofka Lacagta loo xawilayo
-                                </label>
-                                {activeCategorySavedContacts.length > 0 && (
-                                    <button type="button" onClick={() => setShowSavedContacts(!showSavedContacts)}
-                                        className="text-[10px] font-bold text-[var(--tg-theme-button-color,#3b82f6)] hover:underline"
-                                    >
-                                        {showSavedContacts ? 'Qari' : `📋 Xiriirradii Hore (${activeCategorySavedContacts.length})`}
-                                    </button>
-                                )}
-                            </div>
-
-                            {showSavedContacts && activeCategorySavedContacts.length > 0 && (
-                                <div className="flex flex-col gap-1 max-h-32 overflow-y-auto p-1 bg-black/20 rounded-lg border border-white/5">
-                                    {activeCategorySavedContacts.map((c, idx) => (
-                                        <button key={idx} type="button" onClick={() => handleSelectSavedContact(c)}
-                                            className="p-1.5 hover:bg-white/10 rounded text-left text-xs font-bold flex justify-between items-center transition-all"
+                        {!(selectedCategoryKey === 'SALARY' && selectedEmployeeId) && (
+                            <div className="flex flex-col gap-2 p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                        <Phone size={10} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Qofka Lacagta loo xawilayo
+                                    </label>
+                                    {activeCategorySavedContacts.length > 0 && (
+                                        <button type="button" onClick={() => setShowSavedContacts(!showSavedContacts)}
+                                            className="text-[10px] font-bold text-[var(--tg-theme-button-color,#3b82f6)] hover:underline"
                                         >
-                                            <span>{c.name}</span>
-                                            <span className="text-[10px] text-[var(--tg-theme-hint-color,#94a3b8)]">{c.phone}</span>
+                                            {showSavedContacts ? 'Qari' : `📋 Xiriirradii Hore (${activeCategorySavedContacts.length})`}
                                         </button>
-                                    ))}
+                                    )}
                                 </div>
-                            )}
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)}
-                                    placeholder="Magaca loo dirayo"
-                                    className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-xs font-bold outline-none"
-                                />
-                                <input type="tel" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)}
-                                    placeholder="Lambar (09.../07...)"
-                                    className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-xs font-bold outline-none"
-                                />
+                                {showSavedContacts && activeCategorySavedContacts.length > 0 && (
+                                    <div className="flex flex-col gap-1 max-h-32 overflow-y-auto p-1 bg-black/20 rounded-lg border border-white/5">
+                                        {activeCategorySavedContacts.map((c, idx) => (
+                                            <button key={idx} type="button" onClick={() => handleSelectSavedContact(c)}
+                                                className="p-1.5 hover:bg-white/10 rounded text-left text-xs font-bold flex justify-between items-center transition-all"
+                                            >
+                                                <span>{c.name}</span>
+                                                <span className="text-[10px] text-[var(--tg-theme-hint-color,#94a3b8)]">{c.phone}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)}
+                                        placeholder="Magaca loo dirayo"
+                                        className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-xs font-bold outline-none"
+                                    />
+                                    <input type="tel" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)}
+                                        placeholder="Lambar (09.../07...)"
+                                        className="w-full p-2.5 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-lg text-xs font-bold outline-none"
+                                    />
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Note & Voice Input */}
                         <div className="flex flex-col gap-1.5">
@@ -1693,30 +1696,31 @@ export default function TelegramMiniAppPage() {
                                             <option key={c.id} value={c.id} className="bg-slate-950">{c.name}</option>
                                         ))}
                                     </select>
-                                </div>
 
-                                {/* Recipient Name & Payment Phone */}
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">👤 Loo Dirayo</label>
-                                        <input
-                                            type="text"
-                                            value={editRecipientName}
-                                            onChange={(e) => setEditRecipientName(e.target.value)}
-                                            className="w-full p-2.5 bg-white/[0.03] border border-white/10 rounded-xl text-xs font-bold text-white outline-none focus:border-blue-500"
-                                            placeholder="Magaca"
-                                        />
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">📱 Lambarka</label>
-                                        <input
-                                            type="tel"
-                                            value={editPhone}
-                                            onChange={(e) => setEditPhone(e.target.value)}
-                                            className="w-full p-2.5 bg-white/[0.03] border border-white/10 rounded-xl text-xs font-bold text-white outline-none focus:border-blue-500"
-                                            placeholder="Lambar"
-                                        />
-                                    </div>
+                                    {!editingExpense?.employeeId && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">👤 Loo Dirayo</label>
+                                                <input
+                                                    type="text"
+                                                    value={editRecipientName}
+                                                    onChange={(e) => setEditRecipientName(e.target.value)}
+                                                    className="w-full p-2.5 bg-white/[0.03] border border-white/10 rounded-xl text-xs font-bold text-white outline-none focus:border-blue-500"
+                                                    placeholder="Magaca"
+                                                />
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase">📱 Lambarka</label>
+                                                <input
+                                                    type="tel"
+                                                    value={editPhone}
+                                                    onChange={(e) => setEditPhone(e.target.value)}
+                                                    className="w-full p-2.5 bg-white/[0.03] border border-white/10 rounded-xl text-xs font-bold text-white outline-none focus:border-blue-500"
+                                                    placeholder="Lambar"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Clean Note Field */}

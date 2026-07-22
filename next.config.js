@@ -1,6 +1,7 @@
 // next.config.js (for Next.js 14)
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   // Images: disable Next.js Image Optimization for Netlify compatibility
   images: {
     unoptimized: true,

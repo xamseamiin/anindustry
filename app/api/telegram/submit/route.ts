@@ -109,8 +109,21 @@ export async function POST(request: Request) {
         const consultancyType = formData.get('consultancyType') as string;
 
         // Payment recipient fields
-        const paymentPhone = formData.get('paymentPhone') as string || '';
-        const recipientName = formData.get('recipientName') as string || '';
+        let paymentPhone = formData.get('paymentPhone') as string || '';
+        let recipientName = formData.get('recipientName') as string || '';
+
+        // If salary request, auto-populate from employee record if missing
+        if (type === 'SALARY' && employeeId) {
+            try {
+                const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+                if (employee) {
+                    if (!recipientName) recipientName = employee.fullName;
+                    if (!paymentPhone) paymentPhone = employee.phone || employee.phoneNumber || '';
+                }
+            } catch (e) {
+                console.error("Error auto-populating employee info in submit route:", e);
+            }
+        }
 
         // Requester metadata
         const requesterName = formData.get('requesterName') as string || 'WebApp User';

@@ -1819,6 +1819,24 @@ async function processTransaction(chatId, stateKey, data) {
             finalNote = finalNote ? `${finalNote}\n${requesterTag}` : requesterTag;
         }
 
+        // If salary type, auto-populate employee phone and recipient name if missing
+        if (type === 'SALARY' && employeeId) {
+            try {
+                const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+                if (employee) {
+                    const empPhone = employee.phone || employee.phoneNumber || '';
+                    if (empPhone && !finalNote.includes('[PaymentPhone:')) {
+                        finalNote = `${finalNote}\n[PaymentPhone: ${empPhone}]`;
+                    }
+                    if (employee.fullName && !finalNote.includes('[RecipientName:')) {
+                        finalNote = `${finalNote}\n[RecipientName: ${employee.fullName}]`;
+                    }
+                }
+            } catch (e) {
+                console.error("Error auto-populating employee info in processTransaction:", e);
+            }
+        }
+
         if (accountId && !finalNote.includes('[AccountId:')) {
             const account = await prisma.account.findUnique({ where: { id: accountId } });
             if (account) {
