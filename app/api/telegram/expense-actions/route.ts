@@ -149,17 +149,18 @@ export async function PUT(request: Request) {
                 contactInfoLine = `👤 Loo dirayo: ${recipientName}\n`;
             }
 
+            const balanceSuffix = liveBalanceText ? ` (Haraa: ${liveBalanceText})` : '';
+
             const updatedTelegramText =
                 `<b>AN-Industory</b>\n` +
                 `<b>✅ Diiwaangelinta Kharashka (Cusboonaysiin / Updated)</b>\n\n` +
                 `📂 Qaybta: ${updatedExpense.category}\n` +
                 `💵 Lacagta la bixiyey: ${newAmount.toLocaleString()} ETB\n` +
                 contactInfoLine +
-                `💳 Koontada: ${updatedExpense.account?.name || 'E-Birr Merchant'}\n` +
+                `💳 Koontada: ${updatedExpense.account?.name || 'E-Birr Merchant'}${balanceSuffix}\n` +
                 `📝 Sharaxaad: ${cleanNote || 'Kharash'}\n` +
                 `📅 Taariikhda: ${formattedDate}\n\n` +
-                `✏️ <i>(Waxaa lagu sameeyay Edit)</i>` +
-                (liveBalanceText ? `\n\n💳 <b>E-Birr Merchant Balance:</b> ${liveBalanceText}\n   (Hadhka saxda ah ka dib dalabkan)` : '');
+                `✏️ <i>(Waxaa lagu sameeyay Edit)</i>`;
 
             await editTelegramBotMessage(token, targetChatId, targetMsgId, updatedTelegramText);
         }

@@ -401,24 +401,8 @@ export async function POST(request: Request) {
             };
         });
 
-        // 3. Fetch E-Birr Merchant live balance (deposit minus all expenses linked to it)
-        let eBirrMerchantBalanceLine = '';
-        try {
-            const EBIRR_MERCHANT_NAME = 'E-Birr Merchant';
-            const eBirrMerchantAcc = await prisma.account.findFirst({
-                where: { companyId, name: EBIRR_MERCHANT_NAME, isActive: true }
-            });
-            if (eBirrMerchantAcc) {
-                // Sum all pending (unpaid) expenses on the E-Birr Merchant account
-                const pendingExpensesAgg = await prisma.expense.aggregate({
-                    where: { accountId: eBirrMerchantAcc.id, companyId, paymentStatus: { not: 'PAID' } },
-                    _sum: { amount: true }
-                });
-                const pendingTotal = Number(pendingExpensesAgg._sum?.amount ?? 0);
-                const liveBalance = Number(eBirrMerchantAcc.balance) - pendingTotal;
-                eBirrMerchantBalanceLine = `\n💳 <b>E-Birr Merchant Balance:</b> ${liveBalance.toLocaleString()} ETB\n   (Hadhka saxda ah ka dib dalabyadii la diray)`;
-            }
-        } catch (_) { /* Don't break submission if balance fetch fails */ }
+        // 3. Fetch E-Birr Merchant live balance - completely disabled as requested (only mid-line balance shown)
+        const eBirrMerchantBalanceLine = '';
 
         // 4. Send Telegram Notification
         if (token && chatId) {
