@@ -116,9 +116,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
                 let requesterLine = '';
                 if (requesterId) {
-                    requesterLine = `🗣 <b>Dalbaday:</b> <a href="tg://user?id=${requesterId}">${requesterName}</a>\n`;
+                    requesterLine = `🗣 <b>Soo Dalbay:</b> <a href="tg://user?id=${requesterId}">${requesterName}</a>\n`;
                 } else if (requesterName) {
-                    requesterLine = `🗣 <b>Dalbaday:</b> ${requesterName}\n`;
+                    requesterLine = `🗣 <b>Soo Dalbay:</b> ${requesterName}\n`;
                 }
 
                 let paymentContactLine = '';

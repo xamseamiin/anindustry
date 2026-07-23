@@ -426,9 +426,9 @@ export async function POST(request: Request) {
             // Build requester info line
             let requesterLine = '';
             if (requesterId) {
-                requesterLine = `🗣 <b>Dalbaday:</b> <a href="tg://user?id=${requesterId}">${requesterName}</a>\n`;
+                requesterLine = `🗣 <b>Soo Dalbay:</b> <a href="tg://user?id=${requesterId}">${requesterName}</a>\n`;
             } else if (requesterName) {
-                requesterLine = `🗣 <b>Dalbaday:</b> ${requesterName}\n`;
+                requesterLine = `🗣 <b>Soo Dalbay:</b> ${requesterName}\n`;
             }
 
             // Build payment contact info line
@@ -456,7 +456,7 @@ export async function POST(request: Request) {
             if (result.isPurchase) {
                 if (result.isPaid) {
                     telegramText = `<b>AN-Industory</b>\n` +
-                                   `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement - Paid)</b>\n\n` +
+                                   `<b>✅ Diiwaangelinta Qalabka / Raw Material (Waala Bixiyey)</b>\n\n` +
                                    requesterLine +
                                    `🏭 Alaab-keenaha: ${result.supplierName}\n` +
                                    `📦 Name: ${result.materialName}\n` +
@@ -466,12 +466,11 @@ export async function POST(request: Request) {
                                    paymentContactLine +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}` +
-                                   aiStatusLine +
-                                   eBirrMerchantBalanceLine;
+                                   aiStatusLine;
                 // No keyboard buttons for paid procurement
                 } else {
                     telegramText = `<b>AN-Industory</b>\n` +
-                                   `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement)</b>\n\n` +
+                                   `<b>📋 Codsiga Qalabka / Raw Material (Sugaya Rasiidka)</b>\n\n` +
                                    requesterLine +
                                    `🏭 Alaab-keenaha: ${result.supplierName}\n` +
                                    `📦 Name: ${result.materialName}\n` +
@@ -482,8 +481,7 @@ export async function POST(request: Request) {
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
                                    `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
-                                   aiStatusLine +
-                                   eBirrMerchantBalanceLine;
+                                   aiStatusLine;
                     replyMarkup = {
                         inline_keyboard: [
                             [
@@ -495,30 +493,28 @@ export async function POST(request: Request) {
             } else if (type === 'SALARY') {
                 if (result.isPaid) {
                     telegramText = `<b>AN-Industory</b>\n` +
-                                   `<b>✅ Mushahar Bixin Guulaystay!</b>\n\n` +
+                                   `<b>✅ Mushahar Bixin Guulaystay! (Waala Bixiyey)</b>\n\n` +
                                    requesterLine +
                                    `👤 Shaqaalaha: ${result.employeeName}\n` +
-                                   `💵 Lacagta: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                   `💵 Lacagta la bixiyey: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
                                    `💳 Koontada: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                    `📅 Taariikhda: ${formattedDate}` +
-                                   aiStatusLine +
-                                   eBirrMerchantBalanceLine;
+                                   aiStatusLine;
                 // No keyboard buttons for paid salaries
                 } else {
                     telegramText = `<b>AN-Industory</b>\n` +
-                                   `<b>✅ Diiwaangelinta Mushaharka (Sugaya Rasiidka)</b>\n\n` +
+                                   `<b>📋 Codsiga Mushaharka (Sugaya Rasiidka)</b>\n\n` +
                                    requesterLine +
                                    `👤 Shaqaalaha: ${result.employeeName}\n` +
-                                   `💵 Lacagta la bixiyey: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                   `💵 Lacagta la dalbay: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
                                    `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
                                    `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
-                                   aiStatusLine +
-                                   eBirrMerchantBalanceLine;
+                                   aiStatusLine;
                     replyMarkup = {
                         inline_keyboard: [
                             [
@@ -539,32 +535,30 @@ export async function POST(request: Request) {
 
                 if (result.isPaid) {
                     telegramText = `<b>AN-Industory</b>\n` +
-                                   `<b>✅ Diiwaangelinta Kharashka Guulaystay!</b>\n\n` +
+                                   `<b>✅ Diiwaangelinta Kharashka (Waala Bixiyey)</b>\n\n` +
                                    requesterLine +
                                    `📂 Qaybta: ${result.categoryName}\n` +
-                                   `💵 Lacagta: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                   `💵 Lacagta la bixiyey: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    customFieldsText +
                                    paymentContactLine +
                                    `💳 Koontada: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}` +
-                                   aiStatusLine +
-                                   eBirrMerchantBalanceLine;
+                                   aiStatusLine;
                 // No keyboard buttons for paid expenses
                 } else {
                     telegramText = `<b>AN-Industory</b>\n` +
-                                   `<b>✅ Diiwaangelinta Kharashka (Sugaya Rasiidka)</b>\n\n` +
+                                   `<b>📋 Codsiga Kharashka (Sugaya Rasiidka)</b>\n\n` +
                                    requesterLine +
                                    `📂 Qaybta: ${result.categoryName}\n` +
-                                   `💵 Lacagta la bixiyey: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                   `💵 Lacagta la dalbay: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
                                    customFieldsText +
                                    paymentContactLine +
                                    `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                    `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                    `📅 Taariikhda: ${formattedDate}\n\n` +
                                    `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
-                                   aiStatusLine +
-                                   eBirrMerchantBalanceLine;
+                                   aiStatusLine;
                     replyMarkup = {
                         inline_keyboard: [
                             [

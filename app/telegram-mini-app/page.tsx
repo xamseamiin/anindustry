@@ -294,7 +294,7 @@ export default function TelegramMiniAppPage() {
         triggerHaptic('light');
         if (!isOwnerOfExpense(exp)) {
             triggerHaptic('error');
-            showAlert('❌ Ogolaansho ma u lihadid inaad beddesho foom uusan qofkani soo galin. Qofkii soo diwangaliyay oo kaliya ayaa beddeli kara.', 'error', 'Ma aha Ogol');
+            showAlert('❌ Ogolaansho ma u leehid inaad beddesho foom uusan qofkani soo galin. Qofkii soo diiwaangeliyay oo kaliya ayaa beddeli kara.', 'error', 'Ogolaansho Ma Leehid');
             return;
         }
         setEditingExpense(exp);

@@ -46,7 +46,7 @@ conn.on('ready', () => {
 
         const deployCommands = [
           'echo "Starting Fast Deployment on Server..."',
-          'rm -rf /root/revlo/app /root/revlo/components /root/revlo/contexts /root/revlo/lib /root/revlo/prisma /root/revlo/types /root/revlo/hooks',
+          'rm -rf /root/revlo/app /root/revlo/components /root/revlo/contexts /root/revlo/lib /root/revlo/prisma /root/revlo/types /root/revlo/hooks /root/revlo/scripts',
           'find /root/revlo/public -mindepth 1 -maxdepth 1 ! -name \'uploads\' -exec rm -rf {} + || true',
           'tar -xzf /root/revlo_deploy.tar.gz -C /root/revlo',
           'cd /root/revlo && npm install --legacy-peer-deps',
@@ -57,6 +57,7 @@ conn.on('ready', () => {
           'cd /root/revlo && cp -r .next/static .next/standalone/.next/ || true',
           'pm2 delete revlo || true',
           'cd /root/revlo && pm2 start .next/standalone/server.js --name "revlo"',
+          'pm2 restart an-industory-bot || true',
           'pm2 save',
           'pm2 status'
         ];

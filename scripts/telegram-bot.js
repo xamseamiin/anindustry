@@ -874,9 +874,9 @@ async function handleUpdate(update) {
                 
                 if (exp.employeeId) {
                     restoreText = `<b>AN-Industory</b>\n` +
-                                  `<b>✅ Diiwaangelinta Mushaharka (Sugaya Rasiidka)</b>\n\n` +
+                                  `<b>📋 Codsiga Mushaharka (Sugaya Rasiidka)</b>\n\n` +
                                   `👤 Shaqaalaha: ${exp.employee.fullName}\n` +
-                                  `💵 Lacagta la bixiyey: ${Number(exp.amount).toLocaleString()} ETB\n` +
+                                  `💵 Lacagta la dalbay: ${Number(exp.amount).toLocaleString()} ETB\n` +
                                   `💳 Koontada la doortay: ${exp.paidFrom} (Haraa: ${Number(exp.account.balance).toLocaleString()} ETB)\n` +
                                   `📝 Sharaxaad: ${cleanNoteForTelegram(exp.note || 'Mushaharka bisha')}\n` +
                                   `📅 Taariikhda: ${formattedDate}\n\n` +
@@ -898,9 +898,9 @@ async function handleUpdate(update) {
                     }
 
                     restoreText = `<b>AN-Industory</b>\n` +
-                                  `<b>✅ Diiwaangelinta Kharashka (Sugaya Rasiidka)</b>\n\n` +
+                                  `<b>📋 Codsiga Kharashka (Sugaya Rasiidka)</b>\n\n` +
                                   `📂 Qaybta: ${exp.category}\n` +
-                                  `💵 Lacagta la bixiyey: ${Number(exp.amount).toLocaleString()} ETB\n` +
+                                  `💵 Lacagta la dalbay: ${Number(exp.amount).toLocaleString()} ETB\n` +
                                   customFieldsText +
                                   `💳 Koontada la doortay: ${exp.paidFrom} (Haraa: ${Number(exp.account.balance).toLocaleString()} ETB)\n` +
                                   `📝 Sharaxaad: ${cleanNoteForTelegram(exp.note || '')}\n` +
@@ -1272,9 +1272,9 @@ async function handleUpdate(update) {
                         
                         let requesterLine = '';
                         if (meta.requesterId) {
-                            requesterLine = `🗣 <b>Dalbaday:</b> <a href="tg://user?id=${meta.requesterId}">${meta.requesterName}</a>\n`;
+                            requesterLine = `🗣 <b>Soo Dalbay:</b> <a href="tg://user?id=${meta.requesterId}">${meta.requesterName}</a>\n`;
                         } else if (meta.requesterName) {
-                            requesterLine = `🗣 <b>Dalbaday:</b> ${meta.requesterName}\n`;
+                            requesterLine = `🗣 <b>Soo Dalbay:</b> ${meta.requesterName}\n`;
                         }
 
                         let paymentContactLine = '';
@@ -1287,7 +1287,7 @@ async function handleUpdate(update) {
                         }
 
                         confirmationText = `<b>AN-Industory</b>\n` +
-                                           `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement - Paid)</b>\n\n` +
+                                           `<b>✅ Diiwaangelinta Qalabka / Raw Material (Waala Bixiyey)</b>\n\n` +
                                            requesterLine +
                                            `🏭 Alaab-keenaha: ${mp.vendor.name}\n` +
                                            `📦 Name: ${mp.materialName}\n` +
@@ -1311,9 +1311,9 @@ async function handleUpdate(update) {
                         
                         let requesterLine = '';
                         if (meta.requesterId) {
-                            requesterLine = `🗣 <b>Dalbaday:</b> <a href="tg://user?id=${meta.requesterId}">${meta.requesterName}</a>\n`;
+                            requesterLine = `🗣 <b>Soo Dalbay:</b> <a href="tg://user?id=${meta.requesterId}">${meta.requesterName}</a>\n`;
                         } else if (meta.requesterName) {
-                            requesterLine = `🗣 <b>Dalbaday:</b> ${meta.requesterName}\n`;
+                            requesterLine = `🗣 <b>Soo Dalbay:</b> ${meta.requesterName}\n`;
                         }
 
                         let paymentContactLine = '';
@@ -1327,7 +1327,7 @@ async function handleUpdate(update) {
 
                         if (exp.employeeId) {
                             confirmationText = `<b>AN-Industory</b>\n` +
-                                               `<b>✅ Mushahar Bixin Guulaystay!</b>\n\n` +
+                                               `<b>✅ Mushahar Bixin Guulaystay! (Waala Bixiyey)</b>\n\n` +
                                                requesterLine +
                                                `👤 Shaqaalaha: ${exp.employee.fullName}\n` +
                                                `💵 Lacagta la bixiyey: ${Number(exp.amount).toLocaleString()} ETB\n` +
@@ -1353,7 +1353,7 @@ async function handleUpdate(update) {
                             }
 
                             confirmationText = `<b>AN-Industory</b>\n` +
-                                               `<b>✅ Diiwaangelinta Kharashka Guulaystay!</b>\n\n` +
+                                               `<b>✅ Diiwaangelinta Kharashka (Waala Bixiyey)</b>\n\n` +
                                                requesterLine +
                                                `📂 Qaybta: ${exp.category}\n` +
                                                `💵 Lacagta la bixiyey: ${Number(exp.amount).toLocaleString()} ETB\n` +
@@ -2057,7 +2057,7 @@ async function processTransaction(chatId, stateKey, data) {
 
         if (result.isPurchase) {
             confirmationText = `<b>AN-Industory</b>\n` +
-                               `<b>✅ Diiwaangelinta Qalabka / Raw Material (Procurement)</b>\n\n` +
+                               `<b>📋 Codsiga Qalabka / Raw Material (Sugaya Rasiidka)</b>\n\n` +
                                `🏭 Alaab-keenaha: ${result.supplierName}\n` +
                                `📦 Name: ${result.materialName}\n` +
                                `📊 Qty: ${result.quantity} ${result.materialUnit}\n` +
@@ -2068,9 +2068,9 @@ async function processTransaction(chatId, stateKey, data) {
                                `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...`;
         } else if (type === 'SALARY') {
             confirmationText = `<b>AN-Industory</b>\n` +
-                               `<b>✅ Diiwaangelinta Mushaharka (Sugaya Rasiidka)</b>\n\n` +
+                               `<b>📋 Codsiga Mushaharka (Sugaya Rasiidka)</b>\n\n` +
                                `👤 Shaqaalaha: ${result.employeeName}\n` +
-                               `💵 Lacagta la bixiyey: ${amount.toLocaleString()} ETB\n` +
+                               `💵 Lacagta la dalbay: ${amount.toLocaleString()} ETB\n` +
                                `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                `📅 Taariikhda: ${formattedDate}\n\n` +
@@ -2086,9 +2086,9 @@ async function processTransaction(chatId, stateKey, data) {
             }
 
             confirmationText = `<b>AN-Industory</b>\n` +
-                               `<b>✅ Diiwaangelinta Kharashka (Sugaya Rasiidka)</b>\n\n` +
+                               `<b>📋 Codsiga Kharashka (Sugaya Rasiidka)</b>\n\n` +
                                `📂 Qaybta: ${result.categoryName}\n` +
-                               `💵 Lacagta la bixiyey: ${amount.toLocaleString()} ETB\n` +
+                               `💵 Lacagta la dalbay: ${amount.toLocaleString()} ETB\n` +
                                customFieldsText +
                                `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
