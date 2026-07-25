@@ -85,9 +85,11 @@ export async function PUT(request: Request) {
         if (paymentPhone) finalNote += `\n[PaymentPhone: ${paymentPhone}]`;
         if (recipientName) finalNote += `\n[RecipientName: ${recipientName}]`;
 
+        const wasPaid = existingExpense.approved || existingExpense.paymentStatus === 'PAID' || !!existingExpense.receiptUrl;
+
         // Update in transaction
         const updatedExpense = await prisma.$transaction(async (tx) => {
-            if (targetAccountId && diff !== 0) {
+            if (targetAccountId && diff !== 0 && wasPaid) {
                 await tx.account.update({
                     where: { id: targetAccountId },
                     data: { balance: { decrement: diff } }
@@ -110,27 +112,9 @@ export async function PUT(request: Request) {
                     accountId: targetAccountId,
                     receiptUrl: receiptUrl !== undefined ? receiptUrl : existingExpense.receiptUrl
                 },
-                include: { account: true, expenseCategory: true }
+                include: { account: true, expenseCategory: true, employee: true }
             });
         });
-
-        // Calculate live E-Birr Merchant balance for message update
-        let liveBalanceText = '';
-        try {
-            const EBIRR_NAME = 'E-Birr Merchant';
-            const eBirrAcc = await prisma.account.findFirst({
-                where: { companyId, name: EBIRR_NAME, isActive: true }
-            });
-            if (eBirrAcc) {
-                const pendingAgg = await prisma.expense.aggregate({
-                    where: { accountId: eBirrAcc.id, companyId, paymentStatus: { not: 'PAID' } },
-                    _sum: { amount: true }
-                });
-                const pending = Number(pendingAgg._sum?.amount ?? 0);
-                const currentLive = Number(eBirrAcc.balance) - pending;
-                liveBalanceText = `${currentLive.toLocaleString()} ETB`;
-            }
-        } catch (_) {}
 
         // Edit original Telegram message if available
         const targetChatId = existingExpense.telegramChatId || defaultChatId;
@@ -138,41 +122,44 @@ export async function PUT(request: Request) {
 
         if (token && targetChatId && targetMsgId) {
             const formattedDate = new Date(existingExpense.createdAt).toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
-            const cleanNote = (updatedExpense.note || '').replace(/\[(?:Dalbaday|TelegramId|PaymentPhone|RecipientName|Account|AccountId):[^\]]*\]/g, '').trim();
+            let updatedText = '';
 
-            let contactInfoLine = '';
-            if (recipientName && paymentPhone) {
-                contactInfoLine = `👤 Loo dirayo: ${recipientName}\n📱 Lambarka: ${paymentPhone}\n`;
-            } else if (paymentPhone) {
-                contactInfoLine = `📱 Lambarka: ${paymentPhone}\n`;
-            } else if (recipientName) {
-                contactInfoLine = `👤 Loo dirayo: ${recipientName}\n`;
+            const reqMatch = existingExpense.note?.match(/\[Dalbaday:\s*([^\]]+)\]/);
+            const requesterName = reqMatch ? reqMatch[1].trim() : '';
+            const requesterLine = requesterName ? `🗣 <b>Soo Dalbay:</b> ${requesterName}\n` : '';
+
+            if (existingExpense.employeeId) {
+                updatedText = `<b>AN-Industory</b>\n` +
+                              `<b>✅ Diiwaangelinta Mushaharka (Cusboonaysiin)</b>\n\n` +
+                              requesterLine +
+                              `👤 Shaqaalaha: ${updatedExpense.employee?.fullName || 'Shaqaale'}\n` +
+                              `💵 Lacagta: ${newAmount.toLocaleString()} ETB\n` +
+                              (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
+                              `💳 Koontada: ${updatedExpense.account?.name || 'Account'} (Haraa: ${Number(updatedExpense.account?.balance || 0).toLocaleString()} ETB)\n` +
+                              `📝 Sharaxaad: ${finalNote}\n` +
+                              `📅 Taariikhda: ${formattedDate}`;
+            } else {
+                updatedText = `<b>AN-Industory</b>\n` +
+                              `<b>✅ Diiwaangelinta Kharashka (Cusboonaysiin)</b>\n\n` +
+                              requesterLine +
+                              `📂 Qaybta: ${updatedExpense.category}\n` +
+                              `💵 Lacagta: ${newAmount.toLocaleString()} ETB\n` +
+                              `💳 Koontada: ${updatedExpense.account?.name || 'Account'} (Haraa: ${Number(updatedExpense.account?.balance || 0).toLocaleString()} ETB)\n` +
+                              `📝 Sharaxaad: ${finalNote}\n` +
+                              `📅 Taariikhda: ${formattedDate}`;
             }
 
-            const balanceSuffix = liveBalanceText ? ` (Haraa: ${liveBalanceText})` : '';
-
-            const updatedTelegramText =
-                `<b>AN-Industory</b>\n` +
-                `<b>✅ Diiwaangelinta Kharashka (Cusboonaysiin / Updated)</b>\n\n` +
-                `📂 Qaybta: ${updatedExpense.category}\n` +
-                `💵 Lacagta la bixiyey: ${newAmount.toLocaleString()} ETB\n` +
-                contactInfoLine +
-                `💳 Koontada: ${updatedExpense.account?.name || 'E-Birr Merchant'}${balanceSuffix}\n` +
-                `📝 Sharaxaad: ${cleanNote || 'Kharash'}\n` +
-                `📅 Taariikhda: ${formattedDate}\n\n` +
-                `✏️ <i>(Waxaa lagu sameeyay Edit)</i>`;
-
-            await editTelegramBotMessage(token, targetChatId, targetMsgId, updatedTelegramText);
+            await editTelegramBotMessage(token, targetChatId, targetMsgId, updatedText);
         }
 
-        return NextResponse.json({ success: true, expense: updatedExpense, message: 'Kharashka waa la cusboonaysiiyay!' });
+        return NextResponse.json({ success: true, expense: updatedExpense });
     } catch (error: any) {
-        console.error('Error updating expense:', error);
+        console.error('Error editing expense:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
 
-// DELETE: Delete Expense & Refund Balance
+// DELETE: Delete Expense
 export async function DELETE(request: Request) {
     try {
         const companyId = process.env.TELEGRAM_COMPANY_ID;
@@ -200,10 +187,11 @@ export async function DELETE(request: Request) {
         }
 
         const refundAmount = Number(expense.amount);
+        const wasPaid = expense.approved || expense.paymentStatus === 'PAID' || !!expense.receiptUrl;
 
-        // Refund balance and delete expense
+        // Refund balance ONLY IF paid, then delete expense
         await prisma.$transaction(async (tx) => {
-            if (expense.accountId) {
+            if (expense.accountId && wasPaid) {
                 await tx.account.update({
                     where: { id: expense.accountId },
                     data: { balance: { increment: refundAmount } }
@@ -227,16 +215,23 @@ export async function DELETE(request: Request) {
         if (token && targetChatId && targetMsgId) {
             const cancelledText =
                 `<b>AN-Industory</b>\n` +
-                `<b>⚠️ Kharashkan waa la canceled-gareeyay (Deleted)</b>\n\n` +
+                `<b>⚠️ Codsigan waa la kansalay (Deleted)</b>\n\n` +
                 `📂 Qaybta: ${expense.category}\n` +
-                `💵 Lacagta la soo celiyay: ${refundAmount.toLocaleString()} ETB\n` +
+                `💵 Lacagta: ${refundAmount.toLocaleString()} ETB\n` +
                 `📝 Sharaxaad: ${expense.description || expense.note || ''}\n\n` +
-                `🛑 <i>Lacagtii waxaa dib loogu soo celiyay koontada E-Birr Merchant.</i>`;
+                (wasPaid 
+                    ? `🛑 <i>Lacagtii waxaa dib loogu soo celiyay koontada.</i>` 
+                    : `🛑 <i>Codsigan waa la tirtiray inta aana lacagta la bixiyin (Rasiid la'aan).</i>`);
 
             await editTelegramBotMessage(token, targetChatId, targetMsgId, cancelledText);
         }
 
-        return NextResponse.json({ success: true, message: 'Kharashka waa la tirtiray, haraagiina waa la soo celiyay!' });
+        return NextResponse.json({ 
+            success: true, 
+            message: wasPaid 
+                ? 'Kharashka waa la tirtiray, lacagtiina waa loo soo celiyay koontada!' 
+                : 'Codsiga waa la tirtiray (Rasiid ma lahayn maadaama aan la bixin)!' 
+        });
     } catch (error: any) {
         console.error('Error deleting expense:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
