@@ -628,7 +628,7 @@ export async function sendShopReceiptViaWhatsApp(
     const jid = formattedPhone.endsWith('@c.us') ? formattedPhone : `${formattedPhone}@c.us`;
     logToFile(`[WhatsApp] Final target JID: ${jid}`);
 
-    const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://revlo.me';
+    const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : 'https://revlo.me';
     const receiptLink = `${baseUrl}/receipt/shop/${sale.id}`;
     const downloadLink = `${baseUrl}/api/public/shop/receipt/${sale.id}`;
 
