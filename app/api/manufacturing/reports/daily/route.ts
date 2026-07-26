@@ -7,6 +7,7 @@ export async function GET(request: Request) {
     try {
         const session = await getServerSession(authOptions);
         let companyId = session?.user?.companyId;
+        const preparedBy = session?.user?.name || session?.user?.email || 'Executive Manager';
 
         // Fallback for Telegram / headless usage
         if (!companyId) {
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
 
         const startOfDay = new Date(`${dateStr}T00:00:00.000Z`);
         const endOfDay = new Date(`${dateStr}T23:59:59.999Z`);
+        const refNumber = `D-${dateStr.replace(/-/g, '')}`;
 
         // Fetch Sales for the day
         const sales = await prisma.sale.findMany({
@@ -52,7 +54,9 @@ export async function GET(request: Request) {
             include: {
                 employee: true,
                 account: true,
-                expenseCategory: true
+                expenseCategory: true,
+                vendor: true,
+                project: true
             },
             orderBy: { createdAt: 'desc' }
         });
@@ -78,73 +82,92 @@ export async function GET(request: Request) {
             orderBy: { name: 'asc' }
         });
 
-        // Aggregations
-        const totalSalesRevenue = sales.reduce((sum, s) => sum + Number(s.total || 0), 0);
-        const totalSalesPaid = sales.reduce((sum, s) => sum + Number(s.paidAmount || 0), 0);
+        // Calculate per-account transactions on dateStr to determine previous balance vs current balance
+        const accountBalancesSummary = await Promise.all(accounts.map(async (acc) => {
+            // Paid sales into this account today
+            const daySales = sales.filter(s => s.accountId === acc.id).reduce((sum, s) => sum + Number(s.paidAmount || 0), 0);
+            
+            // Paid expenses from this account today
+            const dayExpenses = expenses.filter(e => e.accountId === acc.id && (e.approved || e.paymentStatus === 'PAID' || !!e.receiptUrl)).reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
-        const paidExpenses = expenses.filter(e => e.approved || e.paymentStatus === 'PAID' || !!e.receiptUrl);
-        const pendingExpenses = expenses.filter(e => !e.approved && e.paymentStatus !== 'PAID' && !e.receiptUrl);
+            const currentBalance = Number(acc.balance || 0);
+            const netChangeOnDate = daySales - dayExpenses;
+            const previousBalance = currentBalance - netChangeOnDate;
 
-        const totalPaidExpensesAmount = paidExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-        const totalPendingExpensesAmount = pendingExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+            return {
+                id: acc.id,
+                name: acc.name,
+                type: acc.type,
+                previousBalance,
+                currentBalance,
+                change: netChangeOnDate
+            };
+        }));
 
-        const paidPurchases = purchases.filter(p => p.paymentStatus === 'PAID');
-        const totalPaidPurchasesAmount = paidPurchases.reduce((sum, p) => sum + Number(p.totalPrice || 0), 0);
+        // Separate Expenses into Project/Factory Expenses vs Company/Ops Expenses
+        const projectExpenses: any[] = [];
+        const companyExpenses: any[] = [];
 
-        const netDailyCashflow = totalSalesPaid - (totalPaidExpensesAmount + totalPaidPurchasesAmount);
-
-        // Group Expenses by Category
-        const expensesByCategory: Record<string, { count: number; total: number }> = {};
         expenses.forEach(e => {
-            const cat = e.category || 'Dukaanka / Guud';
-            if (!expensesByCategory[cat]) {
-                expensesByCategory[cat] = { count: 0, total: 0 };
+            const isPaid = e.approved || e.paymentStatus === 'PAID' || !!e.receiptUrl;
+            if (!isPaid) return; // Only count paid in outflow statement
+
+            const categoryLower = (e.category || '').toLowerCase();
+            const isProjectOrLabor = e.projectId || categoryLower.includes('material') || categoryLower.includes('labor') || categoryLower.includes('raw') || categoryLower.includes('equipment') || categoryLower.includes('transport') || categoryLower.includes('xamaal');
+
+            const formattedExp = {
+                id: e.id,
+                project: e.project?.name || (isProjectOrLabor ? 'Factory Production' : 'General'),
+                category: e.category || 'General',
+                employeeOrVendor: e.employee?.fullName || e.vendor?.name || e.paidFrom || '-',
+                description: e.description || e.note || '-',
+                amount: Number(e.amount || 0)
+            };
+
+            if (isProjectOrLabor) {
+                projectExpenses.push(formattedExp);
+            } else {
+                companyExpenses.push(formattedExp);
             }
-            expensesByCategory[cat].count += 1;
-            expensesByCategory[cat].total += Number(e.amount || 0);
         });
 
-        // Detailed Sales summary
-        const salesItemsSummary: Record<string, { quantity: number; revenue: number }> = {};
-        sales.forEach(s => {
-            s.items.forEach((item: any) => {
-                const name = item.productName || 'Alaab';
-                if (!salesItemsSummary[name]) {
-                    salesItemsSummary[name] = { quantity: 0, revenue: 0 };
-                }
-                salesItemsSummary[name].quantity += item.quantity;
-                salesItemsSummary[name].revenue += Number(item.quantity * item.unitPrice);
-            });
+        // Add paid material purchases to project expenses
+        purchases.forEach(p => {
+            if (p.paymentStatus === 'PAID') {
+                projectExpenses.push({
+                    id: p.id,
+                    project: 'Factory Material Ingestion',
+                    category: 'Material',
+                    employeeOrVendor: p.vendor?.name || 'Vendor',
+                    description: `${p.materialName} (${p.quantity} ${p.unit})`,
+                    amount: Number(p.totalPrice || 0)
+                });
+            }
         });
+
+        const totalProjectExp = projectExpenses.reduce((sum, e) => sum + e.amount, 0);
+        const totalOpsExp = companyExpenses.reduce((sum, e) => sum + e.amount, 0);
+        const totalOutflows = totalProjectExp + totalOpsExp;
+
+        const openingBalance = accountBalancesSummary.reduce((sum, a) => sum + a.previousBalance, 0);
+        const closingBalance = accountBalancesSummary.reduce((sum, a) => sum + a.currentBalance, 0);
 
         return NextResponse.json({
             success: true,
             date: dateStr,
-            summary: {
-                totalSalesRevenue,
-                totalSalesPaid,
-                totalPaidExpensesAmount,
-                totalPendingExpensesAmount,
-                totalPaidPurchasesAmount,
-                netDailyCashflow,
-                salesCount: sales.length,
-                expensesCount: expenses.length,
-                purchasesCount: purchases.length
+            refNumber,
+            preparedBy,
+            statement: {
+                openingBalance,
+                totalProjectExp,
+                totalOpsExp,
+                totalOutflows,
+                closingBalance
             },
-            expensesByCategory: Object.entries(expensesByCategory).map(([category, val]) => ({
-                category,
-                count: val.count,
-                total: val.total
-            })),
-            salesItemsSummary: Object.entries(salesItemsSummary).map(([productName, val]) => ({
-                productName,
-                quantity: val.quantity,
-                revenue: val.revenue
-            })),
-            sales,
-            expenses,
-            purchases,
-            accounts
+            accountBalancesSummary,
+            projectExpenses,
+            companyExpenses,
+            sales
         });
     } catch (error: any) {
         console.error('Error fetching daily report:', error);

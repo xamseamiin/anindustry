@@ -1,4 +1,4 @@
-// app/manufacturing/reports/page.tsx - AN-Industory Financial & Daily Reports Hub (Glassmorphism)
+// app/manufacturing/reports/page.tsx - AN-Industory Financial & Daily Reports Hub (Glassmorphism + Executive PDF Layout)
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -7,7 +7,7 @@ import {
     ChevronRight, ArrowUpRight, ArrowDownRight, 
     PieChart, BarChart3, Calendar, Filter, Download,
     Briefcase, Package, RefreshCw, Printer, Copy, Check,
-    FileText, ShoppingCart, CreditCard, User, Tag, Sparkles, Loader2
+    FileText, ShoppingCart, CreditCard, User, Tag, Sparkles, Loader2, Building2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -57,31 +57,27 @@ export default function FinancialHubPage() {
 
     const handleCopyTelegramSummary = () => {
         if (!dailyData) return;
-        const summary = dailyData.summary || {};
+        const stmt = dailyData.statement || {};
         const formattedDate = new Date(selectedDate).toLocaleDateString('so-SO', { dateStyle: 'full' });
 
-        let text = `<b>AN-Industory</b>\n` +
-                   `<b>📊 WARBIXINTA MAALINLAHA AH (${selectedDate})</b>\n\n` +
-                   `📅 Taariikhda: ${formattedDate}\n\n` +
-                   `📈 <b>IIBKA MAANTA:</b> ${Number(summary.totalSalesPaid || 0).toLocaleString()} ETB (${summary.salesCount || 0} Iib)\n` +
-                   `📉 <b>KHARASHKA MAANTA:</b> ${Number(summary.totalPaidExpensesAmount || 0).toLocaleString()} ETB\n` +
-                   (summary.totalPaidPurchasesAmount > 0 ? `📦 <b>QALABKA LA SOO GADAY:</b> ${Number(summary.totalPaidPurchasesAmount).toLocaleString()} ETB\n` : '') +
-                   `💰 <b>NATIIJADA SAFI-GA AH (Net Cashflow):</b> ${Number(summary.netDailyCashflow || 0).toLocaleString()} ETB\n\n`;
+        let text = `<b>AN-INDUSTORY PARTNERSHIP</b>\n` +
+                   `<b>📊 DAILY FINANCIAL STATEMENT (${selectedDate})</b>\n\n` +
+                   `📅 Ref: ${dailyData.refNumber || 'D-' + selectedDate}\n` +
+                   `👤 Prepared By: ${dailyData.preparedBy || 'Manager'}\n\n` +
+                   `🏦 <b>ACCOUNT BALANCES:</b>\n`;
 
-        if (dailyData.expensesByCategory && dailyData.expensesByCategory.length > 0) {
-            text += `📁 <b>FAAHFAAHINTA KHARASHYADA:</b>\n`;
-            dailyData.expensesByCategory.forEach((cat: any) => {
-                text += `  • ${cat.category}: ${Number(cat.total).toLocaleString()} ETB (${cat.count})\n`;
-            });
-            text += `\n`;
-        }
-
-        if (dailyData.accounts && dailyData.accounts.length > 0) {
-            text += `💳 <b>HARAA-YAALKA AKOONADA:</b>\n`;
-            dailyData.accounts.forEach((acc: any) => {
-                text += `  • ${acc.name}: ${Number(acc.balance).toLocaleString()} ETB\n`;
+        if (dailyData.accountBalancesSummary) {
+            dailyData.accountBalancesSummary.forEach((acc: any) => {
+                text += `  • ${acc.name}: ${Number(acc.currentBalance).toLocaleString()} ETB (Change: ${acc.change >= 0 ? '+' : ''}${acc.change.toLocaleString()})\n`;
             });
         }
+
+        text += `\n💵 <b>DAILY FINANCIAL STATEMENT:</b>\n` +
+                `  • Opening Balance: ${Number(stmt.openingBalance || 0).toLocaleString()} ETB\n` +
+                `  • Project Expenses: -${Number(stmt.totalProjectExp || 0).toLocaleString()} ETB\n` +
+                `  • Company Expenses: -${Number(stmt.totalOpsExp || 0).toLocaleString()} ETB\n` +
+                `  • <b>TOTAL OUTFLOWS: -${Number(stmt.totalOutflows || 0).toLocaleString()} ETB</b>\n` +
+                `  • <b>CLOSING BALANCE: ${Number(stmt.closingBalance || 0).toLocaleString()} ETB</b>\n`;
 
         navigator.clipboard.writeText(text);
         setCopiedSummary(true);
@@ -108,18 +104,20 @@ export default function FinancialHubPage() {
     }
 
     const kpis = data?.kpis || {};
-    const dailySummary = dailyData?.summary || {};
+    const statement = dailyData?.statement || {};
+    const refNum = dailyData?.refNumber || `D-${selectedDate.replace(/-/g, '')}`;
+    const preparedBy = dailyData?.preparedBy || 'Executive Manager';
 
     return (
         <div className="relative min-h-screen">
-            {/* Dynamic Financial Background */}
+            {/* Dynamic Background (hidden when printing) */}
             <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden print:hidden">
                 <div className="absolute top-[-10%] right-[-5%] w-[45%] h-[45%] bg-emerald-500/10 rounded-full blur-[130px] animate-pulse" />
                 <div className="absolute bottom-[-10%] left-[-5%] w-[45%] h-[45%] bg-blue-500/10 rounded-full blur-[130px] animate-pulse" style={{ animationDelay: '3s' }} />
             </div>
 
-            <div className="flex flex-col gap-8 px-8 animate-fade-in max-w-[1700px] mx-auto py-8 relative z-10 print:p-0 print:m-0">
-                {/* Header & Tab Navigation */}
+            <div className="flex flex-col gap-8 px-8 animate-fade-in max-w-[1700px] mx-auto py-8 relative z-10 print:p-0 print:m-0 print:max-w-none">
+                {/* Header & Tab Navigation (hidden when printing) */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 print:hidden">
                     <div className="flex items-center gap-5">
                         <div className="p-4 bg-white/60 backdrop-blur-xl rounded-2xl shadow-xl border border-white/40 text-emerald-600">
@@ -160,10 +158,10 @@ export default function FinancialHubPage() {
                     </div>
                 </div>
 
-                {/* TAB 1: DAILY EXECUTIVE REPORT */}
+                {/* TAB 1: DAILY EXECUTIVE REPORT (EXECUTIVE PDF TEMPLATE LAYOUT) */}
                 {activeTab === 'DAILY' && (
                     <div className="space-y-8 animate-in fade-in zoom-in-95 duration-200">
-                        {/* Daily Filters & Action Toolbar */}
+                        {/* Daily Filters & Action Toolbar (hidden when printing) */}
                         <div className="bg-white/40 backdrop-blur-2xl p-6 rounded-3xl border border-white/50 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 print:hidden">
                             <div className="flex flex-wrap items-center gap-4">
                                 <div className="space-y-1">
@@ -207,259 +205,203 @@ export default function FinancialHubPage() {
                                     onClick={handlePrint}
                                     className="px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-slate-900/25 active:scale-95"
                                 >
-                                    <Printer size={16} /> Daabac (Print / PDF)
+                                    <Printer size={16} /> Daabac PDF (Executive Report)
                                 </button>
                             </div>
-                        </div>
-
-                        {/* Print Header (Visible only when printing) */}
-                        <div className="hidden print:block mb-8 text-center border-b pb-6">
-                            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">AN-INDUSTORY PARTNERSHIP</h1>
-                            <p className="text-sm font-bold text-slate-600">WARBIXINTA MAALINLAHA AH (EXECUTIVE DAILY REPORT)</p>
-                            <p className="text-xs font-bold text-slate-500 mt-1">Taariikhda: {selectedDate}</p>
                         </div>
 
                         {dailyLoading ? (
                             <div className="flex flex-col items-center justify-center py-20 gap-4">
                                 <Loader2 className="animate-spin text-emerald-600" size={32} />
-                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">Soo helaya macluumaadka maalinta...</p>
+                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">Generating Executive Daily Report...</p>
                             </div>
                         ) : (
-                            <>
-                                {/* Daily KPI Cards */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                                    <div className="bg-white/40 backdrop-blur-2xl p-7 rounded-3xl border border-white/50 shadow-xl relative overflow-hidden">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div className="p-3.5 rounded-2xl bg-emerald-500/10 text-emerald-600"><TrendingUp size={22} /></div>
-                                            <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 uppercase">
-                                                {dailySummary.salesCount || 0} Transactions
-                                            </span>
+                            /* EXECUTIVE REPORT CONTAINER (PDF/PRINT DESIGNED) */
+                            <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-slate-200/80 shadow-2xl relative overflow-hidden text-slate-800 font-sans print:shadow-none print:border-none print:p-0 print:m-0">
+                                
+                                {/* Background Logo Watermark */}
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] select-none">
+                                    <h1 className="text-[120px] font-black text-slate-900 uppercase tracking-tighter">AN-INDUSTORY</h1>
+                                </div>
+
+                                {/* 1. HEADER SECTION */}
+                                <div className="flex justify-between items-start border-b-2 border-slate-100 pb-8 mb-8">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-14 h-14 bg-gradient-to-tr from-emerald-600 to-amber-500 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-md">
+                                            AN
                                         </div>
-                                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Iibka Maanta (Daily Revenue)</p>
-                                        <p className="text-3xl font-black text-slate-900 tracking-tight">
-                                            {Number(dailySummary.totalSalesPaid || 0).toLocaleString()} <span className="text-sm font-bold text-slate-400">ETB</span>
-                                        </p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">
-                                            Total Invoice: {Number(dailySummary.totalSalesRevenue || 0).toLocaleString()} ETB
-                                        </p>
+                                        <div>
+                                            <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                                AN-INDUSTORY
+                                            </h1>
+                                            <p className="text-xs font-bold text-amber-600 tracking-widest italic">Daily Financial Report</p>
+                                        </div>
                                     </div>
 
-                                    <div className="bg-white/40 backdrop-blur-2xl p-7 rounded-3xl border border-white/50 shadow-xl relative overflow-hidden">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div className="p-3.5 rounded-2xl bg-rose-500/10 text-rose-600"><TrendingDown size={22} /></div>
-                                            <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 uppercase">
-                                                {dailySummary.expensesCount || 0} Expenses
-                                            </span>
+                                    {/* Metadata Box */}
+                                    <div className="text-right text-xs font-mono space-y-1">
+                                        <div className="flex justify-between gap-6">
+                                            <span className="font-bold text-slate-400">DATE</span>
+                                            <span className="font-black text-slate-900">{selectedDate}</span>
                                         </div>
-                                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Kharashka Maanta (Paid Expenses)</p>
-                                        <p className="text-3xl font-black text-rose-600 tracking-tight">
-                                            {Number(dailySummary.totalPaidExpensesAmount || 0).toLocaleString()} <span className="text-sm font-bold text-slate-400">ETB</span>
-                                        </p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">
-                                            Pending: {Number(dailySummary.totalPendingExpensesAmount || 0).toLocaleString()} ETB
-                                        </p>
-                                    </div>
-
-                                    <div className="bg-white/40 backdrop-blur-2xl p-7 rounded-3xl border border-white/50 shadow-xl relative overflow-hidden">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div className="p-3.5 rounded-2xl bg-blue-500/10 text-blue-600"><Wallet size={22} /></div>
-                                            <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg ${dailySummary.netDailyCashflow >= 0 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'} uppercase`}>
-                                                {dailySummary.netDailyCashflow >= 0 ? '+ Profit' : '- Deficit'}
-                                            </span>
+                                        <div className="flex justify-between gap-6">
+                                            <span className="font-bold text-slate-400">REF NUMBER</span>
+                                            <span className="font-black text-slate-900">{refNum}</span>
                                         </div>
-                                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Natiijada Safiga (Net Cashflow)</p>
-                                        <p className={`text-3xl font-black tracking-tight ${dailySummary.netDailyCashflow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                            {Number(dailySummary.netDailyCashflow || 0).toLocaleString()} <span className="text-sm font-bold text-slate-400">ETB</span>
-                                        </p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">
-                                            Daily Net Income
-                                        </p>
-                                    </div>
-
-                                    <div className="bg-slate-900 p-7 rounded-3xl border border-white/10 shadow-xl relative overflow-hidden text-white">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div className="p-3.5 rounded-2xl bg-white/10 text-emerald-400"><CreditCard size={22} /></div>
-                                            <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 uppercase">
-                                                Live Accounts
-                                            </span>
+                                        <div className="flex justify-between gap-6">
+                                            <span className="font-bold text-slate-400">PREPARED BY</span>
+                                            <span className="font-black text-slate-900">{preparedBy}</span>
                                         </div>
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Koontada E-Birr Merchant</p>
-                                        <p className="text-3xl font-black text-white tracking-tight">
-                                            {Number(dailyData?.accounts?.find((a: any) => a.name.includes('E-Birr'))?.balance || 0).toLocaleString()} <span className="text-sm font-bold text-slate-400">ETB</span>
-                                        </p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">
-                                            Current Total Liquid Balance
-                                        </p>
                                     </div>
                                 </div>
 
-                                {/* Main Daily Grid */}
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                    {/* Left 2 Cols: Sales & Expenses Details */}
-                                    <div className="lg:col-span-2 space-y-8">
-                                        {/* Sales Table */}
-                                        <div className="bg-white/40 backdrop-blur-2xl p-8 rounded-[2.5rem] border border-white/50 shadow-xl">
-                                            <div className="flex justify-between items-center mb-6">
-                                                <div>
-                                                    <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-                                                        <ShoppingCart className="text-emerald-600" size={20} />
-                                                        Diiwaanka Iibka Maanta ({selectedDate})
-                                                    </h3>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Completed Sales Transactions</p>
-                                                </div>
-                                                <span className="px-3 py-1.5 bg-emerald-500/10 text-emerald-600 rounded-xl text-xs font-black">
-                                                    {dailyData?.sales?.length || 0} Orders
-                                                </span>
-                                            </div>
+                                {/* 2. ACCOUNT BALANCES SECTION */}
+                                <div className="mb-10">
+                                    <div className="border-b-2 border-emerald-600 pb-2 mb-4">
+                                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Account Balances</h2>
+                                    </div>
+                                    <table className="w-full text-left text-xs">
+                                        <thead>
+                                            <tr className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                                <th className="py-3">ACCOUNT</th>
+                                                <th className="py-3 text-right">PREVIOUS BALANCE</th>
+                                                <th className="py-3 text-right">CURRENT BALANCE</th>
+                                                <th className="py-3 text-right">CHANGE</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 font-medium">
+                                            {dailyData?.accountBalancesSummary?.map((acc: any) => (
+                                                <tr key={acc.id} className="hover:bg-slate-50/50">
+                                                    <td className="py-3.5 font-bold text-slate-800">{acc.name}</td>
+                                                    <td className="py-3.5 text-right font-mono">{Number(acc.previousBalance).toLocaleString()}</td>
+                                                    <td className="py-3.5 text-right font-mono font-bold">{Number(acc.currentBalance).toLocaleString()}</td>
+                                                    <td className={`py-3.5 text-right font-mono font-bold ${acc.change < 0 ? 'text-rose-600' : acc.change > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                        {acc.change > 0 ? `+${acc.change.toLocaleString()}` : acc.change < 0 ? `${acc.change.toLocaleString()}` : '0'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
 
-                                            {dailyData?.sales?.length === 0 ? (
-                                                <p className="text-xs font-bold text-slate-400 text-center py-8">Lama helin wax iib ah taariikhdan.</p>
-                                            ) : (
-                                                <div className="overflow-x-auto">
-                                                    <table className="w-full text-left">
-                                                        <thead>
-                                                            <tr className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-200/50">
-                                                                <th className="pb-3">Macmiilka</th>
-                                                                <th className="pb-3">Alaabta</th>
-                                                                <th className="pb-3">Nooca</th>
-                                                                <th className="pb-3 text-right">Lacagta</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-100 text-xs font-bold">
-                                                            {dailyData?.sales?.map((sale: any) => (
-                                                                <tr key={sale.id} className="hover:bg-white/40 transition-all">
-                                                                    <td className="py-4">
-                                                                        <span className="font-black text-slate-900">{sale.customer?.name || 'Macmiil'}</span>
-                                                                        <br />
-                                                                        <span className="text-[9px] text-slate-400">{sale.customer?.phone}</span>
-                                                                    </td>
-                                                                    <td className="py-4 text-slate-600">
-                                                                        {sale.items?.map((item: any) => `${item.productName} (${item.quantity})`).join(', ')}
-                                                                    </td>
-                                                                    <td className="py-4">
-                                                                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-[9px] font-black uppercase">
-                                                                            {sale.paymentMethod}
-                                                                        </span>
-                                                                    </td>
-                                                                    <td className="py-4 text-right font-black text-emerald-600">
-                                                                        {Number(sale.paidAmount).toLocaleString()} ETB
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
-                                        </div>
+                                {/* 3. PROJECT EXPENSES SECTION */}
+                                <div className="mb-10">
+                                    <div className="border-b-2 border-emerald-600 pb-2 mb-4">
+                                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Project / Factory Expenses</h2>
+                                    </div>
+                                    {dailyData?.projectExpenses?.length === 0 ? (
+                                        <p className="text-xs text-slate-400 py-3 italic">No project or factory material expenses for this date.</p>
+                                    ) : (
+                                        <table className="w-full text-left text-xs">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                                    <th className="py-3">PROJECT</th>
+                                                    <th className="py-3">CATEGORY</th>
+                                                    <th className="py-3">EMPLOYEE / VENDOR</th>
+                                                    <th className="py-3">DESCRIPTION</th>
+                                                    <th className="py-3 text-right">AMOUNT</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 font-medium">
+                                                {dailyData?.projectExpenses?.map((exp: any, idx: number) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/50">
+                                                        <td className="py-3 font-bold text-slate-800">{exp.project}</td>
+                                                        <td className="py-3 text-slate-600">{exp.category}</td>
+                                                        <td className="py-3 text-slate-600">{exp.employeeOrVendor}</td>
+                                                        <td className="py-3 text-slate-600 max-w-xs">{exp.description}</td>
+                                                        <td className="py-3 text-right font-mono font-bold text-slate-900">{exp.amount.toLocaleString()} ETB</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr className="bg-slate-50 font-black border-t border-slate-200 text-xs">
+                                                    <td colSpan={4} className="py-3.5 px-2 text-right uppercase text-slate-600">Total Project Exp.</td>
+                                                    <td className="py-3.5 text-right font-mono text-rose-600 text-sm">{statement.totalProjectExp?.toLocaleString()} ETB</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    )}
+                                </div>
 
-                                        {/* Expenses Table */}
-                                        <div className="bg-white/40 backdrop-blur-2xl p-8 rounded-[2.5rem] border border-white/50 shadow-xl">
-                                            <div className="flex justify-between items-center mb-6">
-                                                <div>
-                                                    <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-                                                        <FileText className="text-rose-600" size={20} />
-                                                        Diiwaanka Kharashyada Maanta ({selectedDate})
-                                                    </h3>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Operational Expenses & Salaries</p>
-                                                </div>
-                                                <span className="px-3 py-1.5 bg-rose-500/10 text-rose-600 rounded-xl text-xs font-black">
-                                                    {dailyData?.expenses?.length || 0} Items
-                                                </span>
-                                            </div>
+                                {/* 4. COMPANY EXPENSES SECTION */}
+                                <div className="mb-10">
+                                    <div className="border-b-2 border-emerald-600 pb-2 mb-4">
+                                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Company Expenses</h2>
+                                    </div>
+                                    {dailyData?.companyExpenses?.length === 0 ? (
+                                        <p className="text-xs text-slate-400 py-3 italic">No general company ops expenses for this date.</p>
+                                    ) : (
+                                        <table className="w-full text-left text-xs">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                                    <th className="py-3">CATEGORY</th>
+                                                    <th className="py-3">EMPLOYEE / VENDOR</th>
+                                                    <th className="py-3">DESCRIPTION</th>
+                                                    <th className="py-3 text-right">AMOUNT</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 font-medium">
+                                                {dailyData?.companyExpenses?.map((exp: any, idx: number) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/50">
+                                                        <td className="py-3 font-bold text-slate-800">{exp.category}</td>
+                                                        <td className="py-3 text-slate-600">{exp.employeeOrVendor}</td>
+                                                        <td className="py-3 text-slate-600">{exp.description}</td>
+                                                        <td className="py-3 text-right font-mono font-bold text-slate-900">{exp.amount.toLocaleString()} ETB</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr className="bg-slate-50 font-black border-t border-slate-200 text-xs">
+                                                    <td colSpan={3} className="py-3.5 px-2 text-right uppercase text-slate-600">Total Ops Exp.</td>
+                                                    <td className="py-3.5 text-right font-mono text-rose-600 text-sm">{statement.totalOpsExp?.toLocaleString()} ETB</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    )}
+                                </div>
 
-                                            {dailyData?.expenses?.length === 0 ? (
-                                                <p className="text-xs font-bold text-slate-400 text-center py-8">Lama helin wax kharash ah taariikhdan.</p>
-                                            ) : (
-                                                <div className="overflow-x-auto">
-                                                    <table className="w-full text-left">
-                                                        <thead>
-                                                            <tr className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-200/50">
-                                                                <th className="pb-3">Qaybta</th>
-                                                                <th className="pb-3">Sharaxaad</th>
-                                                                <th className="pb-3">Status</th>
-                                                                <th className="pb-3 text-right">Lacagta</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-100 text-xs font-bold">
-                                                            {dailyData?.expenses?.map((exp: any) => {
-                                                                const isPaid = exp.approved || exp.paymentStatus === 'PAID' || !!exp.receiptUrl;
-                                                                return (
-                                                                    <tr key={exp.id} className="hover:bg-white/40 transition-all">
-                                                                        <td className="py-4">
-                                                                            <span className="font-black text-slate-900">{exp.category}</span>
-                                                                            {exp.employee && (
-                                                                                <span className="block text-[9px] text-blue-600 font-bold">👤 {exp.employee.fullName}</span>
-                                                                            )}
-                                                                        </td>
-                                                                        <td className="py-4 text-slate-600 max-w-xs truncate">
-                                                                            {exp.description || exp.note}
-                                                                        </td>
-                                                                        <td className="py-4">
-                                                                            <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase ${
-                                                                                isPaid ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
-                                                                            }`}>
-                                                                                {isPaid ? 'Waala Bixiyey' : 'Sugaya Rasiid'}
-                                                                            </span>
-                                                                        </td>
-                                                                        <td className="py-4 text-right font-black text-rose-600">
-                                                                            {Number(exp.amount).toLocaleString()} ETB
-                                                                        </td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
-                                        </div>
+                                {/* 5. DAILY FINANCIAL STATEMENT BANNER */}
+                                <div className="mb-12 border border-slate-900 rounded-2xl overflow-hidden shadow-lg">
+                                    {/* Dark Banner Header */}
+                                    <div className="bg-slate-900 text-white px-6 py-3 flex justify-between items-center font-black text-xs uppercase tracking-wider">
+                                        <span>DAILY FINANCIAL STATEMENT</span>
+                                        <span>{selectedDate}</span>
                                     </div>
 
-                                    {/* Right Col: Category Breakdowns & Accounts */}
-                                    <div className="space-y-8">
-                                        {/* Category Breakdown Card */}
-                                        <div className="bg-white/40 backdrop-blur-2xl p-7 rounded-[2.5rem] border border-white/50 shadow-xl">
-                                            <h4 className="text-base font-black text-slate-900 tracking-tight mb-4 flex items-center gap-2">
-                                                <Tag className="text-emerald-600" size={18} />
-                                                Kharashyada oo loo qaybiyay Catagories
-                                            </h4>
-                                            <div className="space-y-4">
-                                                {dailyData?.expensesByCategory?.map((cat: any, idx: number) => (
-                                                    <div key={idx} className="flex justify-between items-center p-3 bg-white/50 rounded-2xl border border-white/40">
-                                                        <div>
-                                                            <p className="text-xs font-black text-slate-900">{cat.category}</p>
-                                                            <p className="text-[9px] font-bold text-slate-400">{cat.count} Transactions</p>
-                                                        </div>
-                                                        <span className="text-xs font-black text-rose-600">
-                                                            {Number(cat.total).toLocaleString()} ETB
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                    {/* Statement Breakdown Rows */}
+                                    <div className="p-6 space-y-3 text-xs font-mono bg-slate-50/50">
+                                        <div className="flex justify-between items-center py-1">
+                                            <span className="font-bold text-slate-700">Lacagtii hore ugu jirtay (Opening Balance)</span>
+                                            <span className="font-black text-slate-900">{Number(statement.openingBalance || 0).toLocaleString()} ETB</span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-1 text-rose-600">
+                                            <span className="font-semibold ml-4">- Mashruuc / Factory Kharashyada (Project Exp.)</span>
+                                            <span className="font-bold">-{Number(statement.totalProjectExp || 0).toLocaleString()} ETB</span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-1 text-rose-600">
+                                            <span className="font-semibold ml-4">- Shirkad Kharashyada (Company Exp.)</span>
+                                            <span className="font-bold">-{Number(statement.totalOpsExp || 0).toLocaleString()} ETB</span>
                                         </div>
 
-                                        {/* Financial Accounts Status Card */}
-                                        <div className="bg-slate-900 p-7 rounded-[2.5rem] border border-white/10 shadow-2xl text-white">
-                                            <h4 className="text-base font-black tracking-tight mb-4 flex items-center gap-2">
-                                                <CreditCard className="text-emerald-400" size={18} />
-                                                Haraaga Akoonada (Financial Accounts)
-                                            </h4>
-                                            <div className="space-y-4">
-                                                {dailyData?.accounts?.map((acc: any) => (
-                                                    <div key={acc.id} className="flex justify-between items-center p-3.5 bg-white/5 rounded-2xl border border-white/10">
-                                                        <div>
-                                                            <p className="text-xs font-black text-white">{acc.name}</p>
-                                                            <p className="text-[9px] font-bold text-slate-400">{acc.type || 'Account'}</p>
-                                                        </div>
-                                                        <span className="text-sm font-black text-emerald-400">
-                                                            {Number(acc.balance).toLocaleString()} ETB
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                        <div className="border-t-2 border-slate-300 pt-3 flex justify-between items-center text-xs font-black text-rose-600">
+                                            <span>TOTAL OUTFLOWS</span>
+                                            <span>-{Number(statement.totalOutflows || 0).toLocaleString()} ETB</span>
+                                        </div>
+
+                                        <div className="border-t-4 border-slate-900 pt-4 flex justify-between items-center text-base font-black text-emerald-600">
+                                            <span>Lacagta hada taala (Closing Balance)</span>
+                                            <span className="text-lg">{Number(statement.closingBalance || 0).toLocaleString()} ETB</span>
                                         </div>
                                     </div>
                                 </div>
-                            </>
+
+                                {/* 6. FOOTER SECTION */}
+                                <div className="border-t border-slate-200 pt-6 flex justify-between items-center text-[10px] font-mono text-slate-400">
+                                    <span>Generated on {new Date().toLocaleString()}</span>
+                                    <span>Page 1 of 1</span>
+                                    <span className="font-bold text-slate-600">Powered by AN-INDUSTORY</span>
+                                </div>
+                            </div>
                         )}
                     </div>
                 )}
