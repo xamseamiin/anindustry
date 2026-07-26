@@ -41,9 +41,8 @@ export default function SalesVoucherPage() {
     // Render a single blank voucher quadrant
     const renderVoucherQuadrant = (index: number) => {
         const isLeftCol = index % 2 === 0;
-        
-        // Rows border logic
         const isLastRow = layoutType === '6' ? index >= 4 : index >= 2;
+        const cellPadding = layoutType === '4' ? 'py-3' : 'py-2';
 
         return (
             <div key={index} className={`quadrant-box bg-white relative flex flex-col justify-between box-border overflow-hidden ${
@@ -59,7 +58,6 @@ export default function SalesVoucherPage() {
                         <img 
                             src="/logogoods.png" 
                             onError={(e) => {
-                                // Fallback to combined logo if logogoods.png is not uploaded yet
                                 e.currentTarget.src = "/an-logo-combined.png";
                             }}
                             alt="AN Logo" 
@@ -82,57 +80,69 @@ export default function SalesVoucherPage() {
                 <div className="space-y-1.5 mt-2">
                     <div className="text-[9px] font-bold text-black flex items-end">
                         <span className="flex-shrink-0">Customer Name:</span>
-                        <span className="flex-grow border-b border-slate-900 pb-0.5 ml-1 bg-transparent h-[14px]" />
+                        <span className="flex-grow border-b border-slate-900 pb-0.5 ml-1 bg-transparent h-[16px]" />
                     </div>
                     <div className="text-[9px] font-bold text-black flex items-end">
                         <span className="flex-shrink-0">Phone:</span>
-                        <span className="flex-grow border-b border-slate-900 pb-0.5 ml-1 bg-transparent h-[14px]" />
+                        <span className="flex-grow border-b border-slate-900 pb-0.5 ml-1 bg-transparent h-[16px]" />
                     </div>
                 </div>
 
                 {/* Items Table */}
                 <div className="flex-grow mt-3">
-                    <table className="w-full text-left border-collapse text-[9px] text-black">
+                    <table className="w-full text-left border-collapse text-[9.5px] text-black">
                         <thead>
                             <tr className="bg-slate-100 text-black uppercase text-center border-y border-slate-900 font-bold">
-                                <th className="border border-slate-400 py-1 w-[7%]">No.</th>
-                                <th className="border border-slate-400 py-1 px-2 w-[32%] text-left">Item Description</th>
-                                <th className="border border-slate-400 py-1 px-2 w-[22%] text-center">Qty</th>
-                                <th className="border border-slate-400 py-1 px-2 w-[18%] text-center">Unit Price</th>
-                                <th className="border border-slate-400 py-1 px-2 w-[21%] text-right">Total Price</th>
+                                <th className="border border-slate-400 py-1.5 w-[7%]">No.</th>
+                                <th className="border border-slate-400 py-1.5 px-2 w-[37%] text-left">Item Description</th>
+                                <th className="border border-slate-400 py-1.5 px-2 w-[18%] text-center">Qty</th>
+                                <th className="border border-slate-400 py-1.5 px-2 w-[18%] text-center">Unit Price</th>
+                                <th className="border border-slate-400 py-1.5 px-2 w-[20%] text-right">Total Price</th>
                             </tr>
                         </thead>
                         <tbody>
+                            {/* Row 1: Cagada 1L with Checkbox */}
                             <tr className="border-b border-slate-300">
-                                <td className="border border-slate-400 py-1.5 text-center font-mono font-medium text-slate-800">1</td>
-                                <td className="border border-slate-400 py-1.5 px-2 text-slate-900 font-semibold">Cagada 1L</td>
-                                <td className="border border-slate-400 py-1.5 text-center"></td>
-                                <td className="border border-slate-400 py-1.5 text-center"></td>
-                                <td className="border border-slate-400 py-1.5 px-1 text-right"></td>
+                                <td className={`border border-slate-400 ${cellPadding} text-center font-mono font-medium text-slate-800`}>1</td>
+                                <td className={`border border-slate-400 ${cellPadding} px-2 text-slate-900 font-semibold`}>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-3.5 h-3.5 border-1.5 border-black rounded-sm inline-block bg-white flex-shrink-0" />
+                                        <span>Cagada 1L</span>
+                                    </div>
+                                </td>
+                                <td className={`border border-slate-400 ${cellPadding} text-center`}></td>
+                                <td className={`border border-slate-400 ${cellPadding} text-center`}></td>
+                                <td className={`border border-slate-400 ${cellPadding} px-1 text-right`}></td>
                             </tr>
+                            {/* Row 2: Cagada 0.5L with Checkbox */}
                             <tr className="border-b border-slate-300">
-                                <td className="border border-slate-400 py-1.5 text-center font-mono font-medium text-slate-800">2</td>
-                                <td className="border border-slate-400 py-1.5 px-2 text-slate-900 font-semibold">Cagada 0.5L</td>
-                                <td className="border border-slate-400 py-1.5 text-center"></td>
-                                <td className="border border-slate-400 py-1.5 text-center"></td>
-                                <td className="border border-slate-400 py-1.5 px-1 text-right"></td>
+                                <td className={`border border-slate-400 ${cellPadding} text-center font-mono font-medium text-slate-800`}>2</td>
+                                <td className={`border border-slate-400 ${cellPadding} px-2 text-slate-900 font-semibold`}>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-3.5 h-3.5 border-1.5 border-black rounded-sm inline-block bg-white flex-shrink-0" />
+                                        <span>Cagada 0.5L</span>
+                                    </div>
+                                </td>
+                                <td className={`border border-slate-400 ${cellPadding} text-center`}></td>
+                                <td className={`border border-slate-400 ${cellPadding} text-center`}></td>
+                                <td className={`border border-slate-400 ${cellPadding} px-1 text-right`}></td>
                             </tr>
                         </tbody>
                     </table>
 
                     {/* Subtotals (Blank Underlines) */}
-                    <div className="flex flex-col items-end mt-2.5 text-[8px] font-semibold text-black space-y-1">
-                        <div className="flex justify-between w-[130px]">
+                    <div className="flex flex-col items-end mt-2.5 text-[8.5px] font-semibold text-black space-y-1">
+                        <div className="flex justify-between w-[135px]">
                             <span>Subtotal:</span>
-                            <span className="border-b border-slate-900 w-[65px] h-[10px]"></span>
+                            <span className="border-b border-slate-900 w-[68px] h-[12px]"></span>
                         </div>
-                        <div className="flex justify-between w-[130px]">
+                        <div className="flex justify-between w-[135px]">
                             <span>Discount:</span>
-                            <span className="border-b border-slate-900 w-[65px] h-[10px]"></span>
+                            <span className="border-b border-slate-900 w-[68px] h-[12px]"></span>
                         </div>
-                        <div className="flex justify-between w-[130px] text-black font-bold text-[9px] mt-1.5">
+                        <div className="flex justify-between w-[135px] text-black font-bold text-[9.5px] mt-1.5">
                             <span>TOTAL:</span>
-                            <span className="w-[65px] border-b-2 border-black h-[10px] inline-block"></span>
+                            <span className="w-[68px] border-b-2 border-black h-[12px] inline-block"></span>
                         </div>
                     </div>
                 </div>
@@ -140,35 +150,35 @@ export default function SalesVoucherPage() {
                 {/* Payment Box & Details */}
                 <div className="flex justify-between items-stretch gap-2 mt-3.5">
                     {/* Status box */}
-                    <div className="w-[45%] border border-black rounded-lg p-2 flex flex-col justify-between relative bg-white min-h-[44px]">
-                        <div className="absolute -top-2 left-2 bg-white px-1 text-black text-[7px] font-bold uppercase tracking-wider">
+                    <div className="w-[45%] border border-black rounded-lg p-2 flex flex-col justify-between relative bg-white min-h-[46px]">
+                        <div className="absolute -top-2 left-2 bg-white px-1 text-black text-[7.5px] font-bold uppercase tracking-wider">
                             PAYMENT STATUS
                         </div>
                         <div className="mt-1.5 space-y-1 text-[8.5px] font-semibold text-black">
                             <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 border border-black rounded-sm bg-white" />
+                                <div className="w-3.5 h-3.5 border border-black rounded-sm bg-white" />
                                 <span>Paid</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 border border-black rounded-sm bg-white" />
-                                <span>Due (Dayn)</span>
+                                <div className="w-3.5 h-3.5 border border-black rounded-sm bg-white" />
+                                <span>Due (Deyn)</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Paid details */}
-                    <div className="w-[50%] flex flex-col justify-end text-[7.5px] font-semibold text-slate-800 space-y-1">
+                    <div className="w-[50%] flex flex-col justify-end text-[8px] font-semibold text-slate-800 space-y-1">
                         <div className="flex justify-between items-end">
-                            <span className="text-[7px] font-bold text-black">Amount Paid:</span>
-                            <span className="border-b border-slate-900 flex-grow h-[8px] ml-1" />
+                            <span className="text-[7.5px] font-bold text-black">Amount Paid:</span>
+                            <span className="border-b border-slate-900 flex-grow h-[10px] ml-1" />
                         </div>
                         <div className="flex justify-between items-end">
-                            <span className="text-[7px] font-bold text-black">Balance Due:</span>
-                            <span className="border-b border-slate-900 flex-grow h-[8px] ml-1" />
+                            <span className="text-[7.5px] font-bold text-black">Balance Due:</span>
+                            <span className="border-b border-slate-900 flex-grow h-[10px] ml-1" />
                         </div>
                         <div className="flex justify-between items-end">
-                            <span className="text-[7px] font-bold text-black">Payment Method:</span>
-                            <span className="border-b border-slate-900 flex-grow h-[8px] ml-1" />
+                            <span className="text-[7.5px] font-bold text-black">Payment Method:</span>
+                            <span className="border-b border-slate-900 flex-grow h-[10px] ml-1" />
                         </div>
                     </div>
                 </div>
