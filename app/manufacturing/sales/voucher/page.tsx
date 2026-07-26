@@ -95,11 +95,11 @@ export default function SalesVoucherPage() {
                     <table className="w-full text-left border-collapse text-[9px] text-black">
                         <thead>
                             <tr className="bg-slate-100 text-black uppercase text-center border-y border-slate-900 font-bold">
-                                <th className="border border-slate-400 py-1 w-[10%]">No.</th>
-                                <th className="border border-slate-400 py-1 px-2 w-[50%] text-left">Item Description</th>
-                                <th className="border border-slate-400 py-1 w-[12%]">Qty</th>
-                                <th className="border border-slate-400 py-1 w-[14%]">Unit Price</th>
-                                <th className="border border-slate-400 py-1 px-1 w-[14%] text-right">Total Price</th>
+                                <th className="border border-slate-400 py-1 w-[7%]">No.</th>
+                                <th className="border border-slate-400 py-1 px-2 w-[32%] text-left">Item Description</th>
+                                <th className="border border-slate-400 py-1 px-2 w-[22%] text-center">Qty</th>
+                                <th className="border border-slate-400 py-1 px-2 w-[18%] text-center">Unit Price</th>
+                                <th className="border border-slate-400 py-1 px-2 w-[21%] text-right">Total Price</th>
                             </tr>
                         </thead>
                         <tbody>
