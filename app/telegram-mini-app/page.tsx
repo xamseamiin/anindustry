@@ -303,6 +303,10 @@ export default function TelegramMiniAppPage() {
     };
 
     useEffect(() => {
+        fetchHistory();
+    }, []);
+
+    useEffect(() => {
         if (activeTab === 'TRANSACTIONS' || activeTab === 'REPORTS' || activeTab === 'DASHBOARD') {
             fetchHistory();
         }
