@@ -788,15 +788,22 @@ async function handleUpdate(update) {
                 ownerName: query.from.first_name || 'User',
                 data: { purchaseId }
             };
-            await editOrSendMessage(chatId, userStates[stateKey], 
-                `📸 <b>Diiwaangelinta:</b> Diiwaangeli Rasiidka (Raw Material)\n\n` +
-                `<b>Fadlan hadda u soo dir sawirka rasiidka (Photo) chat-kan si loogu daro diiwaankan.</b>`,
-                {
+            await sendBotRequest('answerCallbackQuery', {
+                callback_query_id: query.id,
+                text: "📸 Fadlan hadda u soo dir sawirka rasiidka (Photo)!",
+                show_alert: true
+            });
+            await sendBotRequest('sendMessage', {
+                chat_id: chatId,
+                text: `📸 <b>Diiwaangelinta Rasiidka (Raw Material)</b>\n\n` +
+                      `<b>Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan si loogu lifaaqo diiwaanka.</b>`,
+                parse_mode: 'HTML',
+                reply_markup: {
                     inline_keyboard: [
                         [{ text: "❌ Kansal (Cancel)", callback_data: `cancel_rcpt_mp_${purchaseId}` }]
                     ]
                 }
-            );
+            });
         } else if (data.startsWith('rcpt_')) {
             const expenseId = data.substring(5);
             userStates[stateKey] = {
@@ -806,15 +813,22 @@ async function handleUpdate(update) {
                 ownerName: query.from.first_name || 'User',
                 data: { expenseId }
             };
-            await editOrSendMessage(chatId, userStates[stateKey], 
-                `📸 <b>Diiwaangelinta:</b> Diiwaangeli Rasiidka\n\n` +
-                `<b>Fadlan hadda u soo dir sawirka rasiidka (Photo) chat-kan si loogu daro diiwaankan.</b>`,
-                {
+            await sendBotRequest('answerCallbackQuery', {
+                callback_query_id: query.id,
+                text: "📸 Fadlan hadda u soo dir sawirka rasiidka (Photo)!",
+                show_alert: true
+            });
+            await sendBotRequest('sendMessage', {
+                chat_id: chatId,
+                text: `📸 <b>Diiwaangelinta Rasiidka</b>\n\n` +
+                      `<b>Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan si loogu lifaaqo diiwaanka.</b>`,
+                parse_mode: 'HTML',
+                reply_markup: {
                     inline_keyboard: [
                         [{ text: "❌ Kansal (Cancel)", callback_data: `cancel_rcpt_${expenseId}` }]
                     ]
                 }
-            );
+            });
         } else if (data.startsWith('cancel_rcpt_mp_')) {
             const purchaseId = data.substring(15);
             delete userStates[stateKey];

@@ -216,8 +216,50 @@ export default function TelegramMiniAppPage() {
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
-    // Tab 2: Transport/Equipment/Consultancy Fields
+    // Notification Modal & Sound/Vibration Helper
+    const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [transportType, setTransportType] = useState('');
+
+    const playNotificationSoundAndVibrate = () => {
+        try {
+            if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.HapticFeedback) {
+                (window as any).Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+                setTimeout(() => {
+                    try { (window as any).Telegram.WebApp.HapticFeedback.notificationOccurred('success'); } catch {}
+                }, 180);
+            }
+            if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+                navigator.vibrate([150, 100, 150]);
+            }
+        } catch (e) {
+            console.log('Haptic error:', e);
+        }
+
+        try {
+            if (typeof window !== 'undefined' && (window.AudioContext || (window as any).webkitAudioContext)) {
+                const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+                const ctx = new AudioCtx();
+                
+                const playNote = (freq: number, start: number, duration: number) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+                    gain.gain.setValueAtTime(0.15, ctx.currentTime + start);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(ctx.currentTime + start);
+                    osc.stop(ctx.currentTime + start + duration);
+                };
+                
+                playNote(659.25, 0, 0.15); // E5
+                playNote(880.00, 0.12, 0.25); // A5
+            }
+        } catch (e) {
+            console.log('Audio error:', e);
+        }
+    };
     const [equipmentName, setEquipmentName] = useState('');
     const [rentalPeriod, setRentalPeriod] = useState('');
     const [consultantName, setConsultantName] = useState('');
@@ -1114,7 +1156,15 @@ export default function TelegramMiniAppPage() {
                         <h1 className="text-xs font-bold text-slate-400">Codsashada Kharashka</h1>
                     </div>
 
-                    <button type="button" onClick={() => triggerHaptic('light')} className="w-10 h-10 rounded-full bg-white/10 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white relative shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] active:scale-95 transition-all">
+                    <button 
+                        type="button" 
+                        onClick={() => {
+                            playNotificationSoundAndVibrate();
+                            setShowNotificationModal(true);
+                        }} 
+                        className="w-10 h-10 rounded-full bg-white/10 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white relative shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] active:scale-95 transition-all"
+                        title="Ogeysiisyada & System Notifications"
+                    >
                         <Bell size={18} />
                         <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-[0_0_6px_#34d399]" />
                     </button>
@@ -2372,6 +2422,92 @@ export default function TelegramMiniAppPage() {
                         </div>
                     </div>
                 )}
+
+                {/* Notification Modal / Slide-over */}
+            {showNotificationModal && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-blue-950/90 border border-blue-500/30 rounded-3xl p-6 w-full max-w-sm flex flex-col gap-4 shadow-2xl relative animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center pb-3 border-b border-white/10">
+                            <div className="flex items-center gap-2">
+                                <div className="w-9 h-9 rounded-2xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                                    <Bell size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-white">Ogeysiisyada Live-ka ah</h3>
+                                    <p className="text-[10px] text-emerald-400 font-bold">🔊 Cod & Gariir Labo Jeer Ah Active</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { triggerHaptic('light'); setShowNotificationModal(false); }}
+                                className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-300 hover:text-white"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="flex flex-col gap-3 max-h-72 overflow-y-auto pr-1">
+                            {/* Pending Approvals Summary */}
+                            <div className="p-3.5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-1.5">
+                                <div className="flex justify-between items-center text-xs font-bold">
+                                    <span className="text-amber-400">⏳ Codsiyada Sugaya Approval</span>
+                                    <span className="text-white bg-amber-500/20 px-2 py-0.5 rounded-full text-[10px]">
+                                        {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).length} Item(s)
+                                    </span>
+                                </div>
+                                {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).length > 0 ? (
+                                    historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).map(e => (
+                                        <p key={e.id} className="text-[11px] text-slate-300 font-bold">
+                                            • {e.description || e.category}: <span className="text-amber-300">{Number(e.amount).toLocaleString()} ETB</span>
+                                        </p>
+                                    ))
+                                ) : (
+                                    <p className="text-[11px] text-slate-400 font-bold">✅ Dhammaan dalabyadu waa kuwa la ogolaaday.</p>
+                                )}
+                            </div>
+
+                            {/* Account Status */}
+                            <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex justify-between items-center text-xs font-bold">
+                                <div className="flex items-center gap-2 text-emerald-300">
+                                    <CheckCircle2 size={16} />
+                                    <span>E-Birr Merchant Account</span>
+                                </div>
+                                <span className="text-white font-black">28,929.66 ETB</span>
+                            </div>
+
+                            {/* Live Activity Feed */}
+                            <div className="p-3.5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-2">
+                                <span className="text-xs font-bold text-slate-300">⚡ Dhacdooyinkii Ugu Dambeeyay</span>
+                                {historyExpenses.slice(0, 3).map(exp => (
+                                    <div key={exp.id} className="flex justify-between items-center text-[11px] font-bold border-b border-white/5 pb-1 last:border-0">
+                                        <span className="text-slate-300 truncate max-w-[170px]">{exp.description || exp.category}</span>
+                                        <span className={exp.isDeposit ? 'text-emerald-400' : 'text-slate-200'}>
+                                            {exp.isDeposit ? '+' : ''}{Number(exp.amount).toLocaleString()} ETB
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => playNotificationSoundAndVibrate()}
+                                className="py-3 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all"
+                            >
+                                🔔 Tijaabi Codka
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { triggerHaptic('light'); setShowNotificationModal(false); }}
+                                className="py-3 px-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black text-xs uppercase tracking-wider active:scale-95 transition-all"
+                            >
+                                Xidh (Close)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
                 {/* Custom Glassmorphism Alert Modal */}
                 <CustomAlertModal 
