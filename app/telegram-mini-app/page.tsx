@@ -194,9 +194,11 @@ export default function TelegramMiniAppPage() {
     const [note, setNote] = useState('');
     const [chatId, setChatId] = useState('');
 
-    // Metadata
+    // Metadata & Manager Authorization
     const [requesterName, setRequesterName] = useState('WebApp User');
     const [requesterId, setRequesterId] = useState('');
+    const [requesterUsername, setRequesterUsername] = useState('');
+    const isManager = requesterUsername.toLowerCase() === 'abdehakimmumin' || requesterName.toLowerCase().includes('abdehakim');
     
     // Tab 1: Salary Fields
     const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
@@ -250,6 +252,8 @@ export default function TelegramMiniAppPage() {
     const [editCategoryId, setEditCategoryId] = useState('');
     const [savingEdit, setSavingEdit] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [showAccountModal, setShowAccountModal] = useState(false);
+    const [selectedAccountForModal, setSelectedAccountForModal] = useState<any>(null);
 
     const isOwnerOfExpense = (exp: any) => {
         if (!exp) return false;
@@ -588,6 +592,7 @@ export default function TelegramMiniAppPage() {
                     const fullName = (user.first_name || '') + (user.last_name ? ' ' + user.last_name : '');
                     const formattedName = fullName.trim() + (user.username ? ` (@${user.username})` : '');
                     setRequesterName(formattedName || user.first_name || 'Telegram User');
+                    if (user.username) setRequesterUsername(user.username);
                     if (user.id) setRequesterId(user.id.toString());
                 }
             }
@@ -1160,27 +1165,32 @@ export default function TelegramMiniAppPage() {
 
                 {activeTab === 'DASHBOARD' ? (
                     <div className="flex flex-col gap-4 animate-fade-in">
-                        {/* E-Birr Merchant Account Card */}
-                        <div className="bg-gradient-to-br from-emerald-950/60 via-slate-950/90 to-cyan-950/60 border border-emerald-400/40 rounded-3xl p-6 shadow-[0_0_35px_rgba(16,185,129,0.25),inset_0_1px_1.5px_rgba(255,255,255,0.3)] flex justify-between items-center backdrop-blur-2xl relative overflow-hidden">
+                        {/* E-Birr Merchant Account Card (Clickable to open Account Transactions Modal) */}
+                        <div 
+                            onClick={() => { triggerHaptic('medium'); setShowAccountModal(true); }}
+                            className="bg-gradient-to-br from-emerald-950/60 via-slate-950/90 to-cyan-950/60 border border-emerald-400/40 rounded-3xl p-6 shadow-[0_0_35px_rgba(16,185,129,0.25),inset_0_1px_1.5px_rgba(255,255,255,0.3)] flex justify-between items-center backdrop-blur-2xl relative overflow-hidden cursor-pointer hover:border-emerald-400/80 transition-all group"
+                        >
                             <div className="flex flex-col gap-3 z-10">
                                 <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-green-400 flex items-center justify-center text-slate-950 font-black text-sm shadow-[0_0_12px_#10b981]">
                                         E.
                                     </div>
-                                    <span className="text-sm font-black text-white tracking-wide">E-Birr Merchant Account</span>
-                                    <ArrowRight size={16} className="text-slate-400 ml-1" />
+                                    <span className="text-sm font-black text-white tracking-wide">
+                                        {activeAccount ? activeAccount.name : 'E-Birr Merchant Account'}
+                                    </span>
+                                    <ArrowRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform ml-1" />
                                 </div>
 
                                 <div className="flex flex-col mt-1">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Balance</span>
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Balance</span>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight">
-                                            {activeAccount ? activeAccount.balance.toLocaleString() : '100,000'}
+                                            {activeAccount ? Number(activeAccount.balance).toLocaleString() : '100,000'}
                                         </span>
                                         <span className="text-sm font-bold text-emerald-400">ETB</span>
                                     </div>
                                     <span className="text-[10px] font-bold text-slate-400 mt-1">Budget progress</span>
-                                    <div className="w-32 bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1 border border-white/10">
+                                    <div className="w-36 bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1 border border-white/10">
                                         <div className="bg-gradient-to-r from-emerald-400 to-cyan-400 h-full rounded-full w-3/4 shadow-[0_0_8px_#34d399]" />
                                     </div>
                                 </div>
@@ -1198,13 +1208,14 @@ export default function TelegramMiniAppPage() {
                                         </linearGradient>
                                     </defs>
                                 </svg>
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_#22d3ee]" />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                                    <span className="text-[9px] font-black text-emerald-400">CLICK</span>
+                                    <span className="text-[8px] text-slate-400 font-bold">Ledger</span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Category Breakdown Card */}
+                        {/* Category Breakdown Card (Live Data) */}
                         <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-cyan-950/40 border border-cyan-500/30 rounded-3xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] flex flex-col gap-4 backdrop-blur-2xl">
                             <div className="flex justify-between items-center">
                                 <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
@@ -1213,76 +1224,138 @@ export default function TelegramMiniAppPage() {
                                     </div>
                                     Category Breakdown
                                 </h3>
-                                <span className="text-slate-400 text-xs font-bold">•••</span>
+                                <span className="text-slate-400 text-xs font-bold">Live Database</span>
                             </div>
 
                             <div className="flex flex-col gap-3.5">
                                 {[
-                                    { name: 'Salaries', percent: 75, color: 'bg-blue-500 shadow-[0_0_10px_#3b82f6]', icon: <User size={14} className="text-blue-400" /> },
-                                    { name: 'Raw Materials', percent: 60, color: 'bg-emerald-500 shadow-[0_0_10px_#10b981]', icon: <Package size={14} className="text-emerald-400" /> },
-                                    { name: 'Transport', percent: 40, color: 'bg-amber-500 shadow-[0_0_10px_#f59e0b]', icon: <Truck size={14} className="text-amber-400" /> },
-                                    { name: 'Equipment', percent: 30, color: 'bg-purple-500 shadow-[0_0_10px_#a855f7]', icon: <Settings size={14} className="text-purple-400" /> }
-                                ].map((item) => (
-                                    <div key={item.name} className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-                                            {item.icon}
-                                        </div>
-                                        <div className="flex-1 flex flex-col gap-1">
-                                            <div className="flex justify-between text-xs font-bold">
-                                                <span className="text-slate-200">{item.name}</span>
-                                                <span className="text-slate-400">{item.percent}%</span>
+                                    { name: 'Salaries', catKey: 'Salaries', color: 'bg-blue-500 shadow-[0_0_10px_#3b82f6]', icon: <User size={14} className="text-blue-400" /> },
+                                    { name: 'Raw Materials', catKey: 'Raw Material', color: 'bg-emerald-500 shadow-[0_0_10px_#10b981]', icon: <Package size={14} className="text-emerald-400" /> },
+                                    { name: 'Transport & Fuel', catKey: 'Transport & Fuel', color: 'bg-amber-500 shadow-[0_0_10px_#f59e0b]', icon: <Truck size={14} className="text-amber-400" /> },
+                                    { name: 'Equipment Rental', catKey: 'Equipment Rental', color: 'bg-purple-500 shadow-[0_0_10px_#a855f7]', icon: <Settings size={14} className="text-purple-400" /> }
+                                ].map((item) => {
+                                    const catTotal = historyExpenses
+                                        .filter(e => e.category === item.catKey || e.category === item.name)
+                                        .reduce((s, e) => s + Number(e.amount), 0);
+                                    const grandTotal = historyExpenses.reduce((s, e) => s + Number(e.amount), 1);
+                                    const percent = Math.min(100, Math.round((catTotal / grandTotal) * 100)) || 0;
+
+                                    return (
+                                        <div key={item.name} className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
+                                                {item.icon}
                                             </div>
-                                            <div className="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden border border-white/5">
-                                                <div className={`h-full rounded-full ${item.color}`} style={{ width: `${item.percent}%` }} />
+                                            <div className="flex-1 flex flex-col gap-1">
+                                                <div className="flex justify-between text-xs font-bold">
+                                                    <span className="text-slate-200">{item.name}</span>
+                                                    <span className="text-slate-400">{catTotal.toLocaleString()} ETB ({percent}%)</span>
+                                                </div>
+                                                <div className="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden border border-white/5">
+                                                    <div className={`h-full rounded-full ${item.color}`} style={{ width: `${Math.max(4, percent)}%` }} />
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 
-                        {/* Manager Approval Workflow Card */}
-                        <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-blue-950/60 border border-blue-500/30 rounded-3xl p-5 shadow-[0_0_35px_rgba(59,130,246,0.2),inset_0_1px_1.5px_rgba(255,255,255,0.25)] flex flex-col gap-4 backdrop-blur-2xl relative overflow-hidden">
-                            <div className="flex justify-between items-start">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-                                        <CheckCircle2 size={16} />
+                        {/* Manager Approval Workflow Card (Visible ONLY to Manager Abdehakim) */}
+                        {isManager ? (
+                            <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-blue-950/60 border border-blue-500/30 rounded-3xl p-5 shadow-[0_0_35px_rgba(59,130,246,0.2),inset_0_1px_1.5px_rgba(255,255,255,0.25)] flex flex-col gap-4 backdrop-blur-2xl relative overflow-hidden">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                                            <CheckCircle2 size={16} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xs font-black text-white uppercase tracking-wider">Manager Approval Workflow</h3>
+                                            <p className="text-[10px] font-bold text-amber-300 mt-0.5">👤 Logged in as Manager (Abdehakim Mumin)</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h3 className="text-xs font-black text-white uppercase tracking-wider">Manager Approval Workflow</h3>
-                                        <p className="text-[10px] font-bold text-slate-400 mt-0.5">Transactions exceed than 10,000 ETB or learn below.</p>
+                                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500/30 to-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+                                        🛡️
                                     </div>
                                 </div>
-                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500/30 to-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-                                    🛡️
-                                </div>
-                            </div>
 
-                            {/* iOS 26 Glass Reflection Action Buttons */}
-                            <div className="grid grid-cols-2 gap-3 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        triggerHaptic('success');
-                                        showAlert('✅ Dalabku waa la oggolaaday!', 'success');
-                                    }}
-                                    className="py-3.5 px-4 bg-gradient-to-b from-emerald-400/40 via-emerald-500/30 to-emerald-700/50 hover:from-emerald-400/60 border border-emerald-300/80 shadow-[0_0_20px_rgba(16,185,129,0.4),inset_0_1.5px_1px_rgba(255,255,255,0.8)] text-white font-black rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 text-xs backdrop-blur-xl"
-                                >
-                                    <CheckCircle2 size={16} className="text-emerald-300" /> Approve
-                                </button>
+                                {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 10000).length === 0 ? (
+                                    <div className="p-4 bg-white/5 border border-white/10 rounded-2xl text-center text-xs font-bold text-slate-300">
+                                        ✅ Majiraan dalabyo waaweyn (&gt;= 10,000 ETB) oo sugaya approval-kaaga.
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col gap-3">
+                                        {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 10000).map((exp) => (
+                                            <div key={exp.id} className="p-4 bg-slate-950/80 border border-amber-500/40 rounded-2xl flex flex-col gap-3 shadow-lg">
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <span className="text-[10px] font-black text-amber-400 uppercase bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                                            ⏳ Sugaya Approval
+                                                        </span>
+                                                        <p className="text-xs font-bold text-white mt-1">
+                                                            {exp.description || exp.category}
+                                                        </p>
+                                                        {exp.requesterName && (
+                                                            <p className="text-[10px] text-slate-400 font-bold mt-0.5">👤 Codsaday: {exp.requesterName}</p>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-sm font-black text-amber-400">
+                                                        {Number(exp.amount).toLocaleString()} ETB
+                                                    </span>
+                                                </div>
 
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        triggerHaptic('warning');
-                                        showAlert('🛑 Dalabku waa la diaday.', 'warning');
-                                    }}
-                                    className="py-3.5 px-4 bg-gradient-to-b from-blue-400/40 via-blue-500/30 to-blue-700/50 hover:from-blue-400/60 border border-blue-300/80 shadow-[0_0_20px_rgba(59,130,246,0.4),inset_0_1.5px_1px_rgba(255,255,255,0.8)] text-white font-black rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 text-xs backdrop-blur-xl"
-                                >
-                                    <AlertTriangle size={16} className="text-blue-300" /> Reject
-                                </button>
+                                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            triggerHaptic('success');
+                                                            const res = await fetch('/api/telegram/expense-actions', {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ id: exp.id, action: 'approve', managerName: requesterName })
+                                                            });
+                                                            const data = await res.json();
+                                                            if (data.success) {
+                                                                showAlert('✅ Dalabka waa la oggolaaday!', 'success');
+                                                                fetchHistory();
+                                                            }
+                                                        }}
+                                                        className="py-3 px-3 bg-gradient-to-b from-emerald-400/40 via-emerald-500/30 to-emerald-700/50 hover:from-emerald-400/60 border border-emerald-300/80 shadow-[0_0_15px_rgba(16,185,129,0.4)] text-white font-black rounded-xl text-xs active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <CheckCircle2 size={14} /> Approve
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            triggerHaptic('warning');
+                                                            const res = await fetch('/api/telegram/expense-actions', {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ id: exp.id, action: 'reject', managerName: requesterName })
+                                                            });
+                                                            const data = await res.json();
+                                                            if (data.success) {
+                                                                showAlert('🛑 Dalabku waa la diaday.', 'warning');
+                                                                fetchHistory();
+                                                            }
+                                                        }}
+                                                        className="py-3 px-3 bg-gradient-to-b from-blue-400/40 via-blue-500/30 to-blue-700/50 hover:from-blue-400/60 border border-blue-300/80 shadow-[0_0_15px_rgba(59,130,246,0.4)] text-white font-black rounded-xl text-xs active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <AlertTriangle size={14} /> Reject
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                        </div>
+                        ) : (
+                            <div className="bg-slate-900/60 border border-white/10 rounded-3xl p-4 text-center backdrop-blur-xl">
+                                <p className="text-xs font-bold text-slate-400">
+                                    ℹ️ Oggolaanshaha dalabada waaweyn (&gt;= 10,000 ETB) waxaa toos u maamula Manager Abdehakim Mumin.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 ) : activeTab === 'HISTORY' ? (
                     <div className="flex flex-col gap-3">
@@ -1984,6 +2057,84 @@ export default function TelegramMiniAppPage() {
                                 >
                                     {savingEdit ? <Loader2 className="animate-spin" size={14} /> : '💾 Cusboonaysii (Save)'}
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Account Transactions Drilldown Modal */}
+                {showAccountModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-2xl animate-fade-in">
+                        <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-emerald-950/80 border border-emerald-400/40 rounded-3xl p-6 w-full max-w-md flex flex-col gap-4 shadow-[0_0_50px_rgba(16,185,129,0.3)] max-h-[85vh] overflow-y-auto relative">
+                            <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 font-bold">
+                                        💳
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-black text-white uppercase">Account Transactions Ledger</h3>
+                                        <p className="text-[10px] text-slate-400 font-bold">Deposits, Expenses & Running Balance</p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAccountModal(false)}
+                                    className="w-8 h-8 rounded-full bg-white/10 border border-white/20 text-white flex items-center justify-center text-xs font-black active:scale-95 hover:bg-white/20"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            {/* Account Switcher Tabs */}
+                            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+                                {accounts.map(acc => (
+                                    <button
+                                        key={acc.id}
+                                        type="button"
+                                        onClick={() => setSelectedAccountForModal(acc)}
+                                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all border whitespace-nowrap ${
+                                            (selectedAccountForModal?.id || activeAccount?.id || accounts[0]?.id) === acc.id
+                                                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-emerald-400 shadow-[0_0_15px_#10b981]'
+                                                : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+                                        }`}
+                                    >
+                                        {acc.name} ({Number(acc.balance).toLocaleString()} ETB)
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Summary Card */}
+                            <div className="p-4 bg-slate-950/60 border border-emerald-500/30 rounded-2xl flex flex-col gap-1 shadow-inner">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Balance (Haraa)</span>
+                                <span className="text-2xl font-black text-emerald-400">
+                                    {Number((selectedAccountForModal || activeAccount)?.balance || 0).toLocaleString()} ETB
+                                </span>
+                            </div>
+
+                            {/* Transaction Ledger Table / Cards */}
+                            <div className="flex flex-col gap-2.5">
+                                <h4 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                                    <span>Transaction History</span>
+                                    <span className="text-[10px] text-slate-400 font-bold">{historyExpenses.length} Records</span>
+                                </h4>
+
+                                {historyExpenses.length === 0 ? (
+                                    <p className="text-xs text-slate-400 font-bold p-4 text-center">Wax lacag bixin ah ama deposit ah oo laga helay koontadan ma jiraan.</p>
+                                ) : (
+                                    historyExpenses.map(t => (
+                                        <div key={t.id} className="p-3.5 bg-white/5 border border-white/10 rounded-2xl flex justify-between items-center hover:bg-white/10 transition-all">
+                                            <div className="flex flex-col gap-0.5">
+                                                <span className="text-[10px] font-bold text-slate-400">{new Date(t.createdAt).toLocaleDateString('so-SO')}</span>
+                                                <span className="text-xs font-bold text-white">{t.description || t.category}</span>
+                                                {t.requesterName && <span className="text-[9px] text-slate-400 font-bold">👤 {t.requesterName}</span>}
+                                            </div>
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-xs font-black text-rose-400">- {Number(t.amount).toLocaleString()} ETB</span>
+                                                <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 mt-1">Paid</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </div>

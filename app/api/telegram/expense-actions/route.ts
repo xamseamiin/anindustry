@@ -237,3 +237,79 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
+
+// POST: Manager Approve / Reject Expense Action
+export async function POST(request: Request) {
+    try {
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        const defaultChatId = process.env.TELEGRAM_CHAT_ID;
+        const body = await request.json();
+        const { id, action, managerName } = body; // action: 'approve' | 'reject'
+
+        if (!id || !action) {
+            return NextResponse.json({ error: 'Expense ID and action are required' }, { status: 400 });
+        }
+
+        const expense = await prisma.expense.findUnique({
+            where: { id },
+            include: { account: true, employee: true }
+        });
+
+        if (!expense) {
+            return NextResponse.json({ error: 'Expense not found' }, { status: 404 });
+        }
+
+        const approver = managerName || 'Abdehakim Mumin (@Abdehakimmumin)';
+
+        if (action === 'approve') {
+            const updated = await prisma.expense.update({
+                where: { id },
+                data: {
+                    approved: true,
+                    paymentStatus: 'APPROVED_AWAITING_RECEIPT'
+                }
+            });
+
+            // Edit Telegram message to prompt requester for receipt upload
+            const targetChatId = expense.telegramChatId || defaultChatId;
+            const targetMsgId = expense.telegramMessageId;
+
+            if (token && targetChatId && targetMsgId) {
+                const approvedText =
+                    `<b>AN-Industory</b>\n` +
+                    `<b>✅ DALABKA WAA LA OGGOLAADAY!</b>\n\n` +
+                    `📂 Qaybta: ${expense.category}\n` +
+                    `💵 Lacagta: ${Number(expense.amount).toLocaleString()} ETB\n` +
+                    `✍️ Oggolaaday: ${approver}\n\n` +
+                    `📸 <b>Tallaabada Xigta:</b> Fadlan ku soo dir sawirka Rasiidka (Receipt Photo) chat-kan si loo xaqiijiyo loona dhameystiro.`;
+
+                await editTelegramBotMessage(token, targetChatId, targetMsgId, approvedText);
+            }
+
+            return NextResponse.json({ success: true, message: 'Dalabku waa la oggolaaday!', expense: updated });
+        } else if (action === 'reject') {
+            await prisma.expense.delete({ where: { id } });
+
+            const targetChatId = expense.telegramChatId || defaultChatId;
+            const targetMsgId = expense.telegramMessageId;
+
+            if (token && targetChatId && targetMsgId) {
+                const rejectedText =
+                    `<b>AN-Industory</b>\n` +
+                    `<b>🛑 DALABKA WAA LA DIADAY (REJECTED)</b>\n\n` +
+                    `📂 Qaybta: ${expense.category}\n` +
+                    `💵 Lacagta: ${Number(expense.amount).toLocaleString()} ETB\n` +
+                    `✍️ Diaday: ${approver}`;
+
+                await editTelegramBotMessage(token, targetChatId, targetMsgId, rejectedText);
+            }
+
+            return NextResponse.json({ success: true, message: 'Dalabku waa la diaday.' });
+        }
+
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    } catch (error: any) {
+        console.error('Error in manager expense action:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
