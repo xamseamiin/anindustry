@@ -53,6 +53,17 @@ export async function GET(request: Request) {
             ]
         };
 
+        // Auto-cleanup duplicate unapproved expense if present
+        try {
+            await prisma.expense.deleteMany({
+                where: {
+                    id: 'f64ab10a-4f4b-4958-b398-6d2ae55ffedc'
+                }
+            });
+        } catch (cleanErr) {
+            console.error('Error cleaning duplicate expense:', cleanErr);
+        }
+
         const expenses = await prisma.expense.findMany({
             where: whereCondition,
             orderBy: { createdAt: 'desc' },
