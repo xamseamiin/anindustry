@@ -285,7 +285,7 @@ export default function TelegramMiniAppPage() {
     const fetchHistory = async () => {
         setLoadingHistory(true);
         try {
-            let url = `/api/telegram/history?filter=${historyFilter}`;
+            let url = `/api/telegram/history?filter=${historyFilter}&_t=${Date.now()}`;
             if (historyFilter === 'custom') {
                 if (customStartDate) url += `&startDate=${encodeURIComponent(customStartDate)}`;
                 if (customEndDate) url += `&endDate=${encodeURIComponent(customEndDate)}`;
