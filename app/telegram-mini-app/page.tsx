@@ -298,7 +298,7 @@ export default function TelegramMiniAppPage() {
     };
 
     useEffect(() => {
-        if (activeTab === 'HISTORY') {
+        if (activeTab === 'TRANSACTIONS' || activeTab === 'ANALYTICS') {
             fetchHistory();
         }
     }, [activeTab, historyFilter, customStartDate, customEndDate]);

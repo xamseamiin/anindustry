@@ -5,7 +5,7 @@ import prisma from '@/lib/db';
 export const dynamic = 'force-dynamic';
 
 // Helper to send request to Telegram Bot API
-async function editTelegramBotMessage(token: string, chatId: string, messageId: number, newText: string) {
+async function editTelegramBotMessage(token: string, chatId: string, messageId: number, newText: string, replyMarkup?: any) {
     try {
         const urlText = `https://api.telegram.org/bot${token}/editMessageText`;
         const resText = await fetch(urlText, {
@@ -15,7 +15,8 @@ async function editTelegramBotMessage(token: string, chatId: string, messageId: 
                 chat_id: chatId,
                 message_id: messageId,
                 text: newText,
-                parse_mode: 'HTML'
+                parse_mode: 'HTML',
+                reply_markup: replyMarkup
             })
         });
         const dataText = await resText.json();
@@ -30,7 +31,8 @@ async function editTelegramBotMessage(token: string, chatId: string, messageId: 
                 chat_id: chatId,
                 message_id: messageId,
                 caption: newText,
-                parse_mode: 'HTML'
+                parse_mode: 'HTML',
+                reply_markup: replyMarkup
             })
         });
         const dataCap = await resCap.json();
@@ -277,13 +279,21 @@ export async function POST(request: Request) {
             if (token && targetChatId && targetMsgId) {
                 const approvedText =
                     `<b>AN-Industory</b>\n` +
-                    `<b>✅ DALABKA WAA LA OGGOLAADAY!</b>\n\n` +
+                    `<b>📋 Codsiga ${expense.employeeId ? 'Mushaharka' : 'Kharashka'} (Sugaya Rasiidka)</b>\n\n` +
                     `📂 Qaybta: ${expense.category}\n` +
                     `💵 Lacagta: ${Number(expense.amount).toLocaleString()} ETB\n` +
-                    `✍️ Oggolaaday: ${approver}\n\n` +
-                    `📸 <b>Tallaabada Xigta:</b> Fadlan ku soo dir sawirka Rasiidka (Receipt Photo) chat-kan si loo xaqiijiyo loona dhameystiro.`;
+                    `✍️ <b>Oggolaaday Manager:</b> ${approver}\n\n` +
+                    `⏳ <b>Waa la oggolaaday!</b> Fadlan ku soo dir sawirka Rasiidka (Receipt Photo) ama ku dhufo badhanka hoose.`;
 
-                await editTelegramBotMessage(token, targetChatId, targetMsgId, approvedText);
+                const receiptMarkup = {
+                    inline_keyboard: [
+                        [
+                            { text: "➕ Gali Rasiidka (Upload Receipt)", callback_data: `rcpt_${expense.id}` }
+                        ]
+                    ]
+                };
+
+                await editTelegramBotMessage(token, targetChatId, targetMsgId, approvedText, receiptMarkup);
             }
 
             return NextResponse.json({ success: true, message: 'Dalabku waa la oggolaaday!', expense: updated });

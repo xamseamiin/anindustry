@@ -476,26 +476,51 @@ export async function POST(request: Request) {
                                    aiStatusLine;
                 // No keyboard buttons for paid procurement
                 } else {
-                    telegramText = `<b>AN-Industory</b>\n` +
-                                   `<b>📋 Codsiga Qalabka / Raw Material (Sugaya Rasiidka)</b>\n\n` +
-                                   requesterLine +
-                                   `🏭 Alaab-keenaha: ${result.supplierName}\n` +
-                                   `📦 Name: ${result.materialName}\n` +
-                                   `📊 Qty: ${result.quantity} ${result.materialUnit}\n` +
-                                   `💵 Price: ${Number(result.unitPrice).toLocaleString()} ETB\n` +
-                                   `💰 Total: ${Number(result.totalPrice).toLocaleString()} ETB\n` +
-                                   paymentContactLine +
-                                   `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
-                                   `📅 Taariikhda: ${formattedDate}\n\n` +
-                                   `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
-                                   aiStatusLine;
-                    replyMarkup = {
-                        inline_keyboard: [
-                            [
-                                { text: "➕ Gali Rasiidka (Upload Receipt)", callback_data: `rcpt_mp_${result.id}` }
+                    const reqApproval = Number(result.totalPrice) >= 10000 && ! (result as any).approved;
+                    if (reqApproval) {
+                        telegramText = `<b>AN-Industory</b>\n` +
+                                       `<b>⏳ Codsiga Qalabka / Raw Material (Sugaya Oggolaanshaha Manager-ka)</b>\n\n` +
+                                       requesterLine +
+                                       `🏭 Alaab-keenaha: ${result.supplierName}\n` +
+                                       `📦 Name: ${result.materialName}\n` +
+                                       `📊 Qty: ${result.quantity} ${result.materialUnit}\n` +
+                                       `💵 Price: ${Number(result.unitPrice).toLocaleString()} ETB\n` +
+                                       `💰 Total: ${Number(result.totalPrice).toLocaleString()} ETB\n` +
+                                       paymentContactLine +
+                                       `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
+                                       `📅 Taariikhda: ${formattedDate}\n\n` +
+                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 10,000 ETB.</b>` +
+                                       aiStatusLine;
+                        replyMarkup = {
+                            inline_keyboard: [
+                                [
+                                    { text: "✓ Oggolow (Approve)", callback_data: `approve_exp_${result.id}` },
+                                    { text: "🛑 Diid (Reject)", callback_data: `reject_exp_${result.id}` }
+                                ]
                             ]
-                        ]
-                    };
+                        };
+                    } else {
+                        telegramText = `<b>AN-Industory</b>\n` +
+                                       `<b>📋 Codsiga Qalabka / Raw Material (Sugaya Rasiidka)</b>\n\n` +
+                                       requesterLine +
+                                       `🏭 Alaab-keenaha: ${result.supplierName}\n` +
+                                       `📦 Name: ${result.materialName}\n` +
+                                       `📊 Qty: ${result.quantity} ${result.materialUnit}\n` +
+                                       `💵 Price: ${Number(result.unitPrice).toLocaleString()} ETB\n` +
+                                       `💰 Total: ${Number(result.totalPrice).toLocaleString()} ETB\n` +
+                                       paymentContactLine +
+                                       `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
+                                       `📅 Taariikhda: ${formattedDate}\n\n` +
+                                       `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
+                                       aiStatusLine;
+                        replyMarkup = {
+                            inline_keyboard: [
+                                [
+                                    { text: "➕ Gali Rasiidka (Upload Receipt)", callback_data: `rcpt_mp_${result.id}` }
+                                ]
+                            ]
+                        };
+                    }
                 }
             } else if (type === 'SALARY') {
                 if (result.isPaid) {
@@ -511,24 +536,47 @@ export async function POST(request: Request) {
                                    aiStatusLine;
                 // No keyboard buttons for paid salaries
                 } else {
-                    telegramText = `<b>AN-Industory</b>\n` +
-                                   `<b>📋 Codsiga Mushaharka (Sugaya Rasiidka)</b>\n\n` +
-                                   requesterLine +
-                                   `👤 Shaqaalaha: ${result.employeeName}\n` +
-                                   `💵 Lacagta la dalbay: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
-                                   (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
-                                   `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
-                                   `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
-                                   `📅 Taariikhda: ${formattedDate}\n\n` +
-                                   `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
-                                   aiStatusLine;
-                    replyMarkup = {
-                        inline_keyboard: [
-                            [
-                                { text: "➕ Gali Rasiidka (Upload Receipt)", callback_data: `rcpt_${result.id}` }
+                    const reqApproval = parseFloat(amountInput) >= 10000 && ! (result as any).approved;
+                    if (reqApproval) {
+                        telegramText = `<b>AN-Industory</b>\n` +
+                                       `<b>⏳ Codsiga Mushaharka (Sugaya Oggolaanshaha Manager-ka)</b>\n\n` +
+                                       requesterLine +
+                                       `👤 Shaqaalaha: ${result.employeeName}\n` +
+                                       `💵 Lacagta la dalbay: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                       (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
+                                       `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
+                                       `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
+                                       `📅 Taariikhda: ${formattedDate}\n\n` +
+                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 10,000 ETB.</b>` +
+                                       aiStatusLine;
+                        replyMarkup = {
+                            inline_keyboard: [
+                                [
+                                    { text: "✓ Oggolow (Approve)", callback_data: `approve_exp_${result.id}` },
+                                    { text: "🛑 Diid (Reject)", callback_data: `reject_exp_${result.id}` }
+                                ]
                             ]
-                        ]
-                    };
+                        };
+                    } else {
+                        telegramText = `<b>AN-Industory</b>\n` +
+                                       `<b>📋 Codsiga Mushaharka (Sugaya Rasiidka)</b>\n\n` +
+                                       requesterLine +
+                                       `👤 Shaqaalaha: ${result.employeeName}\n` +
+                                       `💵 Lacagta la dalbay: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                       (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
+                                       `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
+                                       `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
+                                       `📅 Taariikhda: ${formattedDate}\n\n` +
+                                       `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
+                                       aiStatusLine;
+                        replyMarkup = {
+                            inline_keyboard: [
+                                [
+                                    { text: "➕ Gali Rasiidka (Upload Receipt)", callback_data: `rcpt_${result.id}` }
+                                ]
+                            ]
+                        };
+                    }
                 }
             } else {
                 let customFieldsText = '';
@@ -554,25 +602,49 @@ export async function POST(request: Request) {
                                    aiStatusLine;
                 // No keyboard buttons for paid expenses
                 } else {
-                    telegramText = `<b>AN-Industory</b>\n` +
-                                   `<b>📋 Codsiga Kharashka (Sugaya Rasiidka)</b>\n\n` +
-                                   requesterLine +
-                                   `📂 Qaybta: ${result.categoryName}\n` +
-                                   `💵 Lacagta la dalbay: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
-                                   customFieldsText +
-                                   paymentContactLine +
-                                   `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
-                                   `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
-                                   `📅 Taariikhda: ${formattedDate}\n\n` +
-                                   `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
-                                   aiStatusLine;
-                    replyMarkup = {
-                        inline_keyboard: [
-                            [
-                                { text: "➕ Gali Rasiidka (Upload Receipt)", callback_data: `rcpt_${result.id}` }
+                    const reqApproval = parseFloat(amountInput) >= 10000 && ! (result as any).approved;
+                    if (reqApproval) {
+                        telegramText = `<b>AN-Industory</b>\n` +
+                                       `<b>⏳ Codsiga Kharashka (Sugaya Oggolaanshaha Manager-ka)</b>\n\n` +
+                                       requesterLine +
+                                       `📂 Qaybta: ${result.categoryName}\n` +
+                                       `💵 Lacagta la dalbay: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                       customFieldsText +
+                                       paymentContactLine +
+                                       `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
+                                       `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
+                                       `📅 Taariikhda: ${formattedDate}\n\n` +
+                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 10,000 ETB.</b>` +
+                                       aiStatusLine;
+                        replyMarkup = {
+                            inline_keyboard: [
+                                [
+                                    { text: "✓ Oggolow (Approve)", callback_data: `approve_exp_${result.id}` },
+                                    { text: "🛑 Diid (Reject)", callback_data: `reject_exp_${result.id}` }
+                                ]
                             ]
-                        ]
-                    };
+                        };
+                    } else {
+                        telegramText = `<b>AN-Industory</b>\n` +
+                                       `<b>📋 Codsiga Kharashka (Sugaya Rasiidka)</b>\n\n` +
+                                       requesterLine +
+                                       `📂 Qaybta: ${result.categoryName}\n` +
+                                       `💵 Lacagta la dalbay: ${parseFloat(amountInput).toLocaleString()} ETB\n` +
+                                       customFieldsText +
+                                       paymentContactLine +
+                                       `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
+                                       `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
+                                       `📅 Taariikhda: ${formattedDate}\n\n` +
+                                       `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...` +
+                                       aiStatusLine;
+                        replyMarkup = {
+                            inline_keyboard: [
+                                [
+                                    { text: "➕ Gali Rasiidka (Upload Receipt)", callback_data: `rcpt_${result.id}` }
+                                ]
+                            ]
+                        };
+                    }
                 }
             }
 
