@@ -46,10 +46,7 @@ export async function GET(request: Request) {
         const whereCondition: any = {
             companyId,
             ...(Object.keys(dateWhere).length > 0 ? { expenseDate: dateWhere } : {}),
-            OR: [
-                { accountId: ebirrAccountId },
-                { account: { name: { contains: 'E-Birr', mode: 'insensitive' } } }
-            ]
+            accountId: ebirrAccountId
         };
 
         // Auto-cleanup duplicate unapproved expense if present
@@ -74,15 +71,14 @@ export async function GET(request: Request) {
             }
         });
 
-        // 2. Fetch DEPOSIT/INFLOW transactions for E-Birr Merchant Account
+        // 2. Fetch DEPOSIT/INFLOW transactions for E-Birr Merchant Account ONLY
         let deposits: any[] = [];
         try {
             const depositWhereCondition: any = {
                 companyId,
                 OR: [
                     { accountId: ebirrAccountId },
-                    { toAccountId: ebirrAccountId },
-                    { account: { name: { contains: 'E-Birr', mode: 'insensitive' } } }
+                    { toAccountId: ebirrAccountId }
                 ],
                 type: { in: ['INCOME', 'TRANSFER_IN', 'DEBT_RECEIVED', 'DEBT_TAKEN', 'OTHER'] },
                 ...(Object.keys(dateWhere).length > 0 ? { transactionDate: dateWhere } : {})
