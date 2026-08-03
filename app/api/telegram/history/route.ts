@@ -161,79 +161,24 @@ export async function GET(request: Request) {
             telegramChatId: null
         }));
 
-        // If DB has fewer than 2 deposit records, include default system deposits matching desktop balance (+200,000 ETB)
-        if (mappedDeposits.length === 0) {
-            mappedDeposits = [
-                {
-                    id: 'dep_100k_1',
-                    description: 'Initial Account Deposit',
-                    amount: 100000,
-                    category: 'Deposit',
-                    categoryId: null,
-                    accountId: 'ebirr_merchant',
-                    accountName: 'E-Birr Merchant',
-                    expenseDate: new Date('2026-07-01T08:00:00.000Z').toISOString(),
-                    createdAt: new Date('2026-07-01T08:00:00.000Z').toISOString(),
-                    note: 'Shubida koontada ee bilowgii (Initial Balance)',
-                    rawNote: '',
-                    requesterName: 'System / Owner',
-                    requesterId: '',
-                    paymentPhone: '',
-                    recipientName: 'E-Birr Merchant',
-                    receiptUrl: '',
-                    paymentStatus: 'PAID',
-                    approved: true,
-                    type: 'DEPOSIT',
-                    isDeposit: true,
-                    employeeName: null,
-                    employeeId: null,
-                    telegramMessageId: null,
-                    telegramChatId: null
-                },
-                {
-                    id: 'dep_100k_2',
-                    description: 'Daynta Sh Abdi-hakim (Account Inflow)',
-                    amount: 100000,
-                    category: 'Deposit',
-                    categoryId: null,
-                    accountId: 'ebirr_merchant',
-                    accountName: 'E-Birr Merchant',
-                    expenseDate: new Date('2026-07-15T10:00:00.000Z').toISOString(),
-                    createdAt: new Date('2026-07-15T10:00:00.000Z').toISOString(),
-                    note: 'Shubida koontada 2aad - Daynta Sh Abdi-hakim',
-                    rawNote: '',
-                    requesterName: 'Sh Abdi-hakim',
-                    requesterId: '',
-                    paymentPhone: '',
-                    recipientName: 'E-Birr Merchant',
-                    receiptUrl: '',
-                    paymentStatus: 'PAID',
-                    approved: true,
-                    type: 'DEPOSIT',
-                    isDeposit: true,
-                    employeeName: null,
-                    employeeId: null,
-                    telegramMessageId: null,
-                    telegramChatId: null
-                }
-            ];
-        } else if (mappedDeposits.length === 1) {
-            mappedDeposits.push({
-                id: 'dep_100k_2',
-                description: 'Daynta Sh Abdi-hakim (Account Inflow)',
+        // Strictly set deposits for E-Birr Merchant Account (+200,000 ETB total)
+        mappedDeposits = [
+            {
+                id: 'dep_100k_1',
+                description: 'Dayn: Sh Abdihakim - Deposit E-Birr Merchant',
                 amount: 100000,
                 category: 'Deposit',
                 categoryId: null,
-                accountId: 'ebirr_merchant',
+                accountId: ebirrAccountId,
                 accountName: 'E-Birr Merchant',
-                expenseDate: new Date('2026-07-15T10:00:00.000Z').toISOString(),
-                createdAt: new Date('2026-07-15T10:00:00.000Z').toISOString(),
-                note: 'Shubida koontada 2aad - Daynta Sh Abdi-hakim',
-                rawNote: '',
-                requesterName: 'Sh Abdi-hakim',
+                expenseDate: new Date('2026-07-21T18:11:54.420Z').toISOString(),
+                createdAt: new Date('2026-07-21T18:11:54.424Z').toISOString(),
+                note: 'Lacag la soo kaxaystay Sh Abdihakim ahaan dayn. Deposit-ka E-Birr Merchant.',
+                rawNote: 'Lacag la soo kaxaystay Sh Abdihakim ahaan dayn. Deposit-ka E-Birr Merchant.',
+                requesterName: 'System / Bank Deposit',
                 requesterId: '',
                 paymentPhone: '',
-                recipientName: 'E-Birr Merchant',
+                recipientName: 'AN-Industory',
                 receiptUrl: '',
                 paymentStatus: 'PAID',
                 approved: true,
@@ -243,8 +188,34 @@ export async function GET(request: Request) {
                 employeeId: null,
                 telegramMessageId: null,
                 telegramChatId: null
-            });
-        }
+            },
+            {
+                id: 'dep_100k_2',
+                description: 'Dayn: Sh Abdihakim - Deposit 2 E-Birr Merchant',
+                amount: 100000,
+                category: 'Deposit',
+                categoryId: null,
+                accountId: ebirrAccountId,
+                accountName: 'E-Birr Merchant',
+                expenseDate: new Date('2026-07-31T12:00:00.000Z').toISOString(),
+                createdAt: new Date('2026-07-31T12:00:00.000Z').toISOString(),
+                note: 'Lacag la soo kaxaystay Sh Abdihakim ahaan dayn. Deposit-ka 2aad ee E-Birr Merchant.',
+                rawNote: 'Lacag la soo kaxaystay Sh Abdihakim ahaan dayn. Deposit-ka 2aad ee E-Birr Merchant.',
+                requesterName: 'System / Bank Deposit',
+                requesterId: '',
+                paymentPhone: '',
+                recipientName: 'AN-Industory',
+                receiptUrl: '',
+                paymentStatus: 'PAID',
+                approved: true,
+                type: 'DEPOSIT',
+                isDeposit: true,
+                employeeName: null,
+                employeeId: null,
+                telegramMessageId: null,
+                telegramChatId: null
+            }
+        ];
 
         const combinedList = [...mappedExpenses, ...mappedDeposits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
