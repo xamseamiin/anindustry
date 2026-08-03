@@ -286,7 +286,6 @@ export default function TelegramMiniAppPage() {
         setLoadingHistory(true);
         try {
             let url = `/api/telegram/history?filter=${historyFilter}`;
-            if (paymentPhone) url += `&phone=${encodeURIComponent(paymentPhone)}`;
             if (historyFilter === 'custom') {
                 if (customStartDate) url += `&startDate=${encodeURIComponent(customStartDate)}`;
                 if (customEndDate) url += `&endDate=${encodeURIComponent(customEndDate)}`;
@@ -1350,10 +1349,10 @@ export default function TelegramMiniAppPage() {
                                 <div className="flex flex-col mt-2">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Deposits</span>
                                     <span className="text-xs font-black text-emerald-400 tracking-tight">
-                                        {(historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0) + 100000).toLocaleString()} ETB
+                                        {historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0).toLocaleString()} ETB
                                     </span>
                                     <span className="text-[8px] text-slate-400 font-bold mt-0.5">
-                                        {historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').length + 1} Transactions
+                                        {historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').length} Transactions
                                     </span>
                                 </div>
                             </div>
