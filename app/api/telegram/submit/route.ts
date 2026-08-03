@@ -148,11 +148,18 @@ export async function POST(request: Request) {
             fs.writeFileSync(filePath, buffer);
             receiptUrl = `/uploads/receipts/${cleanFileName}`;
 
-            // Trigger AI Vision scan with Google Gemini 1.5 Flash
+            // Trigger AI Vision scan with Google Gemini 1.5/2.0 Flash
             const expectedAmount = parseFloat(amountInput) || (parseFloat(quantityInput) * parseFloat(unitPriceInput)) || 0;
             if (expectedAmount > 0) {
                 try {
-                    aiVerificationResult = await verifyReceiptImageWithAI(filePath, expectedAmount);
+                    aiVerificationResult = await verifyReceiptImageWithAI(filePath, expectedAmount, paymentPhone);
+                    if (aiVerificationResult.isVerified && !aiVerificationResult.isMatch) {
+                        // Delete invalid receipt file
+                        try { fs.unlinkSync(filePath); } catch (_) {}
+                        return NextResponse.json({ 
+                            error: aiVerificationResult.message || 'Rasiidka aad soo gelisay iyo lacagta/lambarka la dalbay isma laha!' 
+                        }, { status: 400 });
+                    }
                 } catch (aiErr) {
                     console.error('AI Receipt Vision Verification Error:', aiErr);
                 }

@@ -7,7 +7,7 @@ import {
     FileText, User, Tag, Truck, Settings, ShoppingBag, 
     Award, ArrowRight, Layers, Factory, Package,
     Hash, Banknote, Calendar, ClipboardList, Wrench, Phone,
-    Mic, MicOff, PlusCircle, Trash2, Pencil, AlertTriangle
+    Mic, MicOff, PlusCircle, Trash2, Pencil, AlertTriangle, ChevronLeft, Bell
 } from 'lucide-react';
 
 // Safe localStorage helpers for iOS WebView where localStorage can throw SecurityError
@@ -234,7 +234,7 @@ export default function TelegramMiniAppPage() {
     const [recognitionObj, setRecognitionObj] = useState<any>(null);
 
     // History & Edit states
-    const [activeTab, setActiveTab] = useState<'NEW' | 'HISTORY'>('NEW');
+    const [activeTab, setActiveTab] = useState<'NEW' | 'HISTORY' | 'DASHBOARD'>('NEW');
     const [historyFilter, setHistoryFilter] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
@@ -1081,46 +1081,210 @@ export default function TelegramMiniAppPage() {
 
             <div className="max-w-md mx-auto flex flex-col gap-4">
                 
-                {/* Header */}
-                <div className="flex justify-between items-center bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] backdrop-blur-md border border-white/5 rounded-2xl p-4 px-5">
-                    <div className="flex flex-col">
-                        <p className="text-[10px] font-black text-[var(--tg-theme-button-color,#3b82f6)] uppercase tracking-[0.2em]">AN-Industory Terminal</p>
-                        <h1 className="text-base font-black tracking-tight">Codsashada Kharashka</h1>
+                {/* iOS 26 Header */}
+                <div className="flex justify-between items-center bg-slate-900/60 backdrop-blur-2xl border border-white/15 shadow-[0_0_25px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.2)] rounded-3xl p-4 px-5">
+                    <button type="button" onClick={() => triggerHaptic('light')} className="w-10 h-10 rounded-full bg-white/10 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] active:scale-95 transition-all">
+                        <ChevronLeft size={20} />
+                    </button>
+                    
+                    <div className="flex flex-col items-center text-center">
+                        <div className="flex items-center gap-1.5">
+                            <p className="text-[12px] font-black text-white tracking-wider uppercase">AN-INDUSTRY TERMINAL</p>
+                            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shadow-[0_0_8px_#60a5fa]" />
+                        </div>
+                        <h1 className="text-xs font-bold text-slate-400">Codsashada Kharashka</h1>
                     </div>
-                    <div>
-                        <span className="text-[10px] bg-white/5 border border-white/10 text-[var(--tg-theme-text-color,#ffffff)] font-black px-2.5 py-1 rounded-full uppercase">
-                            {requesterName.split(' ')[0]}
-                        </span>
-                    </div>
+
+                    <button type="button" onClick={() => triggerHaptic('light')} className="w-10 h-10 rounded-full bg-white/10 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white relative shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] active:scale-95 transition-all">
+                        <Bell size={18} />
+                        <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-[0_0_6px_#34d399]" />
+                    </button>
                 </div>
 
-                {/* Tab Switcher: Foom Cusub vs Dalabadayda */}
-                <div className="grid grid-cols-2 gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
+                {/* Persistent Offline Status Banner */}
+                {typeof window !== 'undefined' && (!navigator.onLine || safeParseJSON<any[]>('offline_submissions', []).length > 0) && (
+                    <div className="bg-amber-500/20 backdrop-blur-xl border border-amber-400/40 rounded-2xl p-3.5 flex items-center justify-between gap-2 shadow-[0_0_20px_rgba(245,158,11,0.2)] animate-pulse">
+                        <div className="flex items-center gap-2">
+                            <span className="text-amber-400 font-bold text-xs">📶 Offline Mode:</span>
+                            <span className="text-[11px] text-slate-200 font-bold">
+                                {safeParseJSON<any[]>('offline_submissions', []).length} codsi ayaa draft ahaan u keydsan.
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => syncOfflineSubmissions()}
+                            disabled={syncingOffline}
+                            className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1 shadow-lg"
+                        >
+                            {syncingOffline ? <Loader2 className="animate-spin" size={12} /> : 'Sync Now'}
+                        </button>
+                    </div>
+                )}
+
+                {/* iOS 26 Glass Pill Tab Switcher */}
+                <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-1.5 rounded-2xl border border-white/15 backdrop-blur-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]">
                     <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('NEW'); }}
-                        className={`py-2.5 px-3 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                        className={`py-3 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
                             activeTab === 'NEW'
-                                ? 'bg-[var(--tg-theme-button-color,#3b82f6)] text-[var(--tg-theme-button-text-color,#ffffff)] shadow-md'
-                                : 'text-[var(--tg-theme-hint-color,#94a3b8)] hover:text-white'
+                                ? 'bg-gradient-to-r from-emerald-500/40 via-emerald-400/30 to-green-500/40 border border-emerald-400/80 shadow-[0_0_20px_rgba(16,185,129,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] text-white'
+                                : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white backdrop-blur-md'
                         }`}
                     >
-                        ➕ Foom Cusub
+                        <PlusCircle size={15} /> Foom
                     </button>
                     <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('HISTORY'); }}
-                        className={`py-2.5 px-3 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                        className={`py-3 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
                             activeTab === 'HISTORY'
-                                ? 'bg-[var(--tg-theme-button-color,#3b82f6)] text-[var(--tg-theme-button-text-color,#ffffff)] shadow-md'
-                                : 'text-[var(--tg-theme-hint-color,#94a3b8)] hover:text-white'
+                                ? 'bg-gradient-to-r from-emerald-500/40 via-emerald-400/30 to-green-500/40 border border-emerald-400/80 shadow-[0_0_20px_rgba(16,185,129,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] text-white'
+                                : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white backdrop-blur-md'
                         }`}
                     >
-                        📋 Dalabadayda
+                        <ClipboardList size={15} /> History
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('light'); setActiveTab('DASHBOARD'); fetchHistory(); }}
+                        className={`py-3 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                            activeTab === 'DASHBOARD'
+                                ? 'bg-gradient-to-r from-emerald-500/40 via-emerald-400/30 to-green-500/40 border border-emerald-400/80 shadow-[0_0_20px_rgba(16,185,129,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] text-white'
+                                : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white backdrop-blur-md'
+                        }`}
+                    >
+                        <Layers size={15} /> Dashboard
                     </button>
                 </div>
 
-                {activeTab === 'HISTORY' ? (
+                {activeTab === 'DASHBOARD' ? (
+                    <div className="flex flex-col gap-4 animate-fade-in">
+                        {/* E-Birr Merchant Account Card */}
+                        <div className="bg-gradient-to-br from-emerald-950/60 via-slate-950/90 to-cyan-950/60 border border-emerald-400/40 rounded-3xl p-6 shadow-[0_0_35px_rgba(16,185,129,0.25),inset_0_1px_1.5px_rgba(255,255,255,0.3)] flex justify-between items-center backdrop-blur-2xl relative overflow-hidden">
+                            <div className="flex flex-col gap-3 z-10">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-green-400 flex items-center justify-center text-slate-950 font-black text-sm shadow-[0_0_12px_#10b981]">
+                                        E.
+                                    </div>
+                                    <span className="text-sm font-black text-white tracking-wide">E-Birr Merchant Account</span>
+                                    <ArrowRight size={16} className="text-slate-400 ml-1" />
+                                </div>
+
+                                <div className="flex flex-col mt-1">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Balance</span>
+                                    <div className="flex items-baseline gap-1.5">
+                                        <span className="text-3xl font-black text-white tracking-tight">
+                                            {activeAccount ? activeAccount.balance.toLocaleString() : '100,000'}
+                                        </span>
+                                        <span className="text-sm font-bold text-emerald-400">ETB</span>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-400 mt-1">Budget progress</span>
+                                    <div className="w-32 bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1 border border-white/10">
+                                        <div className="bg-gradient-to-r from-emerald-400 to-cyan-400 h-full rounded-full w-3/4 shadow-[0_0_8px_#34d399]" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Speedometer Gauge SVG */}
+                            <div className="relative w-28 h-28 flex items-center justify-center z-10">
+                                <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+                                    <circle cx="50" cy="50" r="40" stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
+                                    <circle cx="50" cy="50" r="40" stroke="url(#emerald-gradient)" strokeWidth="8" fill="none" strokeDasharray="251" strokeDashoffset="60" strokeLinecap="round" className="shadow-[0_0_15px_#10b981]" />
+                                    <defs>
+                                        <linearGradient id="emerald-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stopColor="#34d399" />
+                                            <stop offset="100%" stopColor="#3b82f6" />
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_#22d3ee]" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Category Breakdown Card */}
+                        <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-cyan-950/40 border border-cyan-500/30 rounded-3xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] flex flex-col gap-4 backdrop-blur-2xl">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+                                        <Layers size={14} />
+                                    </div>
+                                    Category Breakdown
+                                </h3>
+                                <span className="text-slate-400 text-xs font-bold">•••</span>
+                            </div>
+
+                            <div className="flex flex-col gap-3.5">
+                                {[
+                                    { name: 'Salaries', percent: 75, color: 'bg-blue-500 shadow-[0_0_10px_#3b82f6]', icon: <User size={14} className="text-blue-400" /> },
+                                    { name: 'Raw Materials', percent: 60, color: 'bg-emerald-500 shadow-[0_0_10px_#10b981]', icon: <Package size={14} className="text-emerald-400" /> },
+                                    { name: 'Transport', percent: 40, color: 'bg-amber-500 shadow-[0_0_10px_#f59e0b]', icon: <Truck size={14} className="text-amber-400" /> },
+                                    { name: 'Equipment', percent: 30, color: 'bg-purple-500 shadow-[0_0_10px_#a855f7]', icon: <Settings size={14} className="text-purple-400" /> }
+                                ].map((item) => (
+                                    <div key={item.name} className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
+                                            {item.icon}
+                                        </div>
+                                        <div className="flex-1 flex flex-col gap-1">
+                                            <div className="flex justify-between text-xs font-bold">
+                                                <span className="text-slate-200">{item.name}</span>
+                                                <span className="text-slate-400">{item.percent}%</span>
+                                            </div>
+                                            <div className="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden border border-white/5">
+                                                <div className={`h-full rounded-full ${item.color}`} style={{ width: `${item.percent}%` }} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Manager Approval Workflow Card */}
+                        <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-blue-950/60 border border-blue-500/30 rounded-3xl p-5 shadow-[0_0_35px_rgba(59,130,246,0.2),inset_0_1px_1.5px_rgba(255,255,255,0.25)] flex flex-col gap-4 backdrop-blur-2xl relative overflow-hidden">
+                            <div className="flex justify-between items-start">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                                        <CheckCircle2 size={16} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xs font-black text-white uppercase tracking-wider">Manager Approval Workflow</h3>
+                                        <p className="text-[10px] font-bold text-slate-400 mt-0.5">Transactions exceed than 10,000 ETB or learn below.</p>
+                                    </div>
+                                </div>
+                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500/30 to-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+                                    🛡️
+                                </div>
+                            </div>
+
+                            {/* iOS 26 Glass Reflection Action Buttons */}
+                            <div className="grid grid-cols-2 gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        triggerHaptic('success');
+                                        showAlert('✅ Dalabku waa la oggolaaday!', 'success');
+                                    }}
+                                    className="py-3.5 px-4 bg-gradient-to-b from-emerald-400/40 via-emerald-500/30 to-emerald-700/50 hover:from-emerald-400/60 border border-emerald-300/80 shadow-[0_0_20px_rgba(16,185,129,0.4),inset_0_1.5px_1px_rgba(255,255,255,0.8)] text-white font-black rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 text-xs backdrop-blur-xl"
+                                >
+                                    <CheckCircle2 size={16} className="text-emerald-300" /> Approve
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        triggerHaptic('warning');
+                                        showAlert('🛑 Dalabku waa la diaday.', 'warning');
+                                    }}
+                                    className="py-3.5 px-4 bg-gradient-to-b from-blue-400/40 via-blue-500/30 to-blue-700/50 hover:from-blue-400/60 border border-blue-300/80 shadow-[0_0_20px_rgba(59,130,246,0.4),inset_0_1.5px_1px_rgba(255,255,255,0.8)] text-white font-black rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 text-xs backdrop-blur-xl"
+                                >
+                                    <AlertTriangle size={16} className="text-blue-300" /> Reject
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : activeTab === 'HISTORY' ? (
                     <div className="flex flex-col gap-3">
                         {/* Date Filter Controls */}
                         <div className="flex flex-col gap-2 bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/5 rounded-2xl p-3">
