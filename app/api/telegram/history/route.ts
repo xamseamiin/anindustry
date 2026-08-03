@@ -66,21 +66,27 @@ export async function GET(request: Request) {
             }
         });
 
-        // 2. Fetch DEPOSIT transactions or build account inflow records matching desktop system (+200,000 ETB)
-        const depositWhereCondition: any = {
-            companyId,
-            type: { in: ['DEPOSIT', 'RECEIPT', 'INCOME', 'DEBT_RECEIVED', 'DEBT_TAKEN'] },
-            ...(Object.keys(dateWhere).length > 0 ? { transactionDate: dateWhere } : {})
-        };
+        // 2. Fetch DEPOSIT/INFLOW transactions for company safely
+        let deposits: any[] = [];
+        try {
+            const depositWhereCondition: any = {
+                companyId,
+                type: { in: ['INCOME', 'TRANSFER_IN', 'DEBT_RECEIVED', 'DEBT_TAKEN', 'OTHER'] },
+                ...(Object.keys(dateWhere).length > 0 ? { transactionDate: dateWhere } : {})
+            };
 
-        const deposits = await prisma.transaction.findMany({
-            where: depositWhereCondition,
-            orderBy: { createdAt: 'desc' },
-            take: 50,
-            include: {
-                account: true
-            }
-        });
+            deposits = await prisma.transaction.findMany({
+                where: depositWhereCondition,
+                orderBy: { createdAt: 'desc' },
+                take: 50,
+                include: {
+                    account: true
+                }
+            });
+        } catch (depositErr) {
+            console.error('Error fetching transaction deposits:', depositErr);
+            deposits = [];
+        }
 
         const mappedExpenses = expenses.map(e => {
             const noteStr = e.note || '';
