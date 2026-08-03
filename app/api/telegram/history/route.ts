@@ -41,19 +41,17 @@ export async function GET(request: Request) {
             }
         }
 
+        const ebirrAccountId = 'e2124894-d151-432d-90c4-9e5025b71fb9';
+
         const whereCondition: any = {
             companyId,
-            ...(Object.keys(dateWhere).length > 0 ? { expenseDate: dateWhere } : {})
+            ...(Object.keys(dateWhere).length > 0 ? { expenseDate: dateWhere } : {}),
+            OR: [
+                { accountId: ebirrAccountId },
+                { account: { name: { contains: 'E-Birr', mode: 'insensitive' } } },
+                { accountId: null }
+            ]
         };
-
-        // If phone filter provided, filter by phone number in note or employee phone
-        if (phone) {
-            whereCondition.OR = [
-                { note: { contains: phone } },
-                { employee: { phone: { contains: phone } } },
-                { employee: { phoneNumber: { contains: phone } } }
-            ];
-        }
 
         const expenses = await prisma.expense.findMany({
             where: whereCondition,
@@ -66,11 +64,16 @@ export async function GET(request: Request) {
             }
         });
 
-        // 2. Fetch DEPOSIT/INFLOW transactions for company safely
+        // 2. Fetch DEPOSIT/INFLOW transactions for E-Birr Merchant Account
         let deposits: any[] = [];
         try {
             const depositWhereCondition: any = {
                 companyId,
+                OR: [
+                    { accountId: ebirrAccountId },
+                    { toAccountId: ebirrAccountId },
+                    { account: { name: { contains: 'E-Birr', mode: 'insensitive' } } }
+                ],
                 type: { in: ['INCOME', 'TRANSFER_IN', 'DEBT_RECEIVED', 'DEBT_TAKEN', 'OTHER'] },
                 ...(Object.keys(dateWhere).length > 0 ? { transactionDate: dateWhere } : {})
             };

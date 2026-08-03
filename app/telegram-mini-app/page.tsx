@@ -1385,7 +1385,10 @@ export default function TelegramMiniAppPage() {
                                 <div className="flex flex-col mt-2">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Balance</span>
                                     <span className="text-xs font-black text-white tracking-tight">
-                                        {activeAccount ? Number(activeAccount.balance).toLocaleString() : '100,000'} ETB
+                                        {(
+                                            historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0) -
+                                            historyExpenses.filter(e => !e.isDeposit && e.type !== 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0)
+                                        ).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB
                                     </span>
                                     <span className="text-[8px] text-emerald-400 font-bold mt-0.5">Updated now</span>
                                 </div>
