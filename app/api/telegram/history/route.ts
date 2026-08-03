@@ -48,8 +48,7 @@ export async function GET(request: Request) {
             ...(Object.keys(dateWhere).length > 0 ? { expenseDate: dateWhere } : {}),
             OR: [
                 { accountId: ebirrAccountId },
-                { account: { name: { contains: 'E-Birr', mode: 'insensitive' } } },
-                { accountId: null }
+                { account: { name: { contains: 'E-Birr', mode: 'insensitive' } } }
             ]
         };
 
