@@ -7,7 +7,8 @@ import {
     FileText, User, Tag, Truck, Settings, ShoppingBag, 
     Award, ArrowRight, Layers, Factory, Package,
     Hash, Banknote, Calendar, ClipboardList, Wrench, Phone,
-    Mic, MicOff, PlusCircle, Trash2, Pencil, AlertTriangle, ChevronLeft, Bell
+    Mic, MicOff, PlusCircle, Trash2, Pencil, AlertTriangle, ChevronLeft, Bell,
+    Home, ArrowUpRight, ArrowDownLeft, Search, Filter, Share2, ExternalLink, Download, UserCheck, ShieldCheck, BarChart3, PieChart
 } from 'lucide-react';
 
 // Safe localStorage helpers for iOS WebView where localStorage can throw SecurityError
@@ -187,6 +188,9 @@ export default function TelegramMiniAppPage() {
     
     // Unified Main Dropdown Selection
     const [selectedCategoryKey, setSelectedCategoryKey] = useState(''); // 'SALARY', 'RAW_MATERIAL', or 'EXPENSE_{id}_{name}'
+    const isSalary = selectedCategoryKey === 'SALARY';
+    const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
+    const isExpense = selectedCategoryKey.startsWith('EXPENSE_');
 
     // General Form Fields
     const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -235,13 +239,18 @@ export default function TelegramMiniAppPage() {
     const [isListening, setIsListening] = useState(false);
     const [recognitionObj, setRecognitionObj] = useState<any>(null);
 
-    // History & Edit states
-    const [activeTab, setActiveTab] = useState<'NEW' | 'HISTORY' | 'DASHBOARD'>('NEW');
+    // 5-Tab iOS 26 Dock States
+    const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TRANSACTIONS' | 'NEW' | 'ANALYTICS' | 'PROFILE'>('DASHBOARD');
     const [historyFilter, setHistoryFilter] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [historyExpenses, setHistoryExpenses] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
+    
+    // Transactions Ledger & Detail Modal states
+    const [selectedTransactionForDetails, setSelectedTransactionForDetails] = useState<any | null>(null);
+    const [transactionSearchQuery, setTransactionSearchQuery] = useState('');
+    const [transactionTypeFilter, setTransactionTypeFilter] = useState<'ALL' | 'DEPOSIT' | 'WITHDRAWAL'>('ALL');
     
     // Edit modal states
     const [editingExpense, setEditingExpense] = useState<any | null>(null);
@@ -1010,37 +1019,37 @@ export default function TelegramMiniAppPage() {
         );
     }
 
+    const handleBack = () => {
+        if (recognitionObj && isListening) {
+            try { recognitionObj.stop(); } catch(e) {}
+        }
+        setIsListening(false);
+        setSuccess(false);
+        setOfflineSubmitted(false);
+        setAmount('');
+        setNote('');
+        setSelectedEmployeeId('');
+        setSelectedVendorId('');
+        setIsNewVendor(false);
+        setNewVendorName('');
+        setSelectedMaterialName('');
+        setIsNewMaterial(false);
+        setNewMaterialName('');
+        setQuantity('');
+        setUnitPrice('');
+        setSelectedCategoryKey('');
+        setPaymentPhone('');
+        setRecipientName('');
+        setShowSavedContacts(false);
+    };
+
+    const handleClose = () => {
+        if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
+            (window as any).Telegram.WebApp.close();
+        }
+    };
+
     if (success) {
-        const handleBack = () => {
-            if (recognitionObj && isListening) {
-                try { recognitionObj.stop(); } catch(e) {}
-            }
-            setIsListening(false);
-            setSuccess(false);
-            setOfflineSubmitted(false);
-            setAmount('');
-            setNote('');
-            setSelectedEmployeeId('');
-            setSelectedVendorId('');
-            setIsNewVendor(false);
-            setNewVendorName('');
-            setSelectedMaterialName('');
-            setIsNewMaterial(false);
-            setNewMaterialName('');
-            setQuantity('');
-            setUnitPrice('');
-            setSelectedCategoryKey('');
-            setPaymentPhone('');
-            setRecipientName('');
-            setShowSavedContacts(false);
-        };
-
-        const handleClose = () => {
-            if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
-                (window as any).Telegram.WebApp.close();
-            }
-        };
-
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--tg-theme-bg-color,#0f172a)] text-[var(--tg-theme-text-color,#ffffff)] gap-6 p-6 text-center">
                 <TelegramScripts />
@@ -1075,10 +1084,6 @@ export default function TelegramMiniAppPage() {
             </div>
         );
     }
-
-    const isSalary = selectedCategoryKey === 'SALARY';
-    const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
-    const isExpense = selectedCategoryKey.startsWith('EXPENSE_');
 
     return (
         <div className="min-h-screen bg-[var(--tg-theme-bg-color,#0b0f19)] text-[var(--tg-theme-text-color,#ffffff)] font-sans selection:bg-blue-500/20 pb-8 pt-4 px-4 relative overflow-x-hidden">
@@ -1126,45 +1131,8 @@ export default function TelegramMiniAppPage() {
                     </div>
                 )}
 
-                {/* iOS 26 Glass Pill Tab Switcher */}
-                <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-1.5 rounded-2xl border border-white/15 backdrop-blur-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]">
-                    <button
-                        type="button"
-                        onClick={() => { triggerHaptic('light'); setActiveTab('NEW'); }}
-                        className={`py-3 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                            activeTab === 'NEW'
-                                ? 'bg-gradient-to-r from-emerald-500/40 via-emerald-400/30 to-green-500/40 border border-emerald-400/80 shadow-[0_0_20px_rgba(16,185,129,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] text-white'
-                                : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white backdrop-blur-md'
-                        }`}
-                    >
-                        <PlusCircle size={15} /> Foom
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => { triggerHaptic('light'); setActiveTab('HISTORY'); }}
-                        className={`py-3 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                            activeTab === 'HISTORY'
-                                ? 'bg-gradient-to-r from-emerald-500/40 via-emerald-400/30 to-green-500/40 border border-emerald-400/80 shadow-[0_0_20px_rgba(16,185,129,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] text-white'
-                                : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white backdrop-blur-md'
-                        }`}
-                    >
-                        <ClipboardList size={15} /> History
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => { triggerHaptic('light'); setActiveTab('DASHBOARD'); fetchHistory(); }}
-                        className={`py-3 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                            activeTab === 'DASHBOARD'
-                                ? 'bg-gradient-to-r from-emerald-500/40 via-emerald-400/30 to-green-500/40 border border-emerald-400/80 shadow-[0_0_20px_rgba(16,185,129,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] text-white'
-                                : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white backdrop-blur-md'
-                        }`}
-                    >
-                        <Layers size={15} /> Dashboard
-                    </button>
-                </div>
-
                 {activeTab === 'DASHBOARD' ? (
-                    <div className="flex flex-col gap-4 animate-fade-in">
+                    <div className="flex flex-col gap-4 animate-fade-in pb-16">
                         {/* E-Birr Merchant Account Card (Clickable to open Account Transactions Modal) */}
                         <div 
                             onClick={() => { triggerHaptic('medium'); setShowAccountModal(true); }}
@@ -1172,8 +1140,8 @@ export default function TelegramMiniAppPage() {
                         >
                             <div className="flex flex-col gap-3 z-10">
                                 <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-green-400 flex items-center justify-center text-slate-950 font-black text-sm shadow-[0_0_12px_#10b981]">
-                                        E.
+                                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500/30 via-emerald-400/20 to-teal-500/30 border border-emerald-400/60 backdrop-blur-xl flex items-center justify-center text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.4),inset_0_1px_1px_rgba(255,255,255,0.4)]">
+                                        <Wallet size={20} className="text-emerald-300" />
                                     </div>
                                     <span className="text-sm font-black text-white tracking-wide">
                                         {activeAccount ? activeAccount.name : 'E-Birr Merchant Account'}
@@ -1357,143 +1325,212 @@ export default function TelegramMiniAppPage() {
                             </div>
                         )}
                     </div>
-                ) : activeTab === 'HISTORY' ? (
-                    <div className="flex flex-col gap-3">
-                        {/* Date Filter Controls */}
-                        <div className="flex flex-col gap-2 bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/5 rounded-2xl p-3">
-                            <label className="text-[10px] font-black uppercase text-[var(--tg-theme-hint-color,#94a3b8)] tracking-wider flex items-center justify-between">
-                                <span>📅 Filter Taariikhda</span>
-                                {loadingHistory && <Loader2 className="animate-spin text-blue-400" size={12} />}
-                            </label>
-                            
-                            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                                {[
-                                    { key: 'all', label: 'Dhammaan' },
-                                    { key: 'today', label: 'Maanta' },
-                                    { key: 'week', label: 'Toddobaadkan' },
-                                    { key: 'month', label: 'Bishan' },
-                                    { key: 'custom', label: 'Taariikh Gaar Ah' }
-                                ].map((f) => (
-                                    <button
-                                        key={f.key}
-                                        type="button"
-                                        onClick={() => { triggerHaptic('light'); setHistoryFilter(f.key as any); }}
-                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border ${
-                                            historyFilter === f.key
-                                                ? 'bg-[var(--tg-theme-button-color,#3b82f6)] text-white border-transparent'
-                                                : 'bg-white/5 text-[var(--tg-theme-hint-color,#94a3b8)] border-white/5 hover:border-white/20'
-                                        }`}
-                                    >
-                                        {f.label}
-                                    </button>
-                                ))}
+                ) : activeTab === 'TRANSACTIONS' ? (
+                    <div className="flex flex-col gap-4 animate-fade-in pb-20">
+                        {/* Summary Cards Row */}
+                        <div className="grid grid-cols-3 gap-2">
+                            {/* Deposits Card */}
+                            <div className="bg-gradient-to-br from-emerald-950/80 via-slate-950 to-slate-950 border border-emerald-400/40 rounded-2xl p-3 flex flex-col justify-between shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+                                <div className="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">
+                                    <ArrowDownLeft size={16} />
+                                </div>
+                                <div className="flex flex-col mt-2">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Deposits</span>
+                                    <span className="text-xs font-black text-emerald-400 tracking-tight">100,000 ETB</span>
+                                    <span className="text-[8px] text-slate-400 font-bold mt-0.5">12 Transactions</span>
+                                </div>
                             </div>
 
-                            {historyFilter === 'custom' && (
-                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
-                                    <div>
-                                        <span className="text-[9px] text-[var(--tg-theme-hint-color,#94a3b8)] uppercase font-bold">Ka (Start)</span>
-                                        <input
-                                            type="date"
-                                            value={customStartDate}
-                                            onChange={(e) => setCustomStartDate(e.target.value)}
-                                            className="w-full p-2 bg-black/20 border border-white/10 rounded-lg text-xs font-bold text-white outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <span className="text-[9px] text-[var(--tg-theme-hint-color,#94a3b8)] uppercase font-bold">Ilaa (End)</span>
-                                        <input
-                                            type="date"
-                                            value={customEndDate}
-                                            onChange={(e) => setCustomEndDate(e.target.value)}
-                                            className="w-full p-2 bg-black/20 border border-white/10 rounded-lg text-xs font-bold text-white outline-none"
-                                        />
-                                    </div>
+                            {/* Withdrawals Card */}
+                            <div className="bg-gradient-to-br from-blue-950/80 via-slate-950 to-slate-950 border border-blue-400/40 rounded-2xl p-3 flex flex-col justify-between shadow-[0_0_20px_rgba(59,130,246,0.2)]">
+                                <div className="w-7 h-7 rounded-xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400">
+                                    <ArrowUpRight size={16} />
                                 </div>
-                            )}
+                                <div className="flex flex-col mt-2">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Withdrawals</span>
+                                    <span className="text-xs font-black text-blue-400 tracking-tight">
+                                        {historyExpenses.reduce((s, e) => s + Number(e.amount), 0).toLocaleString()} ETB
+                                    </span>
+                                    <span className="text-[8px] text-slate-400 font-bold mt-0.5">{historyExpenses.length} Transactions</span>
+                                </div>
+                            </div>
+
+                            {/* Balance Card */}
+                            <div className="bg-gradient-to-br from-cyan-950/80 via-slate-950 to-slate-950 border border-cyan-400/40 rounded-2xl p-3 flex flex-col justify-between shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+                                <div className="w-7 h-7 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400">
+                                    <Wallet size={16} />
+                                </div>
+                                <div className="flex flex-col mt-2">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Balance</span>
+                                    <span className="text-xs font-black text-white tracking-tight">
+                                        {activeAccount ? Number(activeAccount.balance).toLocaleString() : '100,000'} ETB
+                                    </span>
+                                    <span className="text-[8px] text-emerald-400 font-bold mt-0.5">Updated now</span>
+                                </div>
+                            </div>
                         </div>
 
-                        {/* Expense Cards List */}
-                        {loadingHistory ? (
-                            <div className="flex flex-col items-center justify-center p-8 gap-2">
-                                <Loader2 className="animate-spin text-blue-500" size={24} />
-                                <p className="text-xs font-bold opacity-60">Soo akhrinaya dalabadadii hore...</p>
+                        {/* Search & Filter Bar */}
+                        <div className="flex gap-2">
+                            <div className="flex-1 bg-slate-950/70 border border-white/15 rounded-xl px-3 py-2.5 flex items-center gap-2 backdrop-blur-xl">
+                                <Search size={14} className="text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={transactionSearchQuery}
+                                    onChange={(e) => setTransactionSearchQuery(e.target.value)}
+                                    placeholder="Search transactions..."
+                                    className="w-full bg-transparent text-xs font-bold text-white outline-none placeholder:text-slate-500"
+                                />
                             </div>
-                        ) : historyExpenses.length === 0 ? (
-                            <div className="bg-white/5 border border-white/5 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-2">
-                                <p className="text-2xl">📭</p>
-                                <p className="text-xs font-bold opacity-70">Wax dalab ah oo la helay ma jiraan taariikhdan.</p>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = transactionTypeFilter === 'ALL' ? 'DEPOSIT' : transactionTypeFilter === 'DEPOSIT' ? 'WITHDRAWAL' : 'ALL';
+                                    setTransactionTypeFilter(next);
+                                }}
+                                className="px-3.5 py-2.5 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/50 rounded-xl text-xs font-black text-white flex items-center gap-1.5 backdrop-blur-xl active:scale-95 transition-all shadow-md"
+                            >
+                                <Filter size={14} className="text-blue-300" />
+                                <span>{transactionTypeFilter}</span>
+                            </button>
+                        </div>
+
+                        {/* Transactions Table Container */}
+                        <div className="bg-slate-950/80 border border-white/10 rounded-2xl p-4 flex flex-col gap-2 backdrop-blur-xl">
+                            <div className="grid grid-cols-3 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-white/10 pb-2">
+                                <span className="text-emerald-400">DEPOSIT (ETB)</span>
+                                <span className="text-blue-400">WITHDRAW (ETB)</span>
+                                <span className="text-right">BALANCE (ETB)</span>
                             </div>
-                        ) : (
-                            <div className="flex flex-col gap-2.5">
-                                {historyExpenses.map((exp) => (
-                                    <div
-                                        key={exp.id}
-                                        onClick={() => handleOpenEdit(exp)}
-                                        className="bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.03))] hover:bg-white/10 border border-white/10 rounded-2xl p-4 cursor-pointer transition-all flex justify-between items-start gap-3 shadow-sm hover:shadow-md"
-                                    >
-                                        <div className="flex flex-col gap-1 flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black rounded-md uppercase">
-                                                    {exp.category}
-                                                </span>
-                                                <span className="text-[10px] text-[var(--tg-theme-hint-color,#94a3b8)] font-bold">
-                                                    {new Date(exp.createdAt).toLocaleDateString('so-SO')}
-                                                </span>
-                                            </div>
 
-                                            <p className="text-xs font-bold line-clamp-2 mt-0.5">
-                                                {exp.description || exp.note || 'Kharash'}
-                                            </p>
-
-                                            {exp.employeeName && (
-                                                <p className="text-[10px] text-emerald-400 font-bold">
-                                                    👤 {exp.employeeName}
-                                                </p>
-                                            )}
-                                        </div>
-
-                                        <div className="flex flex-col items-end gap-1">
-                                            <span className="text-sm font-black text-emerald-400">
-                                                {Number(exp.amount).toLocaleString()} ETB
-                                            </span>
-                                            <div className="flex items-center gap-1.5">
-                                                {isOwnerOfExpense(exp) ? (
-                                                    <>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleOpenEdit(exp);
-                                                            }}
-                                                            className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-all"
-                                                            title="Edit"
-                                                        >
-                                                            <Pencil size={12} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleDeleteExpense(exp.id);
-                                                            }}
-                                                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    <span className="text-[10px] text-white/40 font-bold px-1.5 py-0.5 bg-white/5 rounded border border-white/5" title="Kharashkan waxaa soo galay qof kale">
-                                                        🔒
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
+                            {/* Transaction Rows */}
+                            <div className="flex flex-col gap-1 pt-1">
+                                {loadingHistory ? (
+                                    <div className="flex items-center justify-center p-6 gap-2">
+                                        <Loader2 className="animate-spin text-blue-400" size={18} />
+                                        <span className="text-xs text-slate-400 font-bold">Loading transactions...</span>
                                     </div>
-                                ))}
+                                ) : historyExpenses.length === 0 ? (
+                                    <div className="p-6 text-center text-xs text-slate-400 font-bold">
+                                        No transactions found.
+                                    </div>
+                                ) : (
+                                    historyExpenses
+                                        .filter(t => !transactionSearchQuery || (t.description || t.category || '').toLowerCase().includes(transactionSearchQuery.toLowerCase()))
+                                        .map((exp, idx) => (
+                                            <div
+                                                key={exp.id}
+                                                onClick={() => { triggerHaptic('medium'); setSelectedTransactionForDetails(exp); }}
+                                                className="grid grid-cols-3 items-center py-3 px-2 hover:bg-white/5 rounded-xl cursor-pointer transition-all border-b border-white/5 last:border-0"
+                                            >
+                                                {/* Deposit */}
+                                                <span className="text-xs font-bold text-slate-600">-</span>
+
+                                                {/* Withdraw */}
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-black text-blue-400">{Number(exp.amount).toLocaleString()}</span>
+                                                    <span className="text-[8px] text-slate-400 font-bold">{new Date(exp.createdAt).toLocaleDateString('so-SO')}</span>
+                                                </div>
+
+                                                {/* Balance & Chevron */}
+                                                <div className="flex items-center justify-end gap-1.5">
+                                                    <span className="text-xs font-black text-white">
+                                                        {(100000 - historyExpenses.slice(0, idx + 1).reduce((s, e) => s + Number(e.amount), 0)).toLocaleString()}
+                                                    </span>
+                                                    <ArrowRight size={12} className="text-slate-400" />
+                                                </div>
+                                            </div>
+                                        ))
+                                )}
                             </div>
-                        )}
+                        </div>
+                    </div>
+                ) : activeTab === 'ANALYTICS' ? (
+                    <div className="flex flex-col gap-4 animate-fade-in pb-20">
+                        <div className="bg-slate-950/80 border border-cyan-500/30 rounded-3xl p-5 backdrop-blur-2xl flex flex-col gap-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                                    <BarChart3 size={16} className="text-cyan-400" /> Financial Analytics & Spend Insights
+                                </h3>
+                                <span className="text-[10px] text-cyan-400 font-bold">Real-time</span>
+                            </div>
+
+                            <div className="p-4 bg-cyan-950/30 border border-cyan-400/20 rounded-2xl flex justify-between items-center">
+                                <div>
+                                    <span className="text-[10px] font-black text-slate-400 uppercase">Total Expenses Recorded</span>
+                                    <h2 className="text-xl font-black text-cyan-300">
+                                        {historyExpenses.reduce((s, e) => s + Number(e.amount), 0).toLocaleString()} ETB
+                                    </h2>
+                                </div>
+                                <PieChart size={32} className="text-cyan-400" />
+                            </div>
+
+                            <div className="flex flex-col gap-3">
+                                <span className="text-xs font-black text-slate-300 uppercase">Category Distribution</span>
+                                {[
+                                    { name: 'Salaries', color: 'bg-blue-500', total: historyExpenses.filter(e => e.category === 'Salaries' || e.category === 'SALARY').reduce((s, e) => s + Number(e.amount), 0) },
+                                    { name: 'Raw Materials', color: 'bg-emerald-500', total: historyExpenses.filter(e => e.category === 'Raw Material' || e.category === 'RAW_MATERIAL').reduce((s, e) => s + Number(e.amount), 0) },
+                                    { name: 'Transport & Fuel', color: 'bg-amber-500', total: historyExpenses.filter(e => e.category === 'Transport & Fuel').reduce((s, e) => s + Number(e.amount), 0) },
+                                    { name: 'Equipment Rental', color: 'bg-purple-500', total: historyExpenses.filter(e => e.category === 'Equipment Rental').reduce((s, e) => s + Number(e.amount), 0) }
+                                ].map(c => {
+                                    const grand = historyExpenses.reduce((s, e) => s + Number(e.amount), 1);
+                                    const pct = Math.round((c.total / grand) * 100);
+                                    return (
+                                        <div key={c.name} className="flex flex-col gap-1 p-3 bg-white/5 rounded-2xl border border-white/5">
+                                            <div className="flex justify-between text-xs font-bold">
+                                                <span className="text-white">{c.name}</span>
+                                                <span className="text-cyan-400">{c.total.toLocaleString()} ETB ({pct}%)</span>
+                                            </div>
+                                            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                                <div className={`h-full ${c.color}`} style={{ width: `${Math.max(4, pct)}%` }} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                ) : activeTab === 'PROFILE' ? (
+                    <div className="flex flex-col gap-4 animate-fade-in pb-20">
+                        {/* Profile Header Card */}
+                        <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950/60 border border-blue-400/30 rounded-3xl p-6 flex flex-col items-center text-center gap-3 backdrop-blur-2xl shadow-[0_0_35px_rgba(59,130,246,0.2)]">
+                            <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-500 to-emerald-400 p-1 shadow-[0_0_20px_rgba(34,211,238,0.5)]">
+                                <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-cyan-300 font-black text-2xl border border-white/20">
+                                    {requesterName.substring(0, 2).toUpperCase()}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col items-center">
+                                <div className="flex items-center gap-1.5">
+                                    <h2 className="text-base font-black text-white">{requesterName}</h2>
+                                    <UserCheck size={16} className="text-emerald-400" />
+                                </div>
+                                <span className="text-xs text-cyan-400 font-bold">@{requesterUsername || 'user'}</span>
+                                <span className="mt-1 px-3 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-black uppercase">
+                                    {isManager ? '🛡️ Financial Manager' : '👤 Authorized Operator'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Profile Details List */}
+                        <div className="bg-slate-950/80 border border-white/10 rounded-3xl p-5 flex flex-col gap-3 backdrop-blur-2xl">
+                            <div className="flex justify-between items-center p-3 bg-white/5 rounded-2xl">
+                                <span className="text-xs font-bold text-slate-400">Telegram User ID</span>
+                                <span className="text-xs font-mono font-bold text-white">{requesterId || '748392019'}</span>
+                            </div>
+                            <div className="flex justify-between items-center p-3 bg-white/5 rounded-2xl">
+                                <span className="text-xs font-bold text-slate-400">Company</span>
+                                <span className="text-xs font-bold text-emerald-400">AN-Industory Factory - Jigjiga</span>
+                            </div>
+                            <div className="flex justify-between items-center p-3 bg-white/5 rounded-2xl">
+                                <span className="text-xs font-bold text-slate-400">Active Account</span>
+                                <span className="text-xs font-bold text-cyan-400">E-Birr Merchant</span>
+                            </div>
+                            <div className="flex justify-between items-center p-3 bg-white/5 rounded-2xl">
+                                <span className="text-xs font-bold text-slate-400">Sync Status</span>
+                                <span className="text-xs font-bold text-emerald-400">🟢 Online & Synced</span>
+                            </div>
+                        </div>
                     </div>
                 ) : (
                     <>
@@ -2140,6 +2177,136 @@ export default function TelegramMiniAppPage() {
                     </div>
                 )}
 
+                {/* Transaction Details Modal (Matching Image 1 Right Phone) */}
+                {selectedTransactionForDetails && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-2xl animate-fade-in">
+                        <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-blue-950/80 border border-blue-400/40 rounded-3xl p-5 w-full max-w-md flex flex-col gap-4 shadow-[0_0_50px_rgba(59,130,246,0.3)] max-h-[90vh] overflow-y-auto relative">
+                            <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedTransactionForDetails(null)}
+                                    className="w-8 h-8 rounded-full bg-white/10 border border-white/20 text-white flex items-center justify-center active:scale-95"
+                                >
+                                    <ChevronLeft size={18} />
+                                </button>
+                                <div className="flex flex-col items-center">
+                                    <h3 className="text-xs font-black text-white uppercase tracking-wider">Transaction Details</h3>
+                                    <span className="text-[10px] text-slate-400 font-bold">Expense Transaction</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        triggerHaptic('light');
+                                        if (typeof navigator !== 'undefined' && navigator.share) {
+                                            navigator.share({ title: 'Transaction Details', text: `Transaction ${selectedTransactionForDetails.id}` });
+                                        }
+                                    }}
+                                    className="w-8 h-8 rounded-full bg-white/10 border border-white/20 text-white flex items-center justify-center active:scale-95"
+                                >
+                                    <Share2 size={16} />
+                                </button>
+                            </div>
+
+                            {/* Status Header Badge Card */}
+                            <div className="p-4 bg-gradient-to-r from-emerald-950/60 via-slate-950 to-slate-950 border border-emerald-400/50 rounded-2xl flex items-center gap-3 shadow-lg">
+                                <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-400/60 flex items-center justify-center text-emerald-400 shadow-[0_0_15px_#10b981]">
+                                    <CheckCircle2 size={24} />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Withdrawal / Payment Successful</span>
+                                    <div className="flex items-baseline gap-1.5">
+                                        <span className="text-2xl font-black text-emerald-400 tracking-tight">
+                                            {Number(selectedTransactionForDetails.amount).toLocaleString()} ETB
+                                        </span>
+                                    </div>
+                                    <span className="text-[9px] text-slate-400 font-bold">
+                                        {new Date(selectedTransactionForDetails.createdAt).toLocaleString('so-SO')}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Details Key-Value List */}
+                            <div className="bg-slate-950/70 border border-white/10 rounded-2xl p-4 flex flex-col gap-2.5 backdrop-blur-xl">
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-400 font-bold">Transaction ID</span>
+                                    <span className="font-mono font-bold text-white text-[11px]">{selectedTransactionForDetails.id.substring(0, 18)}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
+                                    <span className="text-slate-400 font-bold">Type</span>
+                                    <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-black text-[10px] uppercase border border-blue-500/30">
+                                        Withdrawal
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
+                                    <span className="text-slate-400 font-bold">Amount</span>
+                                    <span className="font-black text-white">{Number(selectedTransactionForDetails.amount).toLocaleString()} ETB</span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
+                                    <span className="text-slate-400 font-bold">Payment Method</span>
+                                    <span className="font-bold text-emerald-400">E-Birr Merchant</span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
+                                    <span className="text-slate-400 font-bold">Category</span>
+                                    <span className="font-bold text-white">{selectedTransactionForDetails.category}</span>
+                                </div>
+                                {selectedTransactionForDetails.description && (
+                                    <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
+                                        <span className="text-slate-400 font-bold">Reference / Note</span>
+                                        <span className="font-bold text-slate-200">{selectedTransactionForDetails.description}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
+                                    <span className="text-slate-400 font-bold">Status</span>
+                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-[10px] uppercase border border-emerald-500/30">
+                                        Completed
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Receipt Attachment Card */}
+                            {selectedTransactionForDetails.receiptUrl && (
+                                <div className="bg-slate-950/80 border border-blue-500/30 rounded-2xl p-4 flex flex-col gap-3 backdrop-blur-xl">
+                                    <span className="text-xs font-black text-white uppercase tracking-wider">Receipt</span>
+                                    <div className="flex gap-3 items-center">
+                                        <img
+                                            src={selectedTransactionForDetails.receiptUrl}
+                                            alt="Receipt"
+                                            className="w-16 h-20 object-cover rounded-xl border border-white/20 shadow-md"
+                                        />
+                                        <div className="flex flex-col flex-1 gap-1">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase">Receipt URL</span>
+                                            <a
+                                                href={selectedTransactionForDetails.receiptUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-xs text-cyan-400 font-bold underline line-clamp-1 flex items-center gap-1"
+                                            >
+                                                {selectedTransactionForDetails.receiptUrl} <ExternalLink size={10} />
+                                            </a>
+                                            <a
+                                                href={selectedTransactionForDetails.receiptUrl}
+                                                download
+                                                className="mt-1.5 px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-1 transition-all"
+                                            >
+                                                <Download size={12} /> Download PDF
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Back Button */}
+                            <button
+                                type="button"
+                                onClick={() => setSelectedTransactionForDetails(null)}
+                                className="w-full py-3.5 bg-white/10 hover:bg-white/20 border border-white/15 text-white font-black rounded-2xl text-xs uppercase tracking-wider active:scale-95 transition-all mt-1"
+                            >
+                                Back to Transactions
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Custom Glassmorphism Alert Modal */}
                 <CustomAlertModal 
                     isOpen={alertModal.isOpen} 
@@ -2148,6 +2315,75 @@ export default function TelegramMiniAppPage() {
                     title={alertModal.title} 
                     message={alertModal.message} 
                 />
+
+                {/* iOS 26 Glass Floating Bottom Dock Navigation */}
+                <div className="fixed bottom-4 left-4 right-4 z-40 max-w-md mx-auto bg-slate-950/85 backdrop-blur-2xl border border-white/20 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] rounded-full px-3 py-1.5 flex items-center justify-around">
+                    {/* 1. Dashboard */}
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('light'); setActiveTab('DASHBOARD'); }}
+                        className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full transition-all ${
+                            activeTab === 'DASHBOARD'
+                                ? 'text-cyan-400 font-extrabold'
+                                : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        <Home size={18} className={activeTab === 'DASHBOARD' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
+                        <span className="text-[9px]">Dashboard</span>
+                    </button>
+
+                    {/* 2. Transactions */}
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('light'); setActiveTab('TRANSACTIONS'); fetchHistory(); }}
+                        className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full transition-all ${
+                            activeTab === 'TRANSACTIONS'
+                                ? 'text-cyan-400 font-extrabold'
+                                : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        <Layers size={18} className={activeTab === 'TRANSACTIONS' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
+                        <span className="text-[9px]">Transactions</span>
+                    </button>
+
+                    {/* 3. Center Floating (+) Add Button */}
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('medium'); setActiveTab('NEW'); }}
+                        className="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 via-teal-400 to-emerald-400 text-slate-950 flex items-center justify-center shadow-[0_0_25px_rgba(34,211,238,0.7),inset_0_1.5px_1px_rgba(255,255,255,0.8)] border border-cyan-200 active:scale-95 transition-all -translate-y-3"
+                        title="Diiwaangeli Kharash/Mushahar"
+                    >
+                        <PlusCircle size={26} className="text-slate-950 stroke-[2.5]" />
+                    </button>
+
+                    {/* 4. Analytics */}
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('light'); setActiveTab('ANALYTICS'); fetchHistory(); }}
+                        className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full transition-all ${
+                            activeTab === 'ANALYTICS'
+                                ? 'text-cyan-400 font-extrabold'
+                                : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        <BarChart3 size={18} className={activeTab === 'ANALYTICS' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
+                        <span className="text-[9px]">Analytics</span>
+                    </button>
+
+                    {/* 5. Profile */}
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('light'); setActiveTab('PROFILE'); }}
+                        className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full transition-all ${
+                            activeTab === 'PROFILE'
+                                ? 'text-cyan-400 font-extrabold'
+                                : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        <User size={18} className={activeTab === 'PROFILE' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
+                        <span className="text-[9px]">Profile</span>
+                    </button>
+                </div>
             </div>
         </div>
     );
