@@ -1206,23 +1206,37 @@ export default function TelegramMiniAppPage() {
 
                             <div className="flex flex-col gap-3.5">
                                 {[
-                                    { name: 'Salaries', catKey: 'Salaries', color: 'bg-blue-500 shadow-[0_0_10px_#3b82f6]', icon: <User size={14} className="text-blue-400" /> },
-                                    { name: 'Raw Materials', catKey: 'Raw Material', color: 'bg-emerald-500 shadow-[0_0_10px_#10b981]', icon: <Package size={14} className="text-emerald-400" /> },
-                                    { name: 'Transport & Fuel', catKey: 'Transport & Fuel', color: 'bg-amber-500 shadow-[0_0_10px_#f59e0b]', icon: <Truck size={14} className="text-amber-400" /> },
-                                    { name: 'Equipment Rental', catKey: 'Equipment Rental', color: 'bg-purple-500 shadow-[0_0_10px_#a855f7]', icon: <Settings size={14} className="text-purple-400" /> }
+                                    { name: 'Salaries (Mushaharka)', color: 'bg-blue-500 shadow-[0_0_10px_#3b82f6]', icon: <User size={14} className="text-blue-400" /> },
+                                    { name: 'Utilities & Rent (Biilasha & Kiro)', color: 'bg-indigo-500 shadow-[0_0_10px_#6366f1]', icon: <FileText size={14} className="text-indigo-400" /> },
+                                    { name: 'Transport & Fuel (Gaadiidka)', color: 'bg-amber-500 shadow-[0_0_10px_#f59e0b]', icon: <Truck size={14} className="text-amber-400" /> },
+                                    { name: 'Raw Materials & Rentals', color: 'bg-emerald-500 shadow-[0_0_10px_#10b981]', icon: <Package size={14} className="text-emerald-400" /> }
                                 ].map((item) => {
                                     const catTotal = historyExpenses
+                                        .filter(e => !e.isDeposit && e.type !== 'DEPOSIT')
                                         .filter(e => {
                                             const c = (e.category || '').toLowerCase();
-                                            if (item.name === 'Salaries') return c.includes('salary') || c.includes('mushahar');
-                                            if (item.name === 'Raw Materials') return c.includes('raw') || c.includes('material') || c.includes('qalab');
-                                            if (item.name === 'Transport & Fuel') return c.includes('transport') || c.includes('fuel');
-                                            if (item.name === 'Equipment Rental') return c.includes('equipment') || c.includes('rental');
+                                            const d = (e.description || '').toLowerCase();
+                                            if (item.name.includes('Salaries')) {
+                                                return c.includes('salary') || c.includes('mushahar') || d.includes('mushahar') || d.includes('mushaar');
+                                            }
+                                            if (item.name.includes('Utilities')) {
+                                                return c.includes('utility') || c.includes('utilities') || c.includes('rent') || d.includes('biil') || d.includes('laydh') || d.includes('kiro') || d.includes('rent');
+                                            }
+                                            if (item.name.includes('Transport')) {
+                                                return c.includes('transport') || c.includes('fuel') || d.includes('transport') || d.includes('gaadhi') || d.includes('cagado') || d.includes('bajaaj');
+                                            }
+                                            if (item.name.includes('Raw Materials')) {
+                                                return c.includes('raw') || c.includes('material') || c.includes('equipment') || c.includes('rental') || d.includes('raw') || d.includes('qalab');
+                                            }
                                             return false;
                                         })
                                         .reduce((s, e) => s + Number(e.amount), 0);
-                                    const grandTotal = historyExpenses.reduce((s, e) => s + Number(e.amount), 1);
-                                    const percent = Math.min(100, Math.round((catTotal / grandTotal) * 100)) || 0;
+
+                                    const totalWithdrawals = historyExpenses
+                                        .filter(e => !e.isDeposit && e.type !== 'DEPOSIT')
+                                        .reduce((s, e) => s + Number(e.amount), 0) || 1;
+
+                                    const percent = Math.min(100, Math.round((catTotal / totalWithdrawals) * 100)) || 0;
 
                                     return (
                                         <div key={item.name} className="flex items-center gap-3">
