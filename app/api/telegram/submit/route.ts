@@ -476,7 +476,7 @@ export async function POST(request: Request) {
                                    aiStatusLine;
                 // No keyboard buttons for paid procurement
                 } else {
-                    const reqApproval = Number(result.totalPrice) >= 10000 && ! (result as any).approved;
+                    const reqApproval = Number(result.totalPrice) >= 5000 && ! (result as any).approved;
                     if (reqApproval) {
                         telegramText = `<b>AN-Industory</b>\n` +
                                        `<b>⏳ Codsiga Qalabka / Raw Material (Sugaya Oggolaanshaha Manager-ka)</b>\n\n` +
@@ -489,7 +489,7 @@ export async function POST(request: Request) {
                                        paymentContactLine +
                                        `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                        `📅 Taariikhda: ${formattedDate}\n\n` +
-                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 10,000 ETB.</b>` +
+                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 5,000 ETB.</b>` +
                                        aiStatusLine;
                         replyMarkup = {
                             inline_keyboard: [
@@ -536,7 +536,7 @@ export async function POST(request: Request) {
                                    aiStatusLine;
                 // No keyboard buttons for paid salaries
                 } else {
-                    const reqApproval = parseFloat(amountInput) >= 10000 && ! (result as any).approved;
+                    const reqApproval = parseFloat(amountInput) >= 5000 && ! (result as any).approved;
                     if (reqApproval) {
                         telegramText = `<b>AN-Industory</b>\n` +
                                        `<b>⏳ Codsiga Mushaharka (Sugaya Oggolaanshaha Manager-ka)</b>\n\n` +
@@ -547,7 +547,7 @@ export async function POST(request: Request) {
                                        `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                        `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                        `📅 Taariikhda: ${formattedDate}\n\n` +
-                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 10,000 ETB.</b>` +
+                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 5,000 ETB.</b>` +
                                        aiStatusLine;
                         replyMarkup = {
                             inline_keyboard: [
@@ -602,7 +602,7 @@ export async function POST(request: Request) {
                                    aiStatusLine;
                 // No keyboard buttons for paid expenses
                 } else {
-                    const reqApproval = parseFloat(amountInput) >= 10000 && ! (result as any).approved;
+                    const reqApproval = parseFloat(amountInput) >= 5000 && ! (result as any).approved;
                     if (reqApproval) {
                         telegramText = `<b>AN-Industory</b>\n` +
                                        `<b>⏳ Codsiga Kharashka (Sugaya Oggolaanshaha Manager-ka)</b>\n\n` +
@@ -614,7 +614,7 @@ export async function POST(request: Request) {
                                        `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                        `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                        `📅 Taariikhda: ${formattedDate}\n\n` +
-                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 10,000 ETB.</b>` +
+                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 5,000 ETB.</b>` +
                                        aiStatusLine;
                         replyMarkup = {
                             inline_keyboard: [

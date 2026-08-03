@@ -197,20 +197,26 @@ export default function TelegramMiniAppPage() {
     const [amount, setAmount] = useState('');
     const [note, setNote] = useState('');
     const [chatId, setChatId] = useState('');
-
     // Metadata & Manager Authorization
     const [requesterName, setRequesterName] = useState('WebApp User');
     const [requesterId, setRequesterId] = useState('');
     const [requesterUsername, setRequesterUsername] = useState('');
-    const isManager = requesterUsername.toLowerCase() === 'abdehakimmumin' || requesterName.toLowerCase().includes('abdehakim');
-    
+    // Manager authorization check (Abdehakim & Hamze Amiin for testing)
+    const isManager = requesterUsername.toLowerCase() === 'abdehakimmumin' || requesterName.toLowerCase().includes('abdehakim') || requesterUsername.toLowerCase() === 'hamsemoalin' || requesterName.toLowerCase().includes('hamze') || String(requesterId) === '748392019';
+
     // Tab 1: Salary Fields
     const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+    const [isNewEmployee, setIsNewEmployee] = useState(false);
+    const [newEmployeeName, setNewEmployeeName] = useState('');
 
     // Tab 2: Expense Fields (dynamic based on selected key)
     const [selectedCategoryId, setSelectedCategoryId] = useState('');
     const [selectedCategoryName, setSelectedCategoryName] = useState('');
-    // Expense Custom Fields
+    const [amountInput, setAmountInput] = useState('');
+    const [receiptFile, setReceiptFile] = useState<File | null>(null);
+    const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+
+    // Tab 2: Transport/Equipment/Consultancy Fields
     const [transportType, setTransportType] = useState('');
     const [equipmentName, setEquipmentName] = useState('');
     const [rentalPeriod, setRentalPeriod] = useState('');
@@ -240,7 +246,7 @@ export default function TelegramMiniAppPage() {
     const [recognitionObj, setRecognitionObj] = useState<any>(null);
 
     // 5-Tab iOS 26 Dock States
-    const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TRANSACTIONS' | 'NEW' | 'ANALYTICS' | 'PROFILE'>('DASHBOARD');
+    const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TRANSACTIONS' | 'NEW' | 'REPORTS' | 'PROFILE'>('DASHBOARD');
     const [historyFilter, setHistoryFilter] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
@@ -298,7 +304,7 @@ export default function TelegramMiniAppPage() {
     };
 
     useEffect(() => {
-        if (activeTab === 'TRANSACTIONS' || activeTab === 'ANALYTICS') {
+        if (activeTab === 'TRANSACTIONS' || activeTab === 'REPORTS' || activeTab === 'DASHBOARD') {
             fetchHistory();
         }
     }, [activeTab, historyFilter, customStartDate, customEndDate]);
@@ -1203,7 +1209,14 @@ export default function TelegramMiniAppPage() {
                                     { name: 'Equipment Rental', catKey: 'Equipment Rental', color: 'bg-purple-500 shadow-[0_0_10px_#a855f7]', icon: <Settings size={14} className="text-purple-400" /> }
                                 ].map((item) => {
                                     const catTotal = historyExpenses
-                                        .filter(e => e.category === item.catKey || e.category === item.name)
+                                        .filter(e => {
+                                            const c = (e.category || '').toLowerCase();
+                                            if (item.name === 'Salaries') return c.includes('salary') || c.includes('mushahar');
+                                            if (item.name === 'Raw Materials') return c.includes('raw') || c.includes('material') || c.includes('qalab');
+                                            if (item.name === 'Transport & Fuel') return c.includes('transport') || c.includes('fuel');
+                                            if (item.name === 'Equipment Rental') return c.includes('equipment') || c.includes('rental');
+                                            return false;
+                                        })
                                         .reduce((s, e) => s + Number(e.amount), 0);
                                     const grandTotal = historyExpenses.reduce((s, e) => s + Number(e.amount), 1);
                                     const percent = Math.min(100, Math.round((catTotal / grandTotal) * 100)) || 0;
@@ -1228,7 +1241,7 @@ export default function TelegramMiniAppPage() {
                             </div>
                         </div>
 
-                        {/* Manager Approval Workflow Card (Visible ONLY to Manager Abdehakim) */}
+                        {/* Manager Approval Workflow Card (Visible to Managers) */}
                         {isManager ? (
                             <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-blue-950/60 border border-blue-500/30 rounded-3xl p-5 shadow-[0_0_35px_rgba(59,130,246,0.2),inset_0_1px_1.5px_rgba(255,255,255,0.25)] flex flex-col gap-4 backdrop-blur-2xl relative overflow-hidden">
                                 <div className="flex justify-between items-start">
@@ -1238,7 +1251,7 @@ export default function TelegramMiniAppPage() {
                                         </div>
                                         <div>
                                             <h3 className="text-xs font-black text-white uppercase tracking-wider">Manager Approval Workflow</h3>
-                                            <p className="text-[10px] font-bold text-amber-300 mt-0.5">👤 Logged in as Manager (Abdehakim Mumin)</p>
+                                            <p className="text-[10px] font-bold text-amber-300 mt-0.5">👤 Logged in as Manager ({requesterName})</p>
                                         </div>
                                     </div>
                                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500/30 to-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
@@ -1246,13 +1259,13 @@ export default function TelegramMiniAppPage() {
                                     </div>
                                 </div>
 
-                                {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 10000).length === 0 ? (
+                                {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).length === 0 ? (
                                     <div className="p-4 bg-white/5 border border-white/10 rounded-2xl text-center text-xs font-bold text-slate-300">
-                                        ✅ Majiraan dalabyo waaweyn (&gt;= 10,000 ETB) oo sugaya approval-kaaga.
+                                        ✅ Majiraan dalabyo waaweyn (&gt;= 5,000 ETB) oo sugaya approval-kaaga.
                                     </div>
                                 ) : (
                                     <div className="flex flex-col gap-3">
-                                        {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 10000).map((exp) => (
+                                        {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).map((exp) => (
                                             <div key={exp.id} className="p-4 bg-slate-950/80 border border-amber-500/40 rounded-2xl flex flex-col gap-3 shadow-lg">
                                                 <div className="flex justify-between items-start">
                                                     <div>
@@ -1336,8 +1349,12 @@ export default function TelegramMiniAppPage() {
                                 </div>
                                 <div className="flex flex-col mt-2">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Deposits</span>
-                                    <span className="text-xs font-black text-emerald-400 tracking-tight">100,000 ETB</span>
-                                    <span className="text-[8px] text-slate-400 font-bold mt-0.5">12 Transactions</span>
+                                    <span className="text-xs font-black text-emerald-400 tracking-tight">
+                                        {(historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0) + 100000).toLocaleString()} ETB
+                                    </span>
+                                    <span className="text-[8px] text-slate-400 font-bold mt-0.5">
+                                        {historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').length + 1} Transactions
+                                    </span>
                                 </div>
                             </div>
 
@@ -1349,9 +1366,11 @@ export default function TelegramMiniAppPage() {
                                 <div className="flex flex-col mt-2">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Withdrawals</span>
                                     <span className="text-xs font-black text-blue-400 tracking-tight">
-                                        {historyExpenses.reduce((s, e) => s + Number(e.amount), 0).toLocaleString()} ETB
+                                        {historyExpenses.filter(e => !e.isDeposit && e.type !== 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0).toLocaleString()} ETB
                                     </span>
-                                    <span className="text-[8px] text-slate-400 font-bold mt-0.5">{historyExpenses.length} Transactions</span>
+                                    <span className="text-[8px] text-slate-400 font-bold mt-0.5">
+                                        {historyExpenses.filter(e => !e.isDeposit && e.type !== 'DEPOSIT').length} Transactions
+                                    </span>
                                 </div>
                             </div>
 
@@ -1416,77 +1435,104 @@ export default function TelegramMiniAppPage() {
                                     </div>
                                 ) : (
                                     historyExpenses
-                                        .filter(t => !transactionSearchQuery || (t.description || t.category || '').toLowerCase().includes(transactionSearchQuery.toLowerCase()))
-                                        .map((exp, idx) => (
-                                            <div
-                                                key={exp.id}
-                                                onClick={() => { triggerHaptic('medium'); setSelectedTransactionForDetails(exp); }}
-                                                className="grid grid-cols-3 items-center py-3 px-2 hover:bg-white/5 rounded-xl cursor-pointer transition-all border-b border-white/5 last:border-0"
-                                            >
-                                                {/* Deposit */}
-                                                <span className="text-xs font-bold text-slate-600">-</span>
+                                        .filter(t => {
+                                            const matchesSearch = !transactionSearchQuery || (t.description || t.category || t.note || '').toLowerCase().includes(transactionSearchQuery.toLowerCase());
+                                            const isDep = t.isDeposit || t.type === 'DEPOSIT';
+                                            if (transactionTypeFilter === 'DEPOSIT') return matchesSearch && isDep;
+                                            if (transactionTypeFilter === 'WITHDRAWAL') return matchesSearch && !isDep;
+                                            return matchesSearch;
+                                        })
+                                        .map((exp, idx) => {
+                                            const isDep = exp.isDeposit || exp.type === 'DEPOSIT';
+                                            return (
+                                                <div
+                                                    key={exp.id}
+                                                    onClick={() => { triggerHaptic('medium'); setSelectedTransactionForDetails(exp); }}
+                                                    className="grid grid-cols-3 items-center py-3 px-2 hover:bg-white/5 rounded-xl cursor-pointer transition-all border-b border-white/5 last:border-0"
+                                                >
+                                                    {/* Deposit Column */}
+                                                    {isDep ? (
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-black text-emerald-400">+ {Number(exp.amount).toLocaleString()}</span>
+                                                            <span className="text-[8px] text-slate-400 font-bold">{new Date(exp.createdAt).toLocaleDateString('so-SO')}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs font-bold text-slate-600">-</span>
+                                                    )}
 
-                                                {/* Withdraw */}
-                                                <div className="flex flex-col">
-                                                    <span className="text-xs font-black text-blue-400">{Number(exp.amount).toLocaleString()}</span>
-                                                    <span className="text-[8px] text-slate-400 font-bold">{new Date(exp.createdAt).toLocaleDateString('so-SO')}</span>
-                                                </div>
+                                                    {/* Withdraw Column */}
+                                                    {!isDep ? (
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-black text-blue-400">{Number(exp.amount).toLocaleString()}</span>
+                                                            <span className="text-[8px] text-slate-400 font-bold">{new Date(exp.createdAt).toLocaleDateString('so-SO')}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs font-bold text-slate-600">-</span>
+                                                    )}
 
-                                                {/* Balance & Chevron */}
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                    <span className="text-xs font-black text-white">
-                                                        {(100000 - historyExpenses.slice(0, idx + 1).reduce((s, e) => s + Number(e.amount), 0)).toLocaleString()}
-                                                    </span>
-                                                    <ArrowRight size={12} className="text-slate-400" />
+                                                    {/* Balance Column */}
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        <span className="text-xs font-black text-white">
+                                                            {(activeAccount ? Number(activeAccount.balance) : 100000).toLocaleString()}
+                                                        </span>
+                                                        <ArrowRight size={12} className="text-slate-400" />
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))
+                                            );
+                                        })
                                 )}
                             </div>
                         </div>
                     </div>
-                ) : activeTab === 'ANALYTICS' ? (
+                ) : activeTab === 'REPORTS' ? (
                     <div className="flex flex-col gap-4 animate-fade-in pb-20">
-                        <div className="bg-slate-950/80 border border-cyan-500/30 rounded-3xl p-5 backdrop-blur-2xl flex flex-col gap-4">
+                        <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 border border-emerald-500/30 rounded-3xl p-6 backdrop-blur-2xl flex flex-col gap-5 shadow-[0_0_35px_rgba(16,185,129,0.2)]">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
-                                    <BarChart3 size={16} className="text-cyan-400" /> Financial Analytics & Spend Insights
-                                </h3>
-                                <span className="text-[10px] text-cyan-400 font-bold">Real-time</span>
-                            </div>
-
-                            <div className="p-4 bg-cyan-950/30 border border-cyan-400/20 rounded-2xl flex justify-between items-center">
-                                <div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase">Total Expenses Recorded</span>
-                                    <h2 className="text-xl font-black text-cyan-300">
-                                        {historyExpenses.reduce((s, e) => s + Number(e.amount), 0).toLocaleString()} ETB
-                                    </h2>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">
+                                        <BarChart3 size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xs font-black text-white uppercase tracking-wider">Reports & Financial Audit Hub</h3>
+                                        <p className="text-[10px] text-emerald-400 font-bold">Coming Soon (Baqshiinka warbixinada)</p>
+                                    </div>
                                 </div>
-                                <PieChart size={32} className="text-cyan-400" />
+                                <span className="px-3 py-1 bg-emerald-400/20 border border-emerald-400/40 text-emerald-300 text-[9px] font-black uppercase rounded-full animate-pulse">
+                                    v2.5 Release
+                                </span>
                             </div>
 
-                            <div className="flex flex-col gap-3">
-                                <span className="text-xs font-black text-slate-300 uppercase">Category Distribution</span>
+                            {/* Coming Soon Graphic Banner */}
+                            <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-cyan-950/80 border border-white/10 rounded-2xl p-6 text-center flex flex-col items-center gap-3">
+                                <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-emerald-500 to-cyan-400 p-0.5 shadow-[0_0_30px_rgba(16,185,129,0.5)]">
+                                    <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center text-emerald-400">
+                                        <PieChart size={30} />
+                                    </div>
+                                </div>
+                                <h2 className="text-base font-black text-white">Qaybta Warbixinada (Reports Hub)</h2>
+                                <p className="text-xs text-slate-300 font-medium leading-relaxed max-w-xs">
+                                    Qaybtaan waxaa lagu soo kordhin doonaa warbixinada rasmiga ah ee warshada, sida PDF Exporting, Daily Financial Audit, Category Analytics, iyo Kharashyada oo dhan ee bishii la soo dhaafay.
+                                </p>
+                            </div>
+
+                            {/* Roadmap Features List */}
+                            <div className="flex flex-col gap-2.5">
+                                <span className="text-xs font-black text-slate-300 uppercase tracking-wider">Qorshaha Warbixinada Cusub:</span>
                                 {[
-                                    { name: 'Salaries', color: 'bg-blue-500', total: historyExpenses.filter(e => e.category === 'Salaries' || e.category === 'SALARY').reduce((s, e) => s + Number(e.amount), 0) },
-                                    { name: 'Raw Materials', color: 'bg-emerald-500', total: historyExpenses.filter(e => e.category === 'Raw Material' || e.category === 'RAW_MATERIAL').reduce((s, e) => s + Number(e.amount), 0) },
-                                    { name: 'Transport & Fuel', color: 'bg-amber-500', total: historyExpenses.filter(e => e.category === 'Transport & Fuel').reduce((s, e) => s + Number(e.amount), 0) },
-                                    { name: 'Equipment Rental', color: 'bg-purple-500', total: historyExpenses.filter(e => e.category === 'Equipment Rental').reduce((s, e) => s + Number(e.amount), 0) }
-                                ].map(c => {
-                                    const grand = historyExpenses.reduce((s, e) => s + Number(e.amount), 1);
-                                    const pct = Math.round((c.total / grand) * 100);
-                                    return (
-                                        <div key={c.name} className="flex flex-col gap-1 p-3 bg-white/5 rounded-2xl border border-white/5">
-                                            <div className="flex justify-between text-xs font-bold">
-                                                <span className="text-white">{c.name}</span>
-                                                <span className="text-cyan-400">{c.total.toLocaleString()} ETB ({pct}%)</span>
-                                            </div>
-                                            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                                                <div className={`h-full ${c.color}`} style={{ width: `${Math.max(4, pct)}%` }} />
-                                            </div>
+                                    { title: '📄 Full Financial PDF Report Export', desc: 'Warbixinta kharashka oo PDF ah oo loo habaysay maamulka', status: 'Coming Soon' },
+                                    { title: '📅 Custom Date Range Audit Logs', desc: 'Bixinta taariikh kasta iyo rasiidhada oo dhan', status: 'In Development' },
+                                    { title: '📈 Monthly Spend Breakdown & Projections', desc: 'Saadaasha kharashka bisha ee warshada AN-Industory', status: 'Planned' }
+                                ].map((item, idx) => (
+                                    <div key={idx} className="p-3.5 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between gap-3">
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-white">{item.title}</span>
+                                            <span className="text-[10px] text-slate-400 font-medium">{item.desc}</span>
                                         </div>
-                                    );
-                                })}
+                                        <span className="px-2.5 py-1 bg-white/10 border border-white/10 text-cyan-300 text-[9px] font-bold rounded-lg whitespace-nowrap">
+                                            {item.status}
+                                        </span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -1621,7 +1667,7 @@ export default function TelegramMiniAppPage() {
                         </p>
                     </div>
                 ) : (
-                    <form onSubmit={handleSubmit} className="bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/10 shadow-lg rounded-3xl p-5 flex flex-col gap-4 animate-fade-in">
+                    <form onSubmit={handleSubmit} className="bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/10 shadow-lg rounded-3xl p-5 pb-28 flex flex-col gap-4 animate-fade-in">
                         
                         {/* --- TAB 1: SALARY --- */}
                         {isSalary && (
@@ -2317,12 +2363,12 @@ export default function TelegramMiniAppPage() {
                 />
 
                 {/* iOS 26 Glass Floating Bottom Dock Navigation */}
-                <div className="fixed bottom-4 left-4 right-4 z-40 max-w-md mx-auto bg-slate-950/85 backdrop-blur-2xl border border-white/20 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] rounded-full px-3 py-1.5 flex items-center justify-around">
+                <div className="fixed bottom-4 left-4 right-4 z-40 max-w-md mx-auto bg-slate-950/85 backdrop-blur-2xl border border-white/20 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] rounded-full px-2 py-1.5 grid grid-cols-5 items-center">
                     {/* 1. Dashboard */}
                     <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('DASHBOARD'); }}
-                        className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full transition-all ${
+                        className={`flex flex-col items-center justify-center text-center gap-0.5 py-1.5 rounded-full transition-all w-full ${
                             activeTab === 'DASHBOARD'
                                 ? 'text-cyan-400 font-extrabold'
                                 : 'text-slate-400 hover:text-white'
@@ -2336,7 +2382,7 @@ export default function TelegramMiniAppPage() {
                     <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('TRANSACTIONS'); fetchHistory(); }}
-                        className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full transition-all ${
+                        className={`flex flex-col items-center justify-center text-center gap-0.5 py-1.5 rounded-full transition-all w-full ${
                             activeTab === 'TRANSACTIONS'
                                 ? 'text-cyan-400 font-extrabold'
                                 : 'text-slate-400 hover:text-white'
@@ -2346,35 +2392,36 @@ export default function TelegramMiniAppPage() {
                         <span className="text-[9px]">Transactions</span>
                     </button>
 
-                    {/* 3. Center Floating (+) Add Button */}
+                    {/* 3. Center Floating (+) 3D Emerald Watery Button */}
                     <button
                         type="button"
                         onClick={() => { triggerHaptic('medium'); setActiveTab('NEW'); }}
-                        className="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 via-teal-400 to-emerald-400 text-slate-950 flex items-center justify-center shadow-[0_0_25px_rgba(34,211,238,0.7),inset_0_1.5px_1px_rgba(255,255,255,0.8)] border border-cyan-200 active:scale-95 transition-all -translate-y-3"
+                        className="w-12 h-12 mx-auto rounded-full bg-gradient-to-tr from-emerald-600 via-emerald-400 to-teal-300 text-slate-950 flex items-center justify-center shadow-[0_0_25px_rgba(16,185,129,0.8),inset_0_2px_4px_rgba(255,255,255,0.9)] border-2 border-emerald-200 active:scale-95 transition-all -translate-y-3 relative overflow-hidden group"
                         title="Diiwaangeli Kharash/Mushahar"
                     >
-                        <PlusCircle size={26} className="text-slate-950 stroke-[2.5]" />
+                        <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-transparent to-black/20 rounded-full pointer-events-none" />
+                        <PlusCircle size={26} className="text-slate-950 stroke-[2.5] z-10 drop-shadow-[0_1px_2px_rgba(255,255,255,0.8)]" />
                     </button>
 
-                    {/* 4. Analytics */}
+                    {/* 4. Reports */}
                     <button
                         type="button"
-                        onClick={() => { triggerHaptic('light'); setActiveTab('ANALYTICS'); fetchHistory(); }}
-                        className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full transition-all ${
-                            activeTab === 'ANALYTICS'
+                        onClick={() => { triggerHaptic('light'); setActiveTab('REPORTS'); fetchHistory(); }}
+                        className={`flex flex-col items-center justify-center text-center gap-0.5 py-1.5 rounded-full transition-all w-full ${
+                            activeTab === 'REPORTS'
                                 ? 'text-cyan-400 font-extrabold'
                                 : 'text-slate-400 hover:text-white'
                         }`}
                     >
-                        <BarChart3 size={18} className={activeTab === 'ANALYTICS' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
-                        <span className="text-[9px]">Analytics</span>
+                        <BarChart3 size={18} className={activeTab === 'REPORTS' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
+                        <span className="text-[9px]">Reports</span>
                     </button>
 
                     {/* 5. Profile */}
                     <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('PROFILE'); }}
-                        className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full transition-all ${
+                        className={`flex flex-col items-center justify-center text-center gap-0.5 py-1.5 rounded-full transition-all w-full ${
                             activeTab === 'PROFILE'
                                 ? 'text-cyan-400 font-extrabold'
                                 : 'text-slate-400 hover:text-white'

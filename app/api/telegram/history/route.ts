@@ -66,41 +66,91 @@ export async function GET(request: Request) {
             }
         });
 
+        // Also fetch DEPOSIT transactions for company
+        const depositWhereCondition: any = {
+            companyId,
+            type: { in: ['DEPOSIT', 'RECEIPT'] },
+            ...(Object.keys(dateWhere).length > 0 ? { transactionDate: dateWhere } : {})
+        };
+
+        const deposits = await prisma.transaction.findMany({
+            where: depositWhereCondition,
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            include: {
+                account: true
+            }
+        });
+
+        const mappedExpenses = expenses.map(e => {
+            const noteStr = e.note || '';
+            const reqMatch = noteStr.match(/\[Dalbaday:\s*([^\]]+)\]/);
+            const idMatch = noteStr.match(/\[TelegramId:\s*([^\]]+)\]/);
+            const phoneMatch = noteStr.match(/\[PaymentPhone:\s*([^\]]+)\]/);
+            const recipMatch = noteStr.match(/\[RecipientName:\s*([^\]]+)\]/);
+
+            const cleanNote = noteStr.replace(/\[(?:Dalbaday|TelegramId|PaymentPhone|RecipientName|Account|AccountId):[^\]]*\]/g, '').trim();
+
+            return {
+                id: e.id,
+                description: e.description || e.category || 'Expense',
+                amount: Number(e.amount),
+                category: e.category || e.expenseCategory?.name || 'General',
+                categoryId: e.categoryId,
+                accountId: e.accountId,
+                accountName: e.account?.name || 'E-Birr Merchant',
+                expenseDate: e.expenseDate.toISOString(),
+                createdAt: e.createdAt.toISOString(),
+                note: cleanNote,
+                rawNote: noteStr,
+                requesterName: reqMatch ? reqMatch[1].trim() : '',
+                requesterId: idMatch ? idMatch[1].trim() : '',
+                paymentPhone: phoneMatch ? phoneMatch[1].trim() : (e.employee?.phone || e.employee?.phoneNumber || ''),
+                recipientName: recipMatch ? recipMatch[1].trim() : (e.employee?.fullName || ''),
+                receiptUrl: e.receiptUrl || '',
+                paymentStatus: e.paymentStatus || 'PAID',
+                approved: e.approved ?? true,
+                type: 'WITHDRAWAL',
+                isDeposit: false,
+                employeeName: e.employee?.fullName || null,
+                employeeId: e.employeeId,
+                telegramMessageId: e.telegramMessageId,
+                telegramChatId: e.telegramChatId
+            };
+        });
+
+        const mappedDeposits = deposits.map(d => ({
+            id: d.id,
+            description: d.description || 'Deposit / Top-up',
+            amount: Number(d.amount),
+            category: 'Deposit',
+            categoryId: null,
+            accountId: d.accountId,
+            accountName: d.account?.name || 'E-Birr Merchant',
+            expenseDate: d.transactionDate.toISOString(),
+            createdAt: d.createdAt.toISOString(),
+            note: d.note || 'Koontada oo lagu shubay lacag (Deposit)',
+            rawNote: d.note || '',
+            requesterName: 'System / Bank Deposit',
+            requesterId: '',
+            paymentPhone: '',
+            recipientName: 'AN-Industory',
+            receiptUrl: d.receiptUrl || '',
+            paymentStatus: 'PAID',
+            approved: true,
+            type: 'DEPOSIT',
+            isDeposit: true,
+            employeeName: null,
+            employeeId: null,
+            telegramMessageId: null,
+            telegramChatId: null
+        }));
+
+        const combinedList = [...mappedExpenses, ...mappedDeposits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
         return NextResponse.json({
             success: true,
-            expenses: expenses.map(e => {
-                const noteStr = e.note || '';
-                const reqMatch = noteStr.match(/\[Dalbaday:\s*([^\]]+)\]/);
-                const idMatch = noteStr.match(/\[TelegramId:\s*([^\]]+)\]/);
-                const phoneMatch = noteStr.match(/\[PaymentPhone:\s*([^\]]+)\]/);
-                const recipMatch = noteStr.match(/\[RecipientName:\s*([^\]]+)\]/);
-
-                const cleanNote = noteStr.replace(/\[(?:Dalbaday|TelegramId|PaymentPhone|RecipientName|Account|AccountId):[^\]]*\]/g, '').trim();
-
-                return {
-                    id: e.id,
-                    description: e.description,
-                    amount: Number(e.amount),
-                    category: e.category || e.expenseCategory?.name || 'General',
-                    categoryId: e.categoryId,
-                    accountId: e.accountId,
-                    accountName: e.account?.name || 'E-Birr Merchant',
-                    expenseDate: e.expenseDate.toISOString(),
-                    createdAt: e.createdAt.toISOString(),
-                    note: cleanNote,
-                    rawNote: noteStr,
-                    requesterName: reqMatch ? reqMatch[1].trim() : '',
-                    requesterId: idMatch ? idMatch[1].trim() : '',
-                    paymentPhone: phoneMatch ? phoneMatch[1].trim() : (e.employee?.phone || e.employee?.phoneNumber || ''),
-                    recipientName: recipMatch ? recipMatch[1].trim() : (e.employee?.fullName || ''),
-                    receiptUrl: e.receiptUrl || '',
-                    paymentStatus: e.paymentStatus || 'PAID',
-                    employeeName: e.employee?.fullName || null,
-                    employeeId: e.employeeId,
-                    telegramMessageId: e.telegramMessageId,
-                    telegramChatId: e.telegramChatId
-                };
-            })
+            expenses: combinedList
         });
     } catch (error: any) {
         console.error('Error fetching telegram history:', error);
