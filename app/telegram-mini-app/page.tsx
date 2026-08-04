@@ -373,6 +373,36 @@ export default function TelegramMiniAppPage() {
         setEditCategoryId(exp.categoryId || '');
     };
 
+    const openTransactionInMainForm = (exp: any) => {
+        triggerHaptic('medium');
+        if (!isOwnerOfExpense(exp)) {
+            showAlert('Kaliya qofkii diiwaangeliyay ayaa wax ka beddeli kara.', 'error', 'Ogolaansho Ma Lehid');
+            return;
+        }
+
+        const categoryName = exp.category || '';
+        const description = exp.description || '';
+        const structuredMatch = description.match(/^([^:]+?)(?:\s*\(([^)]+)\))?:\s*(.*)$/);
+
+        setEditingTx(exp);
+        setSelectedCategoryId(exp.categoryId || '');
+        setSelectedCategoryName(categoryName);
+        setSelectedCategoryKey(`EXPENSE_${exp.categoryId || ''}`);
+        setSelectedAccountId(exp.accountId || selectedAccountId);
+        setAmount(String(exp.amount || ''));
+        setNote(structuredMatch?.[3] || exp.note || description);
+        setRecipientName(exp.recipientName || '');
+        setPaymentPhone(exp.paymentPhone || '');
+        setTransportType(categoryName === 'Transport & Fuel' ? (structuredMatch?.[2] || '') : '');
+        setEquipmentName(categoryName === 'Equipment Rental' ? (structuredMatch?.[2] || '') : '');
+        setRentalPeriod('');
+        setConsultantName(categoryName === 'Consultancy & Service' ? (structuredMatch?.[2] || '') : '');
+        setConsultancyType('');
+        setSelectedTransactionForDetails(null);
+        setActiveTab('NEW');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     const handleSaveEdit = async () => {
         if (!editingExpense) return;
         setSavingEdit(true);
@@ -857,6 +887,51 @@ export default function TelegramMiniAppPage() {
         }
 
         const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
+
+        // Editing deliberately reuses this exact Add form so every category-specific
+        // field and validation behaves identically for create and update.
+        if (editingTx) {
+            if (!isOnline) {
+                showAlert('Wax ka beddelku wuxuu u baahan yahay internet.', 'warning');
+                setSubmitting(false);
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/telegram/expense-actions', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: editingTx.expenseId || editingTx.id,
+                        amount,
+                        note,
+                        paymentPhone,
+                        recipientName,
+                        categoryId: selectedCategoryId,
+                        accountId: selectedAccountId,
+                        transportType,
+                        equipmentName,
+                        rentalPeriod,
+                        consultantName,
+                        consultancyType
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Wax ka beddelku wuu fashilmay.');
+
+                triggerHaptic('success');
+                setEditingTx(null);
+                setActiveTab('TRANSACTIONS');
+                await fetchHistory();
+                showAlert('Transaction-ka iyo fariintiisa Telegram waa la cusboonaysiiyay.', 'success');
+            } catch (error: any) {
+                triggerHaptic('error');
+                showAlert(error.message || 'Wax ka beddelku wuu fashilmay.', 'error');
+            } finally {
+                setSubmitting(false);
+            }
+            return;
+        }
 
         // If user collected batch items, submit all of them
         if (validBatchItems.length > 0) {
@@ -1657,6 +1732,21 @@ export default function TelegramMiniAppPage() {
                     </div>
                 ) : (
                     <>
+                        {editingTx && (
+                            <div className="mb-3 p-3 rounded-2xl bg-blue-500/10 border border-blue-400/30 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 text-blue-300">
+                                    <Pencil size={15} />
+                                    <span className="text-xs font-black">Wax ka beddel transaction-ka</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setEditingTx(null); setActiveTab('TRANSACTIONS'); }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-white/10 text-[10px] font-black text-white"
+                                >
+                                    Kansal
+                                </button>
+                            </div>
+                        )}
                         {/* Main Selector Dropdown */}
                 <div className="relative flex flex-col gap-1.5 bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/5 rounded-2xl p-4">
                     <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
@@ -2040,13 +2130,13 @@ export default function TelegramMiniAppPage() {
                         </div>
 
                         {/* Batch Action Buttons */}
-                        <div className="flex gap-2 pt-1">
+                        {!editingTx && <div className="flex gap-2 pt-1">
                             <button type="button" onClick={handleAddToBatch}
                                 className="flex-1 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5"
                             >
                                 <PlusCircle size={14} /> Ku dar Batch-ka
                             </button>
-                        </div>
+                        </div>}
 
                         {validBatchItems.length > 0 && (
                             <div className="p-3 bg-white/[0.02] border border-white/10 rounded-xl flex flex-col gap-2 animate-fade-in">
@@ -2086,6 +2176,11 @@ export default function TelegramMiniAppPage() {
                                 <>
                                     <Loader2 className="animate-spin" size={14} />
                                     Diiwaangelinta waa socotaa...
+                                </>
+                            ) : editingTx ? (
+                                <>
+                                    Keydi Isbeddelka
+                                    <Pencil size={12} />
                                 </>
                             ) : validBatchItems.length > 0 ? (
                                 <>
@@ -2388,13 +2483,13 @@ export default function TelegramMiniAppPage() {
 
                             {/* Receipt Attachment Card */}
                             {selectedTransactionForDetails.receiptUrl && (
-                                <div className="bg-slate-950/80 border border-blue-500/30 rounded-2xl p-4 flex flex-col gap-3 backdrop-blur-xl">
-                                    <span className="text-xs font-black text-white uppercase tracking-wider">Receipt</span>
-                                    <div className="flex gap-3 items-center">
+                                <div className="bg-slate-950/80 border border-blue-500/30 rounded-2xl p-3 flex flex-col gap-2 backdrop-blur-xl">
+                                    <span className="text-[10px] font-black text-white uppercase tracking-wider">Receipt</span>
+                                    <div className="flex gap-2.5 items-center">
                                         <img
                                             src={selectedTransactionForDetails.receiptUrl}
                                             alt="Receipt"
-                                            className="w-16 h-20 object-cover rounded-xl border border-white/20 shadow-md"
+                                            className="w-14 h-14 object-cover rounded-lg border border-white/20 shadow-md"
                                         />
                                         <div className="flex flex-col flex-1 gap-1">
                                             <span className="text-[10px] font-black text-slate-400 uppercase">Receipt URL</span>
@@ -2409,9 +2504,9 @@ export default function TelegramMiniAppPage() {
                                             <a
                                                 href={selectedTransactionForDetails.receiptUrl}
                                                 download
-                                                className="mt-1.5 px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-1 transition-all"
+                                                className="mt-1 px-2.5 py-1 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-white rounded-lg text-[9px] font-black uppercase inline-flex w-fit items-center justify-center gap-1 transition-all"
                                             >
-                                                <Download size={12} /> Download PDF
+                                                <Download size={11} /> Rasiidka
                                             </a>
                                         </div>
                                     </div>
@@ -2419,22 +2514,23 @@ export default function TelegramMiniAppPage() {
                             )}
 
                             {/* Action Buttons: Edit & Delete */}
-                            <div className="grid grid-cols-2 gap-2 mt-1">
+                            <div className="flex justify-center gap-3 mt-1">
                                 <button
                                     type="button"
+                                    title="Wax ka beddel"
+                                    aria-label="Wax ka beddel transaction-ka"
                                     onClick={() => {
                                         triggerHaptic('medium');
-                                        setEditingTx(selectedTransactionForDetails);
-                                        setEditAmount(String(selectedTransactionForDetails.amount));
-                                        setEditNote(selectedTransactionForDetails.description || '');
-                                        setShowEditTxModal(true);
+                                        openTransactionInMainForm(selectedTransactionForDetails);
                                     }}
-                                    className="py-3 px-3 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-blue-300 font-black rounded-2xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-md"
+                                    className="w-10 h-10 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-blue-300 rounded-xl flex items-center justify-center active:scale-95 transition-all shadow-md"
                                 >
-                                    <Pencil size={14} /> Wax Ka Baddal
+                                    <Pencil size={17} />
                                 </button>
                                 <button
                                     type="button"
+                                    title="Tirtir"
+                                    aria-label="Tirtir transaction-ka"
                                     onClick={async () => {
                                         triggerHaptic('warning');
                                         if (confirm('Ma hubtaa inaad tirtirto diiwaankan & fariinta Telegram-ka ku taallay?')) {
@@ -2469,9 +2565,9 @@ export default function TelegramMiniAppPage() {
                                              }
                                          }
                                      }}
-                                     className="py-3 px-3 bg-rose-600/30 hover:bg-rose-600/50 border border-rose-400/40 text-rose-300 font-black rounded-2xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-md"
+                                     className="w-10 h-10 bg-rose-600/30 hover:bg-rose-600/50 border border-rose-400/40 text-rose-300 rounded-xl flex items-center justify-center active:scale-95 transition-all shadow-md"
                                  >
-                                     <Trash2 size={14} /> Tirtir (Delete)
+                                     <Trash2 size={17} />
                                  </button>
                             </div>
 
@@ -2479,9 +2575,11 @@ export default function TelegramMiniAppPage() {
                             <button
                                 type="button"
                                 onClick={() => setSelectedTransactionForDetails(null)}
-                                className="w-full py-3 bg-white/10 hover:bg-white/20 border border-white/15 text-white font-black rounded-2xl text-xs uppercase tracking-wider active:scale-95 transition-all mt-1"
+                                aria-label="Ku noqo transactions"
+                                title="Ku noqo transactions"
+                                className="self-center w-10 h-10 bg-white/10 hover:bg-white/20 border border-white/15 text-white rounded-xl flex items-center justify-center active:scale-95 transition-all mt-1"
                             >
-                                Back to Transactions
+                                <ChevronLeft size={18} />
                             </button>
                         </div>
                     </div>

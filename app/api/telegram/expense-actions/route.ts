@@ -55,7 +55,10 @@ export async function PUT(request: Request) {
         }
 
         const body = await request.json();
-        const { id, amount, note, paymentPhone, recipientName, categoryId, accountId, receiptUrl } = body;
+        const {
+            id, amount, note, paymentPhone, recipientName, categoryId, accountId, receiptUrl,
+            transportType, equipmentName, rentalPeriod, consultantName, consultancyType
+        } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Expense ID required' }, { status: 400 });
@@ -126,6 +129,17 @@ export async function PUT(request: Request) {
                 if (cat) categoryName = cat.name;
             }
 
+            let description = finalNote;
+            if (categoryName === 'Transport & Fuel') {
+                description = `Transport & Fuel${transportType ? ` (${transportType})` : ''}: ${note || ''}`.trim();
+            } else if (categoryName === 'Equipment Rental') {
+                const detail = [equipmentName, rentalPeriod].filter(Boolean).join(' - ');
+                description = `Equipment Rental${detail ? ` (${detail})` : ''}: ${note || ''}`.trim();
+            } else if (categoryName === 'Consultancy & Service') {
+                const detail = [consultantName, consultancyType].filter(Boolean).join(' - ');
+                description = `Consultancy & Service${detail ? ` (${detail})` : ''}: ${note || ''}`.trim();
+            }
+
             return await tx.expense.update({
                 where: { id },
                 data: {
@@ -133,6 +147,7 @@ export async function PUT(request: Request) {
                     note: finalNote,
                     categoryId: categoryId || existingExpense.categoryId,
                     category: categoryName,
+                    description,
                     accountId: targetAccountId,
                     receiptUrl: receiptUrl !== undefined ? receiptUrl : existingExpense.receiptUrl
                 },

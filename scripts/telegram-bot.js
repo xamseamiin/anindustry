@@ -111,6 +111,13 @@ function cleanNoteForTelegram(rawNote) {
         .replace(/\[Account:\s*[^\]]*\]/g, '')
         .replace(/\[Dalbaday:\s*[^\]]*\]/g, '')
         .replace(/\[ReceiptUrl:\s*[^\]]*\]/g, '')
+        .replace(/\[PaymentPhone:\s*[^\]]*\]/g, '')
+        .replace(/\[RecipientName:\s*[^\]]*\]/g, '')
+        .replace(/\[ReceiptTelegramMessageId:\s*[^\]]*\]/g, '')
+        .replace(/\[TxId:\s*[^\]]*\]/g, '')
+        .replace(/\[AI-Verified:\s*[^\]]*\]/g, '')
+        .replace(/\[ExtractedAmount:\s*[^\]]*\]/g, '')
+        .replace(/\n{3,}/g, '\n\n')
         .trim();
 }
 
@@ -432,7 +439,9 @@ async function handleUpdate(update) {
         const isWizardAction = wizardPrefixes.some(prefix => data.startsWith(prefix)) || data === 'emp_add' || data === 'vendor_add' || data === 'mat_add';
 
         let state = null;
-        let stateKey = null;
+        // Non-wizard actions (especially rcpt_*) still need a real per-user session key.
+        // Leaving this as null made the following photo arrive under a different key.
+        let stateKey = `${chatId}_${userId}`;
 
         if (isWizardAction) {
             // Find the active state associated with this specific message
@@ -795,8 +804,9 @@ async function handleUpdate(update) {
                 text: "📸 Fadlan hadda u soo dir sawirka rasiidka (Photo)!",
                 show_alert: true
             });
-            await sendBotRequest('sendMessage', {
+            await sendBotRequest('editMessageText', {
                 chat_id: chatId,
+                message_id: query.message.message_id,
                 text: `📸 <b>Diiwaangelinta Rasiidka (Raw Material)</b>\n\n` +
                       `<b>Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan si loogu lifaaqo diiwaanka.</b>`,
                 parse_mode: 'HTML',
@@ -820,8 +830,9 @@ async function handleUpdate(update) {
                 text: "📸 Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan!",
                 show_alert: true
             });
-            await sendBotRequest('sendMessage', {
+            await sendBotRequest('editMessageText', {
                 chat_id: chatId,
+                message_id: query.message.message_id,
                 text: `📸 <b>Diiwaangelinta Rasiidka:</b>\n\n` +
                       `<b>Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan si loogu lifaaqo diiwaanka.</b>`,
                 parse_mode: 'HTML',
@@ -957,7 +968,7 @@ async function handleUpdate(update) {
         const user = message.from.first_name || 'User';
         let text = (message.text || '').trim();
         const stateKey = `${chatId}_${userId}`;
-        const state = userStates[stateKey];
+        let state = userStates[stateKey];
 
         console.log(`Incoming message: "${text}" from ${user} (ID: ${userId}) in chat ${chatId} (${message.chat.type})`);
 
@@ -1142,7 +1153,10 @@ async function handleUpdate(update) {
         }
 
         // Auto-fallback: If a photo is uploaded in chat, but no state is set (or state.step is not WAIT_CASHIER_RECEIPT), check DB for recent unpaid/pending expense
-        if (message.photo && message.photo.length > 0 && (!state || state.step !== 'WAIT_CASHIER_RECEIPT')) {
+        const hasReceiptImage = (message.photo && message.photo.length > 0)
+            || (message.document && String(message.document.mime_type || '').startsWith('image/'));
+
+        if (hasReceiptImage && (!state || state.step !== 'WAIT_CASHIER_RECEIPT')) {
             try {
                 const latestUnpaidExpense = await prisma.expense.findFirst({
                     where: {
@@ -1184,10 +1198,12 @@ async function handleUpdate(update) {
                 const expenseId = state.data.expenseId;
                 const purchaseId = state.data.purchaseId;
 
-                // Check if user uploaded a photo
-                if (message.photo && message.photo.length > 0) {
-                    const photo = message.photo[message.photo.length - 1];
-                    const fileId = photo.file_id;
+                // Accept both Telegram-compressed photos and images sent as files.
+                if (hasReceiptImage) {
+                    const uploadedImage = message.photo && message.photo.length > 0
+                        ? message.photo[message.photo.length - 1]
+                        : message.document;
+                    const fileId = uploadedImage.file_id;
 
                     const fileDetails = await sendBotRequest('getFile', { file_id: fileId });
                     if (fileDetails && fileDetails.ok) {
@@ -1197,7 +1213,9 @@ async function handleUpdate(update) {
                         
                         const savedPath = await downloadTelegramFile(filePath, saveName);
                         if (savedPath) {
-                            receiptUrl = savedPath;
+                            // Keep the Telegram file_id as the durable source. The bot's
+                            // local public folder is not shared with the Vercel mini-app.
+                            receiptUrl = `/api/telegram/receipt?fileId=${encodeURIComponent(fileId)}`;
                         }
                     }
                 }
@@ -1267,6 +1285,10 @@ async function handleUpdate(update) {
                     const expense = await prisma.expense.findUnique({ where: { id: expenseId } });
                     if (expense) {
                         await prisma.$transaction(async (tx) => {
+                            const existingPayment = await tx.transaction.findFirst({
+                                where: { expenseId: expense.id, type: 'EXPENSE' }
+                            });
+
                             await tx.expense.update({
                                 where: { id: expenseId },
                                 data: { 
@@ -1277,25 +1299,32 @@ async function handleUpdate(update) {
                                 }
                             });
 
-                            await tx.transaction.create({
-                                data: {
-                                    companyId: expense.companyId,
-                                    userId: expense.userId,
-                                    description: expense.description,
-                                    amount: Number(expense.amount),
-                                    type: 'EXPENSE',
-                                    accountId: expense.accountId,
-                                    expenseId: expense.id,
-                                    employeeId: expense.employeeId,
-                                    receiptUrl: receiptUrl
-                                }
-                            });
-
-                            if (expense.accountId) {
-                                await tx.account.update({
-                                    where: { id: expense.accountId },
-                                    data: { balance: { decrement: Number(expense.amount) } }
+                            if (existingPayment) {
+                                await tx.transaction.update({
+                                    where: { id: existingPayment.id },
+                                    data: { receiptUrl }
                                 });
+                            } else {
+                                await tx.transaction.create({
+                                    data: {
+                                        companyId: expense.companyId,
+                                        userId: expense.userId,
+                                        description: expense.description,
+                                        amount: Number(expense.amount),
+                                        type: 'EXPENSE',
+                                        accountId: expense.accountId,
+                                        expenseId: expense.id,
+                                        employeeId: expense.employeeId,
+                                        receiptUrl: receiptUrl
+                                    }
+                                });
+
+                                if (expense.accountId) {
+                                    await tx.account.update({
+                                        where: { id: expense.accountId },
+                                        data: { balance: { decrement: Number(expense.amount) } }
+                                    });
+                                }
                             }
                         });
                     }
@@ -1354,6 +1383,7 @@ async function handleUpdate(update) {
                     if (exp) {
                         const cleanNote = cleanNoteForTelegram(exp.note);
                         const meta = parseMetadata(exp.note);
+                        const expenseFormattedDate = new Date(exp.expenseDate || exp.createdAt).toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
                         
                         let requesterLine = '';
                         if (meta.requesterId) {
@@ -1380,7 +1410,7 @@ async function handleUpdate(update) {
                                                (meta.paymentPhone ? `📱 Lambarka: ${meta.paymentPhone}\n` : '') +
                                                `💳 Koontada la doortay: ${exp.paidFrom} (Haraa: ${Number(exp.account.balance).toLocaleString()} ETB)\n` +
                                                `📝 Sharaxaad: ${cleanNote || 'Mushaharka bisha'}\n` +
-                                               `📅 Taariikhda: ${formattedDate}\n\n` +
+                                               `📅 Taariikhda: ${expenseFormattedDate}\n\n` +
                                                `✅ Lacagtaas waa la diray.`;
                         } else {
                             let customFieldsText = '';
@@ -1407,7 +1437,7 @@ async function handleUpdate(update) {
                                                paymentContactLine +
                                                `💳 Koontada la doortay: ${exp.paidFrom} (Haraa: ${Number(exp.account.balance).toLocaleString()} ETB)\n` +
                                                `📝 Sharaxaad: ${cleanNote}\n` +
-                                               `📅 Taariikhda: ${formattedDate}\n\n` +
+                                               `📅 Taariikhda: ${expenseFormattedDate}\n\n` +
                                                `✅ Lacagtaas waa la diray.`;
                         }
                     }
@@ -1791,7 +1821,9 @@ async function handleUpdate(update) {
                         
                         const savedPath = await downloadTelegramFile(filePath, saveName);
                         if (savedPath) {
-                            receiptUrl = savedPath;
+                            // The API proxy lets both the deployed mini-app and the local
+                            // bot display the same receipt without relying on local disk.
+                            receiptUrl = `/api/telegram/receipt?fileId=${encodeURIComponent(fileId)}`;
                             noteText = message.caption || '';
                         }
                     }
