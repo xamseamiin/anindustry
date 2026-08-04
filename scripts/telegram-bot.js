@@ -485,7 +485,9 @@ async function handleUpdate(update) {
         }
 
         // Answer callback query to prevent button loading spinner (non-blocking for sonic speed)
-        sendBotRequest('answerCallbackQuery', { callback_query_id: query.id });
+        if (!data.startsWith('rcpt_')) {
+            sendBotRequest('answerCallbackQuery', { callback_query_id: query.id });
+        }
 
         if (data.startsWith('cat_')) {
             const categoryType = data.substring(4); // 'salary' or categoryId
