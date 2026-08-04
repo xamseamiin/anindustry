@@ -33,16 +33,46 @@ export async function GET() {
             })
         ]);
 
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // Fetch paid salary expenses in current month for dynamic employee salary calculations
+        const paidSalaryExpenses = await prisma.expense.findMany({
+            where: {
+                companyId,
+                paymentStatus: 'PAID',
+                createdAt: { gte: startOfMonth }
+            }
+        });
+
+        const employeePaidMap: Record<string, number> = {};
+        paidSalaryExpenses.forEach(exp => {
+            if (exp.employeeId) {
+                employeePaidMap[exp.employeeId] = (employeePaidMap[exp.employeeId] || 0) + Number(exp.amount);
+            }
+            employees.forEach(emp => {
+                if (exp.description && exp.description.toLowerCase().includes(emp.fullName.toLowerCase())) {
+                    // Avoid double counting if employeeId was already set
+                    if (!exp.employeeId) {
+                        employeePaidMap[emp.id] = (employeePaidMap[emp.id] || 0) + Number(exp.amount);
+                    }
+                }
+            });
+        });
+
         return NextResponse.json({
-            employees: employees.map(e => ({
-                id: e.id,
-                fullName: e.fullName,
-                role: e.role,
-                phone: e.phone || e.phoneNumber || '',
-                monthlySalary: Number(e.monthlySalary || 0),
-                paidThisMonth: Number(e.salaryPaidThisMonth || 0),
-                dueThisMonth: Math.max(0, Number(e.monthlySalary || 0) - Number(e.salaryPaidThisMonth || 0))
-            })),
+            employees: employees.map(e => {
+                const paidThisMonth = employeePaidMap[e.id] !== undefined ? employeePaidMap[e.id] : Number(e.salaryPaidThisMonth || 0);
+                return {
+                    id: e.id,
+                    fullName: e.fullName,
+                    role: e.role,
+                    phone: e.phone || e.phoneNumber || '',
+                    monthlySalary: Number(e.monthlySalary || 0),
+                    paidThisMonth,
+                    dueThisMonth: Math.max(0, Number(e.monthlySalary || 0) - paidThisMonth)
+                };
+            }),
             accounts: accounts.map(a => ({
                 id: a.id,
                 name: a.name,
