@@ -8,7 +8,8 @@ import {
     Award, ArrowRight, Layers, Factory, Package,
     Hash, Banknote, Calendar, ClipboardList, Wrench, Phone,
     Mic, MicOff, PlusCircle, Trash2, Pencil, AlertTriangle, ChevronLeft, Bell,
-    Home, ArrowUpRight, ArrowDownLeft, Search, Filter, Share2, ExternalLink, Download, UserCheck, ShieldCheck, BarChart3, PieChart
+    Home, ArrowUpRight, ArrowDownLeft, Search, Filter, Share2, ExternalLink, Download, UserCheck, ShieldCheck, BarChart3, PieChart,
+    Eye, EyeOff, Lock, Smartphone, SlidersHorizontal, LogOut, Camera, FileSpreadsheet
 } from 'lucide-react';
 
 // Safe localStorage helpers for iOS WebView where localStorage can throw SecurityError
@@ -202,8 +203,22 @@ export default function TelegramMiniAppPage() {
     const [requesterName, setRequesterName] = useState('WebApp User');
     const [requesterId, setRequesterId] = useState('');
     const [requesterUsername, setRequesterUsername] = useState('');
+    const [telegramPhotoUrl, setTelegramPhotoUrl] = useState('');
+    const [profileData, setProfileData] = useState<any>(null);
+    const [showTelegramId, setShowTelegramId] = useState(false);
+    const [profilePreferences, setProfilePreferences] = useState({
+        sound: true,
+        vibration: true,
+        approvals: true,
+        receipts: true,
+        language: 'so',
+        defaultCategory: '',
+        defaultAccount: ''
+    });
+    const profilePreferencesRef = useRef(profilePreferences);
     // Manager authorization check (Abdehakim & Hamze Amiin for testing)
     const isManager = requesterUsername.toLowerCase() === 'abdehakimmumin' || requesterName.toLowerCase().includes('abdehakim') || requesterUsername.toLowerCase() === 'hamsemoalin' || requesterName.toLowerCase().includes('hamze') || String(requesterId) === '748392019';
+    const effectiveIsManager = profileData?.permissions?.approve ?? isManager;
 
     // Tab 1: Salary Fields
     const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
@@ -228,13 +243,13 @@ export default function TelegramMiniAppPage() {
 
     const playNotificationSoundAndVibrate = () => {
         try {
-            if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.HapticFeedback) {
+            if (profilePreferencesRef.current.vibration && typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.HapticFeedback) {
                 (window as any).Telegram.WebApp.HapticFeedback.notificationOccurred('success');
                 setTimeout(() => {
                     try { (window as any).Telegram.WebApp.HapticFeedback.notificationOccurred('success'); } catch {}
                 }, 180);
             }
-            if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+            if (profilePreferencesRef.current.vibration && typeof window !== 'undefined' && 'vibrate' in navigator) {
                 navigator.vibrate([150, 100, 150]);
             }
         } catch (e) {
@@ -242,7 +257,7 @@ export default function TelegramMiniAppPage() {
         }
 
         try {
-            if (typeof window !== 'undefined' && (window.AudioContext || (window as any).webkitAudioContext)) {
+            if (profilePreferencesRef.current.sound && typeof window !== 'undefined' && (window.AudioContext || (window as any).webkitAudioContext)) {
                 const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
                 const ctx = new AudioCtx();
                 
@@ -381,6 +396,32 @@ export default function TelegramMiniAppPage() {
         const notificationInterval = window.setInterval(pollForNewRequests, 15000);
         return () => window.clearInterval(notificationInterval);
     }, []);
+
+    useEffect(() => {
+        profilePreferencesRef.current = profilePreferences;
+        if (requesterId) safeSetItem(`mini_profile_preferences_${requesterId}`, JSON.stringify(profilePreferences));
+    }, [profilePreferences, requesterId]);
+
+    useEffect(() => {
+        if (profilePreferences.defaultAccount && accounts.some(a => a.id === profilePreferences.defaultAccount)) {
+            setSelectedAccountId(profilePreferences.defaultAccount);
+        }
+        const preferredCategory = categories.find(c => c.id === profilePreferences.defaultCategory);
+        if (preferredCategory && !selectedCategoryKey) {
+            setSelectedCategoryId(preferredCategory.id);
+            setSelectedCategoryName(preferredCategory.name);
+            setSelectedCategoryKey(`EXPENSE_${preferredCategory.id}`);
+        }
+    }, [profilePreferences.defaultAccount, profilePreferences.defaultCategory, accounts, categories]);
+
+    useEffect(() => {
+        if (!requesterId) return;
+        setProfilePreferences(safeParseJSON(`mini_profile_preferences_${requesterId}`, profilePreferences));
+        fetch(`/api/telegram/profile?telegramId=${encodeURIComponent(requesterId)}&name=${encodeURIComponent(requesterName)}&username=${encodeURIComponent(requesterUsername)}`)
+            .then(res => res.json())
+            .then(data => { if (data.success) setProfileData(data.profile); })
+            .catch(error => console.error('Profile loading failed:', error));
+    }, [requesterId, requesterName, requesterUsername]);
 
     const handleOpenEdit = (exp: any) => {
         triggerHaptic('light');
@@ -715,6 +756,7 @@ export default function TelegramMiniAppPage() {
                     setRequesterName(formattedName || user.first_name || 'Telegram User');
                     if (user.username) setRequesterUsername(user.username);
                     if (user.id) setRequesterId(user.id.toString());
+                    if (user.photo_url) setTelegramPhotoUrl(user.photo_url);
                 }
             }
         };
@@ -822,6 +864,18 @@ export default function TelegramMiniAppPage() {
         setRecipientName(contact.name);
         setPaymentPhone(contact.phone);
         setShowSavedContacts(false);
+    };
+
+    const removeSavedContact = (phone: string) => {
+        const transport = savedTransportContacts.filter(c => c.phone !== phone);
+        const equipment = savedEquipmentContacts.filter(c => c.phone !== phone);
+        const consultants = savedConsultantContacts.filter(c => c.phone !== phone);
+        setSavedTransportContacts(transport);
+        setSavedEquipmentContacts(equipment);
+        setSavedConsultantContacts(consultants);
+        safeSetItem('saved_transport_contacts', JSON.stringify(transport));
+        safeSetItem('saved_equipment_contacts', JSON.stringify(equipment));
+        safeSetItem('saved_consultant_contacts', JSON.stringify(consultants));
     };
 
     const toggleVoiceRecognition = () => {
@@ -1172,6 +1226,39 @@ export default function TelegramMiniAppPage() {
         }
     };
 
+    const exportPersonalExcel = async () => {
+        const XLSX = await import('xlsx');
+        const rows = historyExpenses
+            .filter(exp => !requesterId || exp.requesterId === requesterId || exp.requesterName?.includes(requesterName.split(' ')[0]))
+            .map(exp => ({
+                Date: new Date(exp.createdAt).toLocaleString('so-SO'),
+                Category: exp.category,
+                Description: exp.description,
+                Amount_ETB: Number(exp.amount),
+                Status: exp.paymentStatus,
+                Receipt: exp.receiptUrl || ''
+            }));
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'My Requests');
+        XLSX.writeFile(workbook, `AN-Industry-${requesterUsername || 'profile'}-report.xlsx`);
+    };
+
+    const exportPersonalPdf = async () => {
+        const { jsPDF } = await import('jspdf');
+        const doc = new jsPDF();
+        doc.setFontSize(16);
+        doc.text('AN-Industry Personal Activity Report', 14, 18);
+        doc.setFontSize(10);
+        doc.text(`User: ${requesterName}`, 14, 27);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 34);
+        let y = 44;
+        (profileData?.recent || []).forEach((item: any) => {
+            doc.text(`${new Date(item.date).toLocaleDateString()} | ${item.description.slice(0, 65)} | ${item.amount.toLocaleString()} ETB | ${item.status}`, 14, y);
+            y += 7;
+        });
+        doc.save(`AN-Industry-${requesterUsername || 'profile'}-report.pdf`);
+    };
+
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--tg-theme-bg-color,#0f172a)] text-[var(--tg-theme-text-color,#ffffff)] gap-3 p-6">
@@ -1420,7 +1507,7 @@ export default function TelegramMiniAppPage() {
                         </div>
 
                         {/* Manager Approval Workflow Card (Visible to Managers) */}
-                        {isManager ? (
+                        {effectiveIsManager ? (
                             <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-blue-950/60 border border-blue-500/30 rounded-3xl p-5 shadow-[0_0_35px_rgba(59,130,246,0.2),inset_0_1px_1.5px_rgba(255,255,255,0.25)] flex flex-col gap-4 backdrop-blur-2xl relative overflow-hidden">
                                 <div className="flex justify-between items-start">
                                     <div className="flex items-center gap-2">
@@ -1726,7 +1813,9 @@ export default function TelegramMiniAppPage() {
                         <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950/60 border border-blue-400/30 rounded-3xl p-6 flex flex-col items-center text-center gap-3 backdrop-blur-2xl shadow-[0_0_35px_rgba(59,130,246,0.2)]">
                             <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-500 to-emerald-400 p-1 shadow-[0_0_20px_rgba(34,211,238,0.5)]">
                                 <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-cyan-300 font-black text-2xl border border-white/20">
-                                    {requesterName.substring(0, 2).toUpperCase()}
+                                    {telegramPhotoUrl ? (
+                                        <img src={telegramPhotoUrl} alt="Telegram profile" className="w-full h-full rounded-full object-cover" />
+                                    ) : requesterName.substring(0, 2).toUpperCase()}
                                 </div>
                             </div>
 
@@ -1737,7 +1826,7 @@ export default function TelegramMiniAppPage() {
                                 </div>
                                 <span className="text-xs text-cyan-400 font-bold">@{requesterUsername || 'user'}</span>
                                 <span className="mt-1 px-3 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-black uppercase">
-                                    {isManager ? '🛡️ Financial Manager' : '👤 Authorized Operator'}
+                                    {profileData?.role || (effectiveIsManager ? 'FINANCIAL MANAGER' : 'AUTHORIZED OPERATOR')}
                                 </span>
                             </div>
                         </div>
@@ -1746,7 +1835,10 @@ export default function TelegramMiniAppPage() {
                         <div className="bg-slate-950/80 border border-white/10 rounded-3xl p-5 flex flex-col gap-3 backdrop-blur-2xl">
                             <div className="flex justify-between items-center p-3 bg-white/5 rounded-2xl">
                                 <span className="text-xs font-bold text-slate-400">Telegram User ID</span>
-                                <span className="text-xs font-mono font-bold text-white">{requesterId || '748392019'}</span>
+                                <button type="button" onClick={() => setShowTelegramId(v => !v)} className="flex items-center gap-1.5 text-xs font-mono font-bold text-white">
+                                    {showTelegramId ? requesterId : `${requesterId.slice(0, 4)}••••${requesterId.slice(-2)}`}
+                                    {showTelegramId ? <EyeOff size={12} /> : <Eye size={12} />}
+                                </button>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-white/5 rounded-2xl">
                                 <span className="text-xs font-bold text-slate-400">Company</span>
@@ -1754,13 +1846,99 @@ export default function TelegramMiniAppPage() {
                             </div>
                             <div className="flex justify-between items-center p-3 bg-white/5 rounded-2xl">
                                 <span className="text-xs font-bold text-slate-400">Active Account</span>
-                                <span className="text-xs font-bold text-cyan-400">E-Birr Merchant</span>
+                                <span className="text-xs font-bold text-cyan-400">{activeAccount?.name || 'E-Birr Merchant'}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-white/5 rounded-2xl">
                                 <span className="text-xs font-bold text-slate-400">Sync Status</span>
                                 <span className="text-xs font-bold text-emerald-400">🟢 Online & Synced</span>
                             </div>
                         </div>
+
+                        {/* Activity & approval intelligence */}
+                        <div className="grid grid-cols-2 gap-2">
+                            {[
+                                ['Dalabyada', profileData?.activity?.total || 0, 'text-cyan-400'],
+                                ['La bixiyey', profileData?.activity?.paid || 0, 'text-emerald-400'],
+                                ['Sugaya', profileData?.activity?.pending || 0, 'text-amber-400'],
+                                ['Bishan', `${Number(profileData?.activity?.monthlyTotal || 0).toLocaleString()} ETB`, 'text-blue-400']
+                            ].map(([label, value, color]) => (
+                                <div key={String(label)} className="p-3.5 rounded-2xl bg-slate-950/80 border border-white/10">
+                                    <p className="text-[9px] uppercase font-black text-slate-500">{label}</p>
+                                    <p className={`text-sm font-black ${color}`}>{value}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="bg-slate-950/80 border border-white/10 rounded-3xl p-5 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xs font-black text-white flex items-center gap-2"><ShieldCheck size={15} className="text-emerald-400" /> Permissions & Approval</h3>
+                                <span className="text-[9px] font-black text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded-lg">DATABASE</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                                {Object.entries(profileData?.permissions || {}).filter(([key]) => key !== 'approvalLimit').map(([key, enabled]) => (
+                                    <span key={key} className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${enabled ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/10 text-rose-300'}`}>{key}: {enabled ? 'ON' : 'OFF'}</span>
+                                ))}
+                            </div>
+                            <p className="text-[11px] text-slate-300">Approval limit: <strong className="text-white">{profileData?.permissions?.approvalLimit == null ? 'Unlimited' : `${Number(profileData.permissions.approvalLimit).toLocaleString()} ETB`}</strong></p>
+                        </div>
+
+                        <div className="bg-slate-950/80 border border-white/10 rounded-3xl p-5 space-y-3">
+                            <h3 className="text-xs font-black text-white flex items-center gap-2"><SlidersHorizontal size={15} className="text-cyan-400" /> Notification Preferences</h3>
+                            {[
+                                ['sound', 'Codka dalabka cusub'], ['vibration', 'Gariirka'],
+                                ['approvals', 'Approval notifications'], ['receipts', 'Receipt confirmations']
+                            ].map(([key, label]) => (
+                                <label key={key} className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl text-xs font-bold text-slate-300">
+                                    {label}
+                                    <input type="checkbox" checked={(profilePreferences as any)[key]} onChange={e => setProfilePreferences(p => ({ ...p, [key]: e.target.checked }))} className="accent-emerald-500 w-4 h-4" />
+                                </label>
+                            ))}
+                            <div className="grid grid-cols-2 gap-2">
+                                <select value={profilePreferences.defaultAccount} onChange={e => setProfilePreferences(p => ({ ...p, defaultAccount: e.target.value }))} className="p-2.5 rounded-xl bg-slate-900 border border-white/10 text-[10px] text-white">
+                                    <option value="">Default account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                </select>
+                                <select value={profilePreferences.defaultCategory} onChange={e => setProfilePreferences(p => ({ ...p, defaultCategory: e.target.value }))} className="p-2.5 rounded-xl bg-slate-900 border border-white/10 text-[10px] text-white">
+                                    <option value="">Default category</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
+                            <select value={profilePreferences.language} onChange={e => setProfilePreferences(p => ({ ...p, language: e.target.value }))} className="w-full p-2.5 rounded-xl bg-slate-900 border border-white/10 text-[10px] text-white">
+                                <option value="so">Af-Soomaali</option><option value="en">English</option>
+                            </select>
+                        </div>
+
+                        <div className="bg-slate-950/80 border border-white/10 rounded-3xl p-5 space-y-3">
+                            <h3 className="text-xs font-black text-white">Recent Activity</h3>
+                            {(profileData?.recent || []).length ? profileData.recent.map((item: any) => (
+                                <div key={item.id} className="flex justify-between gap-2 border-b border-white/5 pb-2 text-[10px]">
+                                    <span className="text-slate-300 truncate">{item.description}</span>
+                                    <span className="text-white font-black whitespace-nowrap">{item.amount.toLocaleString()} ETB</span>
+                                </div>
+                            )) : <p className="text-[10px] text-slate-500">Wax activity ah lama helin.</p>}
+                        </div>
+
+                        <div className="bg-slate-950/80 border border-white/10 rounded-3xl p-5 space-y-3">
+                            <h3 className="text-xs font-black text-white flex items-center gap-2"><Lock size={14} className="text-purple-400" /> Security & Devices</h3>
+                            <p className="text-[10px] text-slate-400">2FA: <span className={profileData?.twoFAEnabled ? 'text-emerald-400' : 'text-amber-400'}>{profileData?.twoFAEnabled ? 'Enabled' : 'Not enabled'}</span></p>
+                            <p className="text-[10px] text-slate-400">Last active: <span className="text-white">{profileData?.lastActiveAt ? new Date(profileData.lastActiveAt).toLocaleString() : 'Current Telegram session'}</span></p>
+                            {(profileData?.trustedDevices || []).map((device: any) => <p key={device.id} className="text-[9px] text-slate-400 flex items-center gap-1"><Smartphone size={10} /> {device.userAgent}</p>)}
+                            <p className="text-[10px] text-slate-400">Profile completion: <span className="text-emerald-400 font-black">{[requesterName, requesterUsername, requesterId, profileData?.phone, profileData?.email].filter(Boolean).length * 20}%</span></p>
+                        </div>
+
+                        <div className="bg-slate-950/80 border border-white/10 rounded-3xl p-5 space-y-3">
+                            <h3 className="text-xs font-black text-white">Saved Recipients ({[...savedTransportContacts, ...savedEquipmentContacts, ...savedConsultantContacts].length})</h3>
+                            {[...savedTransportContacts, ...savedEquipmentContacts, ...savedConsultantContacts].slice(0, 5).map((contact, index) => (
+                                <div key={`${contact.phone}-${index}`} className="flex items-center justify-between gap-2 text-[10px] text-slate-300">
+                                    <button type="button" onClick={() => { setRecipientName(contact.name); setPaymentPhone(contact.phone); setActiveTab('NEW'); }} className="flex-1 flex justify-between text-left"><span>{contact.name}</span><span>{contact.phone}</span></button>
+                                    <button type="button" onClick={() => removeSavedContact(contact.phone)} aria-label="Delete recipient" className="p-1 text-rose-400"><Trash2 size={11} /></button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                            <button type="button" onClick={exportPersonalPdf} className="py-3 rounded-xl bg-rose-500/15 border border-rose-400/20 text-rose-300 text-[10px] font-black flex items-center justify-center gap-1"><Download size={13} /> PDF</button>
+                            <button type="button" onClick={exportPersonalExcel} className="py-3 rounded-xl bg-emerald-500/15 border border-emerald-400/20 text-emerald-300 text-[10px] font-black flex items-center justify-center gap-1"><FileSpreadsheet size={13} /> EXCEL</button>
+                        </div>
+                        <button type="button" onClick={() => (window as any).Telegram?.WebApp?.close?.()} className="w-full py-3 rounded-xl bg-rose-600/20 border border-rose-400/30 text-rose-300 text-xs font-black flex items-center justify-center gap-2"><LogOut size={14} /> Xidh Session-ka</button>
                     </div>
                 ) : (
                     <>
