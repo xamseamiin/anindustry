@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Script from 'next/script';
 import { 
     Loader2, CheckCircle2, DollarSign, Wallet, 
@@ -300,6 +300,7 @@ export default function TelegramMiniAppPage() {
     const [customEndDate, setCustomEndDate] = useState('');
     const [historyExpenses, setHistoryExpenses] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
+    const latestHistoryIdRef = useRef<string | null>(null);
     
     // Transactions Ledger & Detail Modal states
     const [selectedTransactionForDetails, setSelectedTransactionForDetails] = useState<any | null>(null);
@@ -341,6 +342,8 @@ export default function TelegramMiniAppPage() {
             const res = await fetch(url);
             const data = await res.json();
             if (data.success && Array.isArray(data.expenses)) {
+                const newestId = data.expenses[0]?.id || null;
+                if (historyFilter === 'all') latestHistoryIdRef.current = newestId;
                 setHistoryExpenses(data.expenses);
             }
         } catch (err) {
@@ -359,6 +362,25 @@ export default function TelegramMiniAppPage() {
             fetchHistory();
         }
     }, [activeTab, historyFilter, customStartDate, customEndDate]);
+
+    useEffect(() => {
+        const pollForNewRequests = async () => {
+            try {
+                const res = await fetch(`/api/telegram/history?filter=all&_t=${Date.now()}`);
+                const data = await res.json();
+                const newestId = data.success && Array.isArray(data.expenses) ? data.expenses[0]?.id : null;
+                if (latestHistoryIdRef.current && newestId && latestHistoryIdRef.current !== newestId) {
+                    playNotificationSoundAndVibrate();
+                    setHistoryExpenses(data.expenses);
+                }
+                if (newestId) latestHistoryIdRef.current = newestId;
+            } catch (error) {
+                console.error('Notification polling failed:', error);
+            }
+        };
+        const notificationInterval = window.setInterval(pollForNewRequests, 15000);
+        return () => window.clearInterval(notificationInterval);
+    }, []);
 
     const handleOpenEdit = (exp: any) => {
         triggerHaptic('light');
@@ -1249,7 +1271,6 @@ export default function TelegramMiniAppPage() {
                     <button 
                         type="button" 
                         onClick={() => {
-                            playNotificationSoundAndVibrate();
                             setShowNotificationModal(true);
                         }} 
                         className="w-10 h-10 rounded-full bg-white/10 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white relative shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] active:scale-95 transition-all"
@@ -2711,10 +2732,7 @@ export default function TelegramMiniAppPage() {
                                 <div className="w-9 h-9 rounded-2xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
                                     <Bell size={18} />
                                 </div>
-                                <div>
-                                    <h3 className="text-sm font-black text-white">Ogeysiisyada Live-ka ah</h3>
-                                    <p className="text-[10px] text-emerald-400 font-bold">🔊 Cod & Gariir Labo Jeer Ah Active</p>
-                                </div>
+                                <h3 className="text-sm font-black text-white">Ogeysiisyada Live-ka ah</h3>
                             </div>
                             <button
                                 type="button"
@@ -2770,18 +2788,11 @@ export default function TelegramMiniAppPage() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                            <button
-                                type="button"
-                                onClick={() => playNotificationSoundAndVibrate()}
-                                className="py-3 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all"
-                            >
-                                🔔 Tijaabi Codka
-                            </button>
+                        <div className="pt-2">
                             <button
                                 type="button"
                                 onClick={() => { triggerHaptic('light'); setShowNotificationModal(false); }}
-                                className="py-3 px-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black text-xs uppercase tracking-wider active:scale-95 transition-all"
+                                className="w-full py-3 px-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black text-xs uppercase tracking-wider active:scale-95 transition-all"
                             >
                                 Xidh (Close)
                             </button>
