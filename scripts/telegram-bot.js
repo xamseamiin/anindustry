@@ -817,12 +817,12 @@ async function handleUpdate(update) {
             };
             await sendBotRequest('answerCallbackQuery', {
                 callback_query_id: query.id,
-                text: "📸 Fadlan hadda u soo dir sawirka rasiidka (Photo)!",
+                text: "📸 Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan!",
                 show_alert: true
             });
             await sendBotRequest('sendMessage', {
                 chat_id: chatId,
-                text: `📸 <b>Diiwaangelinta Rasiidka</b>\n\n` +
+                text: `📸 <b>Diiwaangelinta Rasiidka:</b>\n\n` +
                       `<b>Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan si loogu lifaaqo diiwaanka.</b>`,
                 parse_mode: 'HTML',
                 reply_markup: {

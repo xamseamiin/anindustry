@@ -216,6 +216,10 @@ export default function TelegramMiniAppPage() {
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
+    // Edit Transaction Modal State
+    const [showEditTxModal, setShowEditTxModal] = useState(false);
+    const [editingTx, setEditingTx] = useState<any>(null);
+
     // Notification Modal & Sound/Vibration Helper
     const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [transportType, setTransportType] = useState('');
@@ -2411,14 +2415,156 @@ export default function TelegramMiniAppPage() {
                                 </div>
                             )}
 
+                            {/* Action Buttons: Edit & Delete */}
+                            <div className="grid grid-cols-2 gap-2 mt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        triggerHaptic('medium');
+                                        setEditingTx(selectedTransactionForDetails);
+                                        setEditAmount(String(selectedTransactionForDetails.amount));
+                                        setEditNote(selectedTransactionForDetails.description || '');
+                                        setShowEditTxModal(true);
+                                    }}
+                                    className="py-3 px-3 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-blue-300 font-black rounded-2xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-md"
+                                >
+                                    <Pencil size={14} /> Wax Ka Baddal
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        triggerHaptic('warning');
+                                        if (confirm('Ma hubtaa inaad tirtirto diiwaankan & fariinta Telegram-ka ku taallay?')) {
+                                            setSubmitting(true);
+                                            try {
+                                                const res = await fetch(`/api/telegram/expense-actions?id=${selectedTransactionForDetails.id}`, {
+                                                    method: 'DELETE'
+                                                });
+                                                const data = await res.json();
+                                                if (res.ok) {
+                                                     triggerHaptic('success');
+                                                     setAlertModal({
+                                                         isOpen: true,
+                                                         title: 'Guul (Deleted)',
+                                                         message: 'Diiwaankii & Fariintii Telegram-ka toos ayaa loo tirtiray!',
+                                                         type: 'success'
+                                                     });
+                                                     setSelectedTransactionForDetails(null);
+                                                     fetchHistory();
+                                                 } else {
+                                                     setAlertModal({
+                                                         isOpen: true,
+                                                         title: 'Cillad',
+                                                         message: data.error || 'Waa la tirtiri waayay diiwaanka.',
+                                                         type: 'error'
+                                                     });
+                                                 }
+                                             } catch (e) {
+                                                 setAlertModal({ isOpen: true, title: 'Cillad Server', message: 'Tirtiriddu waxay kala kulantay cillad server-ka.', type: 'error' });
+                                             } finally {
+                                                 setSubmitting(false);
+                                             }
+                                         }
+                                     }}
+                                     className="py-3 px-3 bg-rose-600/30 hover:bg-rose-600/50 border border-rose-400/40 text-rose-300 font-black rounded-2xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-md"
+                                 >
+                                     <Trash2 size={14} /> Tirtir (Delete)
+                                 </button>
+                            </div>
+
                             {/* Back Button */}
                             <button
                                 type="button"
                                 onClick={() => setSelectedTransactionForDetails(null)}
-                                className="w-full py-3.5 bg-white/10 hover:bg-white/20 border border-white/15 text-white font-black rounded-2xl text-xs uppercase tracking-wider active:scale-95 transition-all mt-1"
+                                className="w-full py-3 bg-white/10 hover:bg-white/20 border border-white/15 text-white font-black rounded-2xl text-xs uppercase tracking-wider active:scale-95 transition-all mt-1"
                             >
                                 Back to Transactions
                             </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Edit Transaction Modal */}
+                {showEditTxModal && editingTx && (
+                    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-xl z-50 flex items-center justify-center p-4 animate-fade-in">
+                        <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-blue-950/90 border border-blue-500/30 rounded-3xl p-6 w-full max-w-sm flex flex-col gap-4 shadow-2xl relative animate-in zoom-in-95 duration-200">
+                            <div className="flex justify-between items-center pb-3 border-b border-white/10">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400">
+                                        <Pencil size={16} />
+                                    </div>
+                                    <h3 className="text-sm font-black text-white">Wax Ka Baddal Diiwaanka</h3>
+                                </div>
+                                <button type="button" onClick={() => setShowEditTxModal(false)} className="text-slate-400 hover:text-white">✕</button>
+                            </div>
+
+                            <div className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-black text-slate-400 uppercase">Lacagta (Amount ETB)</label>
+                                    <input
+                                        type="number"
+                                        value={editAmount}
+                                        onChange={(e) => setEditAmount(e.target.value)}
+                                        className="p-3 bg-black/40 border border-white/10 rounded-xl text-emerald-400 font-extrabold text-base outline-none focus:border-blue-400"
+                                    />
+                                </div>
+
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-black text-slate-400 uppercase">Sharaxaad / Reference</label>
+                                    <textarea
+                                        rows={3}
+                                        value={editNote}
+                                        onChange={(e) => setEditNote(e.target.value)}
+                                        className="p-3 bg-black/40 border border-white/10 rounded-xl text-white font-bold text-xs outline-none focus:border-blue-400 resize-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        triggerHaptic('medium');
+                                        setSubmitting(true);
+                                        try {
+                                            const res = await fetch('/api/telegram/expense-actions', {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                    id: editingTx.expenseId || editingTx.id,
+                                                    amount: editAmount,
+                                                    note: editNote
+                                                })
+                                            });
+                                            const data = await res.json();
+                                            if (res.ok) {
+                                                triggerHaptic('success');
+                                                setAlertModal({ isOpen: true, title: 'Guul (Updated)', message: 'Diiwaankii & Fariintii Telegram-ka waa la baddalay!', type: 'success' });
+                                                setShowEditTxModal(false);
+                                                setSelectedTransactionForDetails(null);
+                                                fetchHistory();
+                                            } else {
+                                                setAlertModal({ isOpen: true, title: 'Cillad', message: data.error || 'Waa la baddali waayay.', type: 'error' });
+                                            }
+                                        } catch (e) {
+                                            setAlertModal({ isOpen: true, title: 'Cillad Server', message: 'Waa la baddali waayay.', type: 'error' });
+                                        } finally {
+                                            setSubmitting(false);
+                                        }
+                                    }}
+                                    disabled={submitting}
+                                    className="py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs uppercase tracking-wider active:scale-95 transition-all shadow-lg flex items-center justify-center gap-1"
+                                >
+                                    {submitting ? <Loader2 className="animate-spin" size={14} /> : 'Keydi (Save)'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditTxModal(false)}
+                                    className="py-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black text-xs uppercase tracking-wider active:scale-95 transition-all"
+                                >
+                                    Kansal (Cancel)
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}

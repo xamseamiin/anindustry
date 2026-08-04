@@ -161,78 +161,81 @@ export async function PUT(request: Request) {
     }
 }
 
-// DELETE: Delete Expense
+// DELETE: Delete Expense / Transaction and remove message from Telegram
 export async function DELETE(request: Request) {
     try {
         const companyId = process.env.TELEGRAM_COMPANY_ID;
         const token = process.env.TELEGRAM_BOT_TOKEN;
         const defaultChatId = process.env.TELEGRAM_CHAT_ID;
 
-        if (!companyId) {
-            return NextResponse.json({ error: 'TELEGRAM_COMPANY_ID not configured' }, { status: 400 });
-        }
-
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
 
         if (!id) {
-            return NextResponse.json({ error: 'Expense ID required' }, { status: 400 });
+            return NextResponse.json({ error: 'Expense or Transaction ID required' }, { status: 400 });
         }
 
-        const expense = await prisma.expense.findUnique({
+        let expense = await prisma.expense.findUnique({
             where: { id },
             include: { account: true }
         });
 
-        if (!expense) {
-            return NextResponse.json({ error: 'Expense not found' }, { status: 404 });
+        let transaction = await prisma.transaction.findUnique({
+            where: { id }
+        });
+
+        if (!expense && transaction && transaction.expenseId) {
+            expense = await prisma.expense.findUnique({
+                where: { id: transaction.expenseId },
+                include: { account: true }
+            });
         }
 
-        const refundAmount = Number(expense.amount);
-        const wasPaid = expense.approved || expense.paymentStatus === 'PAID' || !!expense.receiptUrl;
+        const refundAmount = expense ? Number(expense.amount) : (transaction ? Number(transaction.amount) : 0);
+        const accountIdToRefund = expense?.accountId || transaction?.accountId;
+        const targetChatId = expense?.telegramChatId || defaultChatId;
+        const targetMsgId = expense?.telegramMessageId;
+        const wasPaid = expense ? (expense.approved || expense.paymentStatus === 'PAID' || !!expense.receiptUrl) : true;
 
-        // Refund balance ONLY IF paid, then delete expense
+        // Perform deletion in transaction
         await prisma.$transaction(async (tx) => {
-            if (expense.accountId && wasPaid) {
+            if (transaction) {
+                await tx.transaction.delete({ where: { id: transaction.id } });
+            }
+
+            if (expense) {
+                await tx.transaction.deleteMany({ where: { expenseId: expense.id } });
+                await tx.expense.delete({ where: { id: expense.id } });
+            }
+
+            // Refund balance if account exists and amount was paid
+            if (accountIdToRefund && wasPaid && refundAmount > 0) {
                 await tx.account.update({
-                    where: { id: expense.accountId },
+                    where: { id: accountIdToRefund },
                     data: { balance: { increment: refundAmount } }
                 });
             }
-
-            // Also delete associated transaction if exists
-            await tx.transaction.deleteMany({
-                where: { expenseId: id }
-            });
-
-            await tx.expense.delete({
-                where: { id }
-            });
         });
 
-        // Edit original Telegram message to show it is cancelled
-        const targetChatId = expense.telegramChatId || defaultChatId;
-        const targetMsgId = expense.telegramMessageId;
-
-        if (token && targetChatId && targetMsgId) {
-            const cancelledText =
-                `<b>AN-Industory</b>\n` +
-                `<b>⚠️ Codsigan waa la kansalay (Deleted)</b>\n\n` +
-                `📂 Qaybta: ${expense.category}\n` +
-                `💵 Lacagta: ${refundAmount.toLocaleString()} ETB\n` +
-                `📝 Sharaxaad: ${expense.description || expense.note || ''}\n\n` +
-                (wasPaid 
-                    ? `🛑 <i>Lacagtii waxaa dib loogu soo celiyay koontada.</i>` 
-                    : `🛑 <i>Codsigan waa la tirtiray inta aana lacagta la bixiyin (Rasiid la'aan).</i>`);
-
-            await editTelegramBotMessage(token, targetChatId, targetMsgId, cancelledText);
+        // Delete message from Telegram Group Chat completely
+        if (token && targetChatId) {
+            const chats = [targetChatId, '-1005307882362', '-5307882362'].filter(Boolean);
+            for (const c of chats) {
+                if (targetMsgId) {
+                    try {
+                        await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ chat_id: c, message_id: targetMsgId })
+                        });
+                    } catch {}
+                }
+            }
         }
 
         return NextResponse.json({ 
             success: true, 
-            message: wasPaid 
-                ? 'Kharashka waa la tirtiray, lacagtiina waa loo soo celiyay koontada!' 
-                : 'Codsiga waa la tirtiray (Rasiid ma lahayn maadaama aan la bixin)!' 
+            message: 'Diiwaankii & Fariintii Telegram-ka toos ayaa loo tirtiray!' 
         });
     } catch (error: any) {
         console.error('Error deleting expense:', error);
