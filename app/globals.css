@@ -136,3 +136,89 @@
 section {
   scroll-margin-top: 80px;
 }
+
+/* Telegram Mini App adaptive theme --------------------------------------- */
+.telegram-mini-app {
+  --mini-bg: #07111f;
+  --mini-surface: rgba(15, 23, 42, 0.88);
+  --mini-surface-soft: rgba(30, 41, 59, 0.72);
+  --mini-text: #f8fafc;
+  --mini-muted: #94a3b8;
+  --mini-border: rgba(255, 255, 255, 0.13);
+  color-scheme: dark;
+}
+
+.telegram-mini-app[data-theme="light"] {
+  --mini-bg: #f4f7fb;
+  --mini-surface: rgba(255, 255, 255, 0.94);
+  --mini-surface-soft: rgba(241, 245, 249, 0.92);
+  --mini-text: #0f172a;
+  --mini-muted: #64748b;
+  --mini-border: rgba(15, 23, 42, 0.12);
+  color-scheme: light;
+  background: var(--tg-theme-bg-color, var(--mini-bg)) !important;
+  color: var(--tg-theme-text-color, var(--mini-text)) !important;
+}
+
+.telegram-mini-app[data-theme="light"] [class*="bg-slate-950"],
+.telegram-mini-app[data-theme="light"] [class*="bg-slate-900"],
+.telegram-mini-app[data-theme="light"] [class*="bg-slate-800"],
+.telegram-mini-app[data-theme="light"] [class*="bg-black/"] {
+  background-color: var(--mini-surface) !important;
+}
+
+.telegram-mini-app[data-theme="light"] [class*="from-slate-950"],
+.telegram-mini-app[data-theme="light"] [class*="from-slate-900"],
+.telegram-mini-app[data-theme="light"] [class*="via-slate-950"],
+.telegram-mini-app[data-theme="light"] [class*="via-slate-900"] {
+  background-image: none !important;
+  background-color: var(--mini-surface) !important;
+}
+
+.telegram-mini-app[data-theme="light"] [class*="bg-white/5"],
+.telegram-mini-app[data-theme="light"] [class*="bg-white/[0.0"] {
+  background-color: var(--mini-surface-soft) !important;
+}
+
+.telegram-mini-app[data-theme="light"] .text-white,
+.telegram-mini-app[data-theme="light"] [class*="text-white/"] {
+  color: var(--mini-text) !important;
+}
+
+.telegram-mini-app[data-theme="light"] .text-slate-200,
+.telegram-mini-app[data-theme="light"] .text-slate-300 {
+  color: #334155 !important;
+}
+
+.telegram-mini-app[data-theme="light"] .text-slate-400,
+.telegram-mini-app[data-theme="light"] .text-slate-500,
+.telegram-mini-app[data-theme="light"] .text-slate-600 {
+  color: var(--mini-muted) !important;
+}
+
+.telegram-mini-app[data-theme="light"] [class*="border-white/"],
+.telegram-mini-app[data-theme="light"] [class*="border-slate-900"] {
+  border-color: var(--mini-border) !important;
+}
+
+.telegram-mini-app[data-theme="light"] input,
+.telegram-mini-app[data-theme="light"] textarea,
+.telegram-mini-app[data-theme="light"] select,
+.telegram-mini-app[data-theme="light"] option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
+}
+
+.telegram-mini-app[data-theme="light"] input::placeholder,
+.telegram-mini-app[data-theme="light"] textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+.telegram-mini-app[data-theme="light"] [class*="fixed"][class*="bg-slate-950"] {
+  background-color: rgba(15, 23, 42, 0.28) !important;
+}
+
+.telegram-mini-app[data-theme="light"] [class*="shadow-[0_0"] {
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12) !important;
+}

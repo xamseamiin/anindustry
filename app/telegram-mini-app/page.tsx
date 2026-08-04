@@ -158,6 +158,7 @@ const CustomAlertModal = ({ isOpen, onClose, type = 'error', title, message }: a
 };
 
 export default function TelegramMiniAppPage() {
+    const [appTheme, setAppTheme] = useState<'light' | 'dark'>('dark');
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [success, setSuccess] = useState(false);
@@ -705,6 +706,25 @@ export default function TelegramMiniAppPage() {
             alert(`✅ ${successCount} Codsiyaad offline ahaa oo la keydiyay si otomaatig ah ayaa loo diray!`);
         }
     };
+
+    useEffect(() => {
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        const syncTheme = () => {
+            const telegramScheme = (window as any).Telegram?.WebApp?.colorScheme;
+            const resolvedTheme = telegramScheme === 'light' || telegramScheme === 'dark' ? telegramScheme : (media.matches ? 'dark' : 'light');
+            setAppTheme(resolvedTheme);
+            document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
+            document.documentElement.style.colorScheme = resolvedTheme;
+        };
+        syncTheme();
+        media.addEventListener?.('change', syncTheme);
+        const telegram = (window as any).Telegram?.WebApp;
+        telegram?.onEvent?.('themeChanged', syncTheme);
+        return () => {
+            media.removeEventListener?.('change', syncTheme);
+            telegram?.offEvent?.('themeChanged', syncTheme);
+        };
+    }, []);
 
     useEffect(() => {
         const handleOnline = () => {
@@ -1268,7 +1288,7 @@ export default function TelegramMiniAppPage() {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--tg-theme-bg-color,#0f172a)] text-[var(--tg-theme-text-color,#ffffff)] gap-3 p-6">
+            <div data-theme={appTheme} className="telegram-mini-app flex flex-col items-center justify-center min-h-screen bg-[var(--tg-theme-bg-color,#0f172a)] text-[var(--tg-theme-text-color,#ffffff)] gap-3 p-6">
                 <TelegramScripts />
                 <Loader2 className="animate-spin text-[var(--tg-theme-button-color,#2563eb)]" size={28} />
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--tg-theme-hint-color,#64748b)] animate-pulse">Diiwaangelinta waa la furayaa...</p>
@@ -1308,7 +1328,7 @@ export default function TelegramMiniAppPage() {
 
     if (success) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--tg-theme-bg-color,#0f172a)] text-[var(--tg-theme-text-color,#ffffff)] gap-6 p-6 text-center">
+            <div data-theme={appTheme} className="telegram-mini-app flex flex-col items-center justify-center min-h-screen bg-[var(--tg-theme-bg-color,#0f172a)] text-[var(--tg-theme-text-color,#ffffff)] gap-6 p-6 text-center">
                 <TelegramScripts />
                 <div className="p-4 bg-gradient-to-tr from-emerald-500 to-green-400 text-white rounded-full shadow-[0_0_20px_rgba(16,185,129,0.2)] animate-bounce">
                     <CheckCircle2 size={36} />
@@ -1343,7 +1363,7 @@ export default function TelegramMiniAppPage() {
     }
 
     return (
-        <div className="min-h-screen bg-[var(--tg-theme-bg-color,#0b0f19)] text-[var(--tg-theme-text-color,#ffffff)] font-sans selection:bg-blue-500/20 pb-8 pt-4 px-4 relative overflow-x-hidden">
+        <div data-theme={appTheme} className="telegram-mini-app min-h-screen bg-[var(--tg-theme-bg-color,#0b0f19)] text-[var(--tg-theme-text-color,#ffffff)] font-sans selection:bg-blue-500/20 pb-8 pt-4 px-4 relative overflow-x-hidden transition-colors duration-300">
             <TelegramScripts />
 
             <div className="max-w-md mx-auto flex flex-col gap-4">
