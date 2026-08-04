@@ -1547,7 +1547,10 @@ export default function TelegramMiniAppPage() {
                                                     {/* Balance Column */}
                                                     <div className="flex items-center justify-end gap-1.5">
                                                         <span className="text-xs font-black text-white">
-                                                            {(activeAccount ? Number(activeAccount.balance) : 100000).toLocaleString()}
+                                                            {Number(exp.runningBalance).toLocaleString(undefined, {
+                                                                minimumFractionDigits: 2,
+                                                                maximumFractionDigits: 2
+                                                            })}
                                                         </span>
                                                         <ArrowRight size={12} className="text-slate-400" />
                                                     </div>

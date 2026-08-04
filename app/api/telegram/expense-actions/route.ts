@@ -72,8 +72,6 @@ export async function PUT(request: Request) {
 
         const oldAmount = Number(existingExpense.amount);
         const newAmount = amount !== undefined ? parseFloat(amount) : oldAmount;
-        const diff = newAmount - oldAmount;
-
         const targetAccountId = accountId || existingExpense.accountId;
 
         // Reconstruct note with preserved tags
@@ -87,14 +85,38 @@ export async function PUT(request: Request) {
         if (paymentPhone) finalNote += `\n[PaymentPhone: ${paymentPhone}]`;
         if (recipientName) finalNote += `\n[RecipientName: ${recipientName}]`;
 
-        const wasPaid = existingExpense.approved || existingExpense.paymentStatus === 'PAID' || !!existingExpense.receiptUrl;
-
         // Update in transaction
         const updatedExpense = await prisma.$transaction(async (tx) => {
-            if (targetAccountId && diff !== 0 && wasPaid) {
-                await tx.account.update({
-                    where: { id: targetAccountId },
-                    data: { balance: { decrement: diff } }
+            // A balance changes only when a real payment transaction exists. Approval by
+            // itself does not mean money left the account.
+            const paymentTransactions = await tx.transaction.findMany({
+                where: { expenseId: id, type: { in: ['EXPENSE', 'DEBT_REPAID'] } }
+            });
+
+            for (const payment of paymentTransactions) {
+                const oldPaymentAccountId = payment.accountId;
+                const oldPaymentAmount = Math.abs(Number(payment.amount));
+
+                if (oldPaymentAccountId) {
+                    await tx.account.update({
+                        where: { id: oldPaymentAccountId },
+                        data: { balance: { increment: oldPaymentAmount } }
+                    });
+                }
+                if (targetAccountId) {
+                    await tx.account.update({
+                        where: { id: targetAccountId },
+                        data: { balance: { decrement: newAmount } }
+                    });
+                }
+
+                await tx.transaction.update({
+                    where: { id: payment.id },
+                    data: {
+                        amount: newAmount,
+                        accountId: targetAccountId,
+                        description: finalNote || payment.description
+                    }
                 });
             }
 
@@ -191,29 +213,54 @@ export async function DELETE(request: Request) {
             });
         }
 
-        const refundAmount = expense ? Number(expense.amount) : (transaction ? Number(transaction.amount) : 0);
-        const accountIdToRefund = expense?.accountId || transaction?.accountId;
         const targetChatId = expense?.telegramChatId || defaultChatId;
         const targetMsgId = expense?.telegramMessageId;
-        const wasPaid = expense ? (expense.approved || expense.paymentStatus === 'PAID' || !!expense.receiptUrl) : true;
 
         // Perform deletion in transaction
         await prisma.$transaction(async (tx) => {
-            if (transaction) {
-                await tx.transaction.delete({ where: { id: transaction.id } });
+            const transactionsToDelete = expense
+                ? await tx.transaction.findMany({ where: { expenseId: expense.id } })
+                : (transaction ? [transaction] : []);
+
+            // Reverse only actual ledger entries. Previously an approved expense without
+            // a receipt/payment transaction was refunded, creating money in the account.
+            for (const ledgerEntry of transactionsToDelete) {
+                const amount = Math.abs(Number(ledgerEntry.amount));
+                const isOutflow = ['EXPENSE', 'DEBT_GIVEN', 'TRANSFER_OUT', 'SALARY'].includes(ledgerEntry.type)
+                    || (ledgerEntry.type === 'DEBT_REPAID' && (!!ledgerEntry.vendorId || !!ledgerEntry.expenseId));
+                const isInflow = ['INCOME', 'DEBT_TAKEN', 'DEBT_RECEIVED', 'TRANSFER_IN', 'SHAREHOLDER_DEPOSIT'].includes(ledgerEntry.type);
+
+                if (ledgerEntry.accountId && isOutflow) {
+                    await tx.account.update({
+                        where: { id: ledgerEntry.accountId },
+                        data: { balance: { increment: amount } }
+                    });
+                } else if (ledgerEntry.accountId && isInflow) {
+                    await tx.account.update({
+                        where: { id: ledgerEntry.accountId },
+                        data: { balance: { decrement: amount } }
+                    });
+                } else if (!ledgerEntry.accountId) {
+                    if (ledgerEntry.fromAccountId) {
+                        await tx.account.update({
+                            where: { id: ledgerEntry.fromAccountId },
+                            data: { balance: { increment: amount } }
+                        });
+                    }
+                    if (ledgerEntry.toAccountId) {
+                        await tx.account.update({
+                            where: { id: ledgerEntry.toAccountId },
+                            data: { balance: { decrement: amount } }
+                        });
+                    }
+                }
             }
 
             if (expense) {
                 await tx.transaction.deleteMany({ where: { expenseId: expense.id } });
                 await tx.expense.delete({ where: { id: expense.id } });
-            }
-
-            // Refund balance if account exists and amount was paid
-            if (accountIdToRefund && wasPaid && refundAmount > 0) {
-                await tx.account.update({
-                    where: { id: accountIdToRefund },
-                    data: { balance: { increment: refundAmount } }
-                });
+            } else if (transaction) {
+                await tx.transaction.delete({ where: { id: transaction.id } });
             }
         });
 

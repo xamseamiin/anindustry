@@ -217,7 +217,18 @@ export async function GET(request: Request) {
             }
         ];
 
-        const combinedList = [...mappedExpenses, ...mappedDeposits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        // Calculate the balance after every entry in chronological order, then return
+        // newest first for the UI. This keeps each row's historical balance stable even
+        // when the user searches or filters the already-calculated list.
+        let runningBalance = 0;
+        const combinedList = [...mappedExpenses, ...mappedDeposits]
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+            .map(entry => {
+                const amount = Math.abs(Number(entry.amount));
+                runningBalance += entry.isDeposit || entry.type === 'DEPOSIT' ? amount : -amount;
+                return { ...entry, runningBalance };
+            })
+            .reverse();
 
         return NextResponse.json({
             success: true,

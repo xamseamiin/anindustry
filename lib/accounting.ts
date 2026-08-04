@@ -45,6 +45,7 @@ export async function recalculateAccountBalance(accountId: string, upToDate?: Da
 
         const isStandardIn = [
             'INCOME',
+            'DEBT_TAKEN',
             'DEBT_RECEIVED',
             'TRANSFER_IN',
             'SHAREHOLDER_DEPOSIT'
@@ -53,7 +54,6 @@ export async function recalculateAccountBalance(accountId: string, upToDate?: Da
         const isStandardOut = [
             'EXPENSE',
             'DEBT_GIVEN',
-            'DEBT_TAKEN',
             'TRANSFER_OUT',
             'SALARY'
         ].includes(trx.type) || (trx.type === 'DEBT_REPAID' && (!!trx.vendorId || !!trx.expenseId || (trx.description && trx.description.includes('Flipped to Outflow'))));
