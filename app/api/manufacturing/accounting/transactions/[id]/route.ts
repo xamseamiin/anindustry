@@ -367,6 +367,26 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
                 where: { id: params.id }
             });
 
+            // Salary totals are denormalized on Employee. Keep that cached value in
+            // sync when a salary/advance transaction is deleted directly.
+            if (existingTransaction.employeeId) {
+                const employee = await tx.employee.findUnique({
+                    where: { id: existingTransaction.employeeId },
+                    select: { salaryPaidThisMonth: true }
+                });
+                if (employee) {
+                    await tx.employee.update({
+                        where: { id: existingTransaction.employeeId },
+                        data: {
+                            salaryPaidThisMonth: Math.max(
+                                0,
+                                Number(employee.salaryPaidThisMonth || 0) - amount
+                            )
+                        }
+                    });
+                }
+            }
+
             // Reverse sibling transaction balance and delete it if exists
             if (siblingTransaction) {
                 const sibType = siblingTransaction.type;
@@ -388,6 +408,24 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
                 await tx.transaction.delete({
                     where: { id: siblingTransaction.id }
                 });
+
+                if (siblingTransaction.employeeId && siblingTransaction.employeeId !== existingTransaction.employeeId) {
+                    const siblingEmployee = await tx.employee.findUnique({
+                        where: { id: siblingTransaction.employeeId },
+                        select: { salaryPaidThisMonth: true }
+                    });
+                    if (siblingEmployee) {
+                        await tx.employee.update({
+                            where: { id: siblingTransaction.employeeId },
+                            data: {
+                                salaryPaidThisMonth: Math.max(
+                                    0,
+                                    Number(siblingEmployee.salaryPaidThisMonth || 0) - sibAmount
+                                )
+                            }
+                        });
+                    }
+                }
             }
         });
 

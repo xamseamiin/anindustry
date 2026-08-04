@@ -352,10 +352,21 @@ export async function DELETE(req: Request) {
 
             // D. If the expense is associated with an employee, decrement their salaryPaidThisMonth stats
             if (expense.employeeId) {
-                await tx.employee.update({
+                const employee = await tx.employee.findUnique({
                     where: { id: expense.employeeId },
-                    data: { salaryPaidThisMonth: { decrement: Number(expense.amount) } }
+                    select: { salaryPaidThisMonth: true }
                 });
+                if (employee) {
+                    await tx.employee.update({
+                        where: { id: expense.employeeId },
+                        data: {
+                            salaryPaidThisMonth: Math.max(
+                                0,
+                                Number(employee.salaryPaidThisMonth || 0) - Number(expense.amount)
+                            )
+                        }
+                    });
+                }
             }
 
             // C. Delete the expense record

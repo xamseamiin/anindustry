@@ -274,8 +274,44 @@ export async function DELETE(request: Request) {
             if (expense) {
                 await tx.transaction.deleteMany({ where: { expenseId: expense.id } });
                 await tx.expense.delete({ where: { id: expense.id } });
+
+                if (expense.employeeId) {
+                    const employee = await tx.employee.findUnique({
+                        where: { id: expense.employeeId },
+                        select: { salaryPaidThisMonth: true }
+                    });
+                    if (employee) {
+                        await tx.employee.update({
+                            where: { id: expense.employeeId },
+                            data: {
+                                salaryPaidThisMonth: Math.max(
+                                    0,
+                                    Number(employee.salaryPaidThisMonth || 0) - Number(expense.amount)
+                                )
+                            }
+                        });
+                    }
+                }
             } else if (transaction) {
                 await tx.transaction.delete({ where: { id: transaction.id } });
+
+                if (transaction.employeeId) {
+                    const employee = await tx.employee.findUnique({
+                        where: { id: transaction.employeeId },
+                        select: { salaryPaidThisMonth: true }
+                    });
+                    if (employee) {
+                        await tx.employee.update({
+                            where: { id: transaction.employeeId },
+                            data: {
+                                salaryPaidThisMonth: Math.max(
+                                    0,
+                                    Number(employee.salaryPaidThisMonth || 0) - Number(transaction.amount)
+                                )
+                            }
+                        });
+                    }
+                }
             }
         });
 
