@@ -1139,6 +1139,36 @@ async function handleUpdate(update) {
             return;
         }
 
+        // Auto-fallback: If a photo is uploaded in chat, but no state is set (or state.step is not WAIT_CASHIER_RECEIPT), check DB for recent unpaid/pending expense
+        if (message.photo && message.photo.length > 0 && (!state || state.step !== 'WAIT_CASHIER_RECEIPT')) {
+            try {
+                const latestUnpaidExpense = await prisma.expense.findFirst({
+                    where: {
+                        companyId,
+                        OR: [
+                            { receiptUrl: '' },
+                            { receiptUrl: null },
+                            { paymentStatus: 'UNPAID' }
+                        ]
+                    },
+                    orderBy: { createdAt: 'desc' }
+                });
+
+                if (latestUnpaidExpense) {
+                    userStates[stateKey] = {
+                        messageId: null,
+                        step: 'WAIT_CASHIER_RECEIPT',
+                        ownerId: userId,
+                        ownerName: user,
+                        data: { expenseId: latestUnpaidExpense.id }
+                    };
+                    state = userStates[stateKey];
+                }
+            } catch (fallbackErr) {
+                console.error('Error finding DB fallback expense for receipt photo:', fallbackErr);
+            }
+        }
+
         // Handle Conversational Steps
         if (state) {
             // Delete user's incoming message to keep the group chat pristine (non-blocking)
