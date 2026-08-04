@@ -51,6 +51,7 @@ interface BatchItem {
     rentalPeriod?: string;
     consultantName?: string;
     consultancyType?: string;
+    billType?: string;
 }
 
 const triggerHaptic = (type: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection') => {
@@ -223,6 +224,7 @@ export default function TelegramMiniAppPage() {
     // Notification Modal & Sound/Vibration Helper
     const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [transportType, setTransportType] = useState('');
+    const [billType, setBillType] = useState('');
 
     const playNotificationSoundAndVibrate = () => {
         try {
@@ -394,6 +396,7 @@ export default function TelegramMiniAppPage() {
         setRecipientName(exp.recipientName || '');
         setPaymentPhone(exp.paymentPhone || '');
         setTransportType(categoryName === 'Transport & Fuel' ? (structuredMatch?.[2] || '') : '');
+        setBillType(categoryName === 'Bills' ? (exp.subCategory || structuredMatch?.[2] || '') : '');
         setEquipmentName(categoryName === 'Equipment Rental' ? (structuredMatch?.[2] || '') : '');
         setRentalPeriod('');
         setConsultantName(categoryName === 'Consultancy & Service' ? (structuredMatch?.[2] || '') : '');
@@ -550,7 +553,8 @@ export default function TelegramMiniAppPage() {
             equipmentName: equipmentName || undefined,
             rentalPeriod: rentalPeriod || undefined,
             consultantName: consultantName || undefined,
-            consultancyType: consultancyType || undefined
+            consultancyType: consultancyType || undefined,
+            billType: billType || undefined
         };
 
         if (recipientName && paymentPhone) {
@@ -574,6 +578,7 @@ export default function TelegramMiniAppPage() {
         setRentalPeriod('');
         setConsultantName('');
         setConsultancyType('');
+        setBillType('');
         setShowSavedContacts(false);
     };
 
@@ -913,7 +918,8 @@ export default function TelegramMiniAppPage() {
                         equipmentName,
                         rentalPeriod,
                         consultantName,
-                        consultancyType
+                        consultancyType,
+                        billType
                     })
                 });
                 const data = await res.json();
@@ -962,6 +968,7 @@ export default function TelegramMiniAppPage() {
                 if (item.rentalPeriod) formData.append('rentalPeriod', item.rentalPeriod);
                 if (item.consultantName) formData.append('consultantName', item.consultantName);
                 if (item.consultancyType) formData.append('consultancyType', item.consultancyType);
+                if (item.billType) formData.append('billType', item.billType);
                 formData.append('requesterName', requesterName);
                 formData.append('requesterId', requesterId);
 
@@ -1058,6 +1065,8 @@ export default function TelegramMiniAppPage() {
                 } else if (selectedCategoryName === 'Consultancy & Service') {
                     payload.consultantName = consultantName;
                     payload.consultancyType = consultancyType;
+                } else if (selectedCategoryName === 'Bills') {
+                    payload.billType = billType;
                 }
             }
 
@@ -1113,6 +1122,8 @@ export default function TelegramMiniAppPage() {
                 } else if (selectedCategoryName === 'Consultancy & Service') {
                     formData.append('consultantName', consultantName);
                     formData.append('consultancyType', consultancyType);
+                } else if (selectedCategoryName === 'Bills') {
+                    formData.append('billType', billType);
                 }
             }
 
@@ -1970,6 +1981,27 @@ export default function TelegramMiniAppPage() {
                         {/* --- TAB 3: GENERAL EXPENSE --- */}
                         {isExpense && (
                             <div className="flex flex-col gap-3 animate-fade-in">
+                                {selectedCategoryName === 'Bills' && (
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                            <FileText size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Nooca Biilka / Fee-ga
+                                        </label>
+                                        <select required value={billType} onChange={(e) => setBillType(e.target.value)}
+                                            className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                                        >
+                                            <option value="" className="bg-slate-950">Dooro nooca biilka...</option>
+                                            <option value="WiFi / Internet" className="bg-slate-950">WiFi / Internet</option>
+                                            <option value="Electricity" className="bg-slate-950">Koronto (Electricity)</option>
+                                            <option value="Cloud / Hosting" className="bg-slate-950">Cloud / Hosting</option>
+                                            <option value="Water" className="bg-slate-950">Biyo (Water)</option>
+                                            <option value="Telephone / Mobile" className="bg-slate-950">Telephone / Mobile</option>
+                                            <option value="Software Subscription" className="bg-slate-950">Software Subscription</option>
+                                            <option value="Bank / Transfer Fee" className="bg-slate-950">Bank / Transfer Fee</option>
+                                            <option value="Government Fee / Tax" className="bg-slate-950">Government Fee / Tax</option>
+                                            <option value="Other Service Fee" className="bg-slate-950">Fee Kale</option>
+                                        </select>
+                                    </div>
+                                )}
                                 {selectedCategoryName === 'Transport & Fuel' && (
                                     <div className="flex flex-col gap-1.5">
                                         <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">

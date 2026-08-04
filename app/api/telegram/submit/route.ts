@@ -107,6 +107,7 @@ export async function POST(request: Request) {
         const rentalPeriod = formData.get('rentalPeriod') as string;
         const consultantName = formData.get('consultantName') as string;
         const consultancyType = formData.get('consultancyType') as string;
+        const billType = formData.get('billType') as string;
 
         // Payment recipient fields
         let paymentPhone = formData.get('paymentPhone') as string || '';
@@ -355,6 +356,8 @@ export async function POST(request: Request) {
                     finalDescription = `${category.name} (${equipmentName} - ${rentalPeriod || ''}): ${note}`;
                 } else if (finalCategoryName === 'Consultancy & Service' && consultantName) {
                     finalDescription = `${category.name} (${consultantName} - ${consultancyType || ''}): ${note}`;
+                } else if (finalCategoryName === 'Bills' && billType) {
+                    finalDescription = `${category.name} (${billType}): ${note}`;
                 } else {
                     finalDescription = `${category.name}: ${note}`;
                 }
@@ -383,7 +386,8 @@ export async function POST(request: Request) {
                     equipmentName: equipmentName || null,
                     rentalPeriod: rentalPeriod || null,
                     consultantName: consultantName || null,
-                    consultancyType: consultancyType || null
+                    consultancyType: consultancyType || null,
+                    subCategory: billType || null
                 }
             });
 
@@ -586,6 +590,8 @@ export async function POST(request: Request) {
                     customFieldsText = `⚙️ Qalabka: ${equipmentName}\n📅 Muddada Kirada: ${rentalPeriod || ''}\n`;
                 } else if (result.categoryName === 'Consultancy & Service' && consultantName) {
                     customFieldsText = `👤 La-taliyaha: ${consultantName}\n📋 Adeegga: ${consultancyType || ''}\n`;
+                } else if (result.categoryName === 'Bills' && billType) {
+                    customFieldsText = `🧾 Nooca Biilka: ${billType}\n`;
                 }
 
                 if (result.isPaid) {

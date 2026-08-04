@@ -57,7 +57,7 @@ export async function PUT(request: Request) {
         const body = await request.json();
         const {
             id, amount, note, paymentPhone, recipientName, categoryId, accountId, receiptUrl,
-            transportType, equipmentName, rentalPeriod, consultantName, consultancyType
+            transportType, equipmentName, rentalPeriod, consultantName, consultancyType, billType
         } = body;
 
         if (!id) {
@@ -138,6 +138,8 @@ export async function PUT(request: Request) {
             } else if (categoryName === 'Consultancy & Service') {
                 const detail = [consultantName, consultancyType].filter(Boolean).join(' - ');
                 description = `Consultancy & Service${detail ? ` (${detail})` : ''}: ${note || ''}`.trim();
+            } else if (categoryName === 'Bills') {
+                description = `Bills${billType ? ` (${billType})` : ''}: ${note || ''}`.trim();
             }
 
             return await tx.expense.update({
@@ -148,6 +150,7 @@ export async function PUT(request: Request) {
                     categoryId: categoryId || existingExpense.categoryId,
                     category: categoryName,
                     description,
+                    subCategory: billType || existingExpense.subCategory,
                     accountId: targetAccountId,
                     receiptUrl: receiptUrl !== undefined ? receiptUrl : existingExpense.receiptUrl
                 },

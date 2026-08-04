@@ -112,6 +112,7 @@ export async function GET(request: Request) {
                 amount: Number(e.amount),
                 category: e.category || e.expenseCategory?.name || 'General',
                 categoryId: e.categoryId,
+                subCategory: e.subCategory,
                 accountId: e.accountId,
                 accountName: e.account?.name || 'E-Birr Merchant',
                 expenseDate: e.expenseDate.toISOString(),
