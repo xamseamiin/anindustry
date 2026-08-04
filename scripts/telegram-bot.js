@@ -101,6 +101,19 @@ function getRequesterName(from) {
     return username ? `${fullName} (${username})` : fullName;
 }
 
+const FINANCIAL_ADMIN_IDS = new Set(['1836408854', '8230473166']);
+const FINANCIAL_ADMIN_USERNAMES = new Set(['hamsemoalin', 'abdehakimmumin']);
+
+function isFinancialAdmin(from) {
+    if (!from) return false;
+    const id = String(from.id || '');
+    const username = String(from.username || '').trim().toLowerCase().replace(/^@/, '');
+    const fullName = `${from.first_name || ''} ${from.last_name || ''}`.trim().toLowerCase();
+    return FINANCIAL_ADMIN_IDS.has(id) || FINANCIAL_ADMIN_USERNAMES.has(username) ||
+        fullName.includes('hamse moalin') || fullName.includes('hamze amiin') ||
+        fullName.includes('abdehakim mumin');
+}
+
 function cleanNoteForTelegram(rawNote) {
     if (!rawNote) return '';
     return rawNote
@@ -320,6 +333,89 @@ async function handleUpdate(update) {
         const chatId = query.message.chat.id;
         const userId = query.from.id;
         const data = query.data;
+
+        // Manager approval buttons are attached to the original request message.
+        // Keep that same message in place and turn it into the receipt-upload state.
+        if (data.startsWith('approve_exp_') || data.startsWith('reject_exp_')) {
+            if (!isFinancialAdmin(query.from)) {
+                await sendBotRequest('answerCallbackQuery', {
+                    callback_query_id: query.id,
+                    text: 'Approve/Reject waxaa loo oggol yahay Hamse Moalin iyo Abdihakim Mumin oo keliya.',
+                    show_alert: true
+                });
+                return;
+            }
+
+            const isApprove = data.startsWith('approve_exp_');
+            const expenseId = data.substring(isApprove ? 12 : 11);
+            const expense = await prisma.expense.findUnique({
+                where: { id: expenseId },
+                include: { employee: true, account: true }
+            });
+
+            if (!expense) {
+                await sendBotRequest('answerCallbackQuery', {
+                    callback_query_id: query.id,
+                    text: 'Diiwaanka kharashkan lama helin.',
+                    show_alert: true
+                });
+                return;
+            }
+
+            const approver = getRequesterName(query.from);
+            const metadata = parseMetadata(expense.note || '');
+            const formattedDate = new Date(expense.expenseDate || expense.createdAt)
+                .toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
+
+            if (isApprove) {
+                await prisma.expense.update({
+                    where: { id: expenseId },
+                    data: { approved: true, paymentStatus: 'APPROVED_AWAITING_RECEIPT' }
+                });
+
+                const approvedText = `<b>AN-Industory</b>\n` +
+                    `<b>✅ Codsiga ${expense.employeeId ? 'Mushaharka' : 'Kharashka'} (Waa la Oggolaaday)</b>\n\n` +
+                    (metadata.requesterName ? `👥 Soo Dalbay: ${metadata.requesterName}\n` : '') +
+                    (expense.employee ? `👤 Shaqaalaha: ${expense.employee.fullName}\n` : `📂 Qaybta: ${expense.category}\n`) +
+                    `💵 Lacagta la fasaxay: ${Number(expense.amount).toLocaleString()} ETB\n` +
+                    (metadata.paymentPhone ? `📱 Lambarka: ${metadata.paymentPhone}\n` : '') +
+                    `💳 Koontada: ${expense.paidFrom}${expense.account ? ` (Haraa: ${Number(expense.account.balance).toLocaleString()} ETB)` : ''}\n` +
+                    `📝 Sharaxaad: ${cleanNoteForTelegram(expense.note || '')}\n` +
+                    `📅 Taariikhda: ${formattedDate}\n` +
+                    `✍️ Oggolaaday: ${approver}\n\n` +
+                    `⏳ Lacagta waa la fasaxay. Ku dhufo badhanka hoose, kadibna soo geli sawirka rasiidka.`;
+
+                await sendBotRequest('editMessageText', {
+                    chat_id: chatId,
+                    message_id: query.message.message_id,
+                    text: approvedText,
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: '➕ Gali Rasiidka (Upload Receipt)', callback_data: `rcpt_${expenseId}` }
+                        ]]
+                    }
+                });
+                await sendBotRequest('answerCallbackQuery', {
+                    callback_query_id: query.id,
+                    text: '✅ Dalabka waa la oggolaaday; hadda rasiidka waa la gelin karaa.'
+                });
+            } else {
+                await prisma.expense.delete({ where: { id: expenseId } });
+                await sendBotRequest('editMessageText', {
+                    chat_id: chatId,
+                    message_id: query.message.message_id,
+                    text: `<b>AN-Industory</b>\n<b>🛑 DALABKA WAA LA DIIDAY</b>\n\n💵 Lacagta: ${Number(expense.amount).toLocaleString()} ETB\n✍️ Diiday: ${approver}`,
+                    parse_mode: 'HTML',
+                    reply_markup: { inline_keyboard: [] }
+                });
+                await sendBotRequest('answerCallbackQuery', {
+                    callback_query_id: query.id,
+                    text: 'Dalabka waa la diiday.'
+                });
+            }
+            return;
+        }
 
         // 1.1 Handle Dashboard/Menu Button Clicks (Public)
         if (data.startsWith('menu_')) {
