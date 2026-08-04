@@ -203,6 +203,7 @@ export default function TelegramMiniAppPage() {
     const [requesterName, setRequesterName] = useState('WebApp User');
     const [requesterId, setRequesterId] = useState('');
     const [requesterUsername, setRequesterUsername] = useState('');
+    const [telegramInitData, setTelegramInitData] = useState('');
     const [telegramPhotoUrl, setTelegramPhotoUrl] = useState('');
     const [profileData, setProfileData] = useState<any>(null);
     const [showTelegramId, setShowTelegramId] = useState(false);
@@ -216,8 +217,13 @@ export default function TelegramMiniAppPage() {
         defaultAccount: ''
     });
     const profilePreferencesRef = useRef(profilePreferences);
-    // Manager authorization check (Abdehakim & Hamze Amiin for testing)
-    const isManager = requesterUsername.toLowerCase() === 'abdehakimmumin' || requesterName.toLowerCase().includes('abdehakim') || requesterUsername.toLowerCase() === 'hamsemoalin' || requesterName.toLowerCase().includes('hamze') || String(requesterId) === '748392019';
+    // Only the two designated Telegram identities are financial admins.
+    const normalizedRequesterName = requesterName.toLowerCase();
+    const normalizedRequesterUsername = requesterUsername.toLowerCase().replace(/^@/, '');
+    const isManager = ['1836408854', '8230473166'].includes(String(requesterId)) ||
+        ['hamsemoalin', 'abdehakimmumin'].includes(normalizedRequesterUsername) ||
+        normalizedRequesterName.includes('hamse moalin') || normalizedRequesterName.includes('hamze amiin') ||
+        normalizedRequesterName.includes('abdehakim mumin');
     const effectiveIsManager = profileData?.permissions?.approve ?? isManager;
 
     // Tab 1: Salary Fields
@@ -745,6 +751,7 @@ export default function TelegramMiniAppPage() {
                 try { webapp.expand(); } catch(e) {}
                 
                 const tgInitData = webapp.initDataUnsafe;
+                if (webapp.initData) setTelegramInitData(webapp.initData);
                 if (tgInitData?.chat?.id) {
                     setChatId(tgInitData.chat.id.toString());
                 }
@@ -1557,7 +1564,7 @@ export default function TelegramMiniAppPage() {
                                                             const res = await fetch('/api/telegram/expense-actions', {
                                                                 method: 'POST',
                                                                 headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ id: exp.id, action: 'approve', managerName: requesterName })
+                                                                body: JSON.stringify({ id: exp.id, action: 'approve', managerName: requesterName, initData: telegramInitData })
                                                             });
                                                             const data = await res.json();
                                                             if (data.success) {
@@ -1577,7 +1584,7 @@ export default function TelegramMiniAppPage() {
                                                             const res = await fetch('/api/telegram/expense-actions', {
                                                                 method: 'POST',
                                                                 headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ id: exp.id, action: 'reject', managerName: requesterName })
+                                                                body: JSON.stringify({ id: exp.id, action: 'reject', managerName: requesterName, initData: telegramInitData })
                                                             });
                                                             const data = await res.json();
                                                             if (data.success) {

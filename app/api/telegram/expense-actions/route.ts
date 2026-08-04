@@ -1,6 +1,7 @@
 // app/api/telegram/expense-actions/route.ts
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -350,10 +351,15 @@ export async function POST(request: Request) {
         const token = process.env.TELEGRAM_BOT_TOKEN;
         const defaultChatId = process.env.TELEGRAM_CHAT_ID;
         const body = await request.json();
-        const { id, action, managerName } = body; // action: 'approve' | 'reject'
+        const { id, action, managerName, initData } = body; // action: 'approve' | 'reject'
 
         if (!id || !action) {
             return NextResponse.json({ error: 'Expense ID and action are required' }, { status: 400 });
+        }
+
+        const verifiedManager = verifyTelegramInitData(initData || '');
+        if (!verifiedManager || !isTelegramFinancialAdmin(verifiedManager)) {
+            return NextResponse.json({ error: 'Approve/Reject waxaa loo oggol yahay Hamse Moalin iyo Abdihakim Mumin oo keliya.' }, { status: 403 });
         }
 
         const expense = await prisma.expense.findUnique({

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { isTelegramFinancialAdmin } from '@/lib/telegram-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
 
         const params = new URL(request.url).searchParams;
         const telegramId = params.get('telegramId') || '';
+        const username = params.get('username') || '';
         const name = (params.get('name') || '').replace(/\s*\(@[^)]+\)\s*$/, '').trim();
         const firstName = name.split(/\s+/)[0] || '';
 
@@ -72,7 +74,14 @@ export async function GET(request: Request) {
             .filter(e => e.createdAt >= monthStart)
             .reduce((sum, e) => sum + Number(e.amount), 0);
 
-        const role = user?.role || 'MEMBER';
+        const nameParts = name.split(/\s+/);
+        const isFinancialAdmin = isTelegramFinancialAdmin({
+            id: telegramId,
+            username,
+            first_name: nameParts[0],
+            last_name: nameParts.slice(1).join(' ')
+        });
+        const role = isFinancialAdmin ? 'ADMIN' : 'MEMBER';
         return NextResponse.json({
             success: true,
             profile: {
