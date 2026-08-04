@@ -41,24 +41,23 @@ export async function GET(request: Request) {
             }
         }
 
-        const ebirrAccountId = 'e2124894-d151-432d-90c4-9e5025b71fb9';
+        const ebirrAccount = await prisma.account.findFirst({
+            where: {
+                companyId,
+                name: { equals: 'E-Birr Merchant', mode: 'insensitive' }
+            },
+            select: { id: true, name: true, balance: true }
+        });
+        if (!ebirrAccount) {
+            return NextResponse.json({ error: 'E-Birr Merchant account not found' }, { status: 404 });
+        }
+        const ebirrAccountId = ebirrAccount.id;
 
         const whereCondition: any = {
             companyId,
             ...(Object.keys(dateWhere).length > 0 ? { expenseDate: dateWhere } : {}),
             accountId: ebirrAccountId
         };
-
-        // Auto-cleanup duplicate unapproved expense if present
-        try {
-            await prisma.expense.deleteMany({
-                where: {
-                    id: 'f64ab10a-4f4b-4958-b398-6d2ae55ffedc'
-                }
-            });
-        } catch (cleanErr) {
-            console.error('Error cleaning duplicate expense:', cleanErr);
-        }
 
         const expenses = await prisma.expense.findMany({
             where: whereCondition,
@@ -135,7 +134,7 @@ export async function GET(request: Request) {
             };
         });
 
-        let mappedDeposits = deposits.map(d => ({
+        const mappedDeposits = deposits.map(d => ({
             id: d.id,
             description: d.description || 'Deposit / Account Inflow',
             amount: Number(d.amount),
@@ -162,62 +161,6 @@ export async function GET(request: Request) {
             telegramChatId: null
         }));
 
-        // Strictly set deposits for E-Birr Merchant Account (+200,000 ETB total)
-        mappedDeposits = [
-            {
-                id: 'dep_100k_1',
-                description: 'Dayn: Sh Abdihakim - Deposit E-Birr Merchant',
-                amount: 100000,
-                category: 'Deposit',
-                categoryId: null,
-                accountId: ebirrAccountId,
-                accountName: 'E-Birr Merchant',
-                expenseDate: new Date('2026-07-21T18:11:54.420Z').toISOString(),
-                createdAt: new Date('2026-07-21T18:11:54.424Z').toISOString(),
-                note: 'Lacag la soo kaxaystay Sh Abdihakim ahaan dayn. Deposit-ka E-Birr Merchant.',
-                rawNote: 'Lacag la soo kaxaystay Sh Abdihakim ahaan dayn. Deposit-ka E-Birr Merchant.',
-                requesterName: 'System / Bank Deposit',
-                requesterId: '',
-                paymentPhone: '',
-                recipientName: 'AN-Industory',
-                receiptUrl: '',
-                paymentStatus: 'PAID',
-                approved: true,
-                type: 'DEPOSIT',
-                isDeposit: true,
-                employeeName: null,
-                employeeId: null,
-                telegramMessageId: null,
-                telegramChatId: null
-            },
-            {
-                id: 'dep_100k_2',
-                description: 'Dayn: Sh Abdihakim - Deposit 2 E-Birr Merchant',
-                amount: 100000,
-                category: 'Deposit',
-                categoryId: null,
-                accountId: ebirrAccountId,
-                accountName: 'E-Birr Merchant',
-                expenseDate: new Date('2026-07-31T12:00:00.000Z').toISOString(),
-                createdAt: new Date('2026-07-31T12:00:00.000Z').toISOString(),
-                note: 'Lacag la soo kaxaystay Sh Abdihakim ahaan dayn. Deposit-ka 2aad ee E-Birr Merchant.',
-                rawNote: 'Lacag la soo kaxaystay Sh Abdihakim ahaan dayn. Deposit-ka 2aad ee E-Birr Merchant.',
-                requesterName: 'System / Bank Deposit',
-                requesterId: '',
-                paymentPhone: '',
-                recipientName: 'AN-Industory',
-                receiptUrl: '',
-                paymentStatus: 'PAID',
-                approved: true,
-                type: 'DEPOSIT',
-                isDeposit: true,
-                employeeName: null,
-                employeeId: null,
-                telegramMessageId: null,
-                telegramChatId: null
-            }
-        ];
-
         // Calculate the balance after every entry in chronological order, then return
         // newest first for the UI. This keeps each row's historical balance stable even
         // when the user searches or filters the already-calculated list.
@@ -226,14 +169,22 @@ export async function GET(request: Request) {
             .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
             .map(entry => {
                 const amount = Math.abs(Number(entry.amount));
-                runningBalance += entry.isDeposit || entry.type === 'DEPOSIT' ? amount : -amount;
+                const isPaidExpense = entry.isDeposit || entry.paymentStatus === 'PAID' || !!entry.receiptUrl;
+                if (isPaidExpense) {
+                    runningBalance += entry.isDeposit || entry.type === 'DEPOSIT' ? amount : -amount;
+                }
                 return { ...entry, runningBalance };
             })
             .reverse();
 
         return NextResponse.json({
             success: true,
-            expenses: combinedList
+            expenses: combinedList,
+            account: {
+                id: ebirrAccount.id,
+                name: ebirrAccount.name,
+                balance: Number(ebirrAccount.balance)
+            }
         }, {
             headers: {
                 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',

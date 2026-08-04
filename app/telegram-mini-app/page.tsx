@@ -2751,7 +2751,9 @@ export default function TelegramMiniAppPage() {
                                     <CheckCircle2 size={16} />
                                     <span>E-Birr Merchant Account</span>
                                 </div>
-                                <span className="text-white font-black">28,929.66 ETB</span>
+                                <span className="text-white font-black">
+                                    {Number(activeAccount?.balance || 0).toLocaleString()} ETB
+                                </span>
                             </div>
 
                             {/* Live Activity Feed */}

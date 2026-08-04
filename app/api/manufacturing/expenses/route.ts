@@ -330,21 +330,9 @@ export async function DELETE(req: Request) {
                     data: { balance: { increment: Number(expense.amount) } }
                 });
 
-                // B. Create a refund transaction entry (positive adjustment)
-                await tx.transaction.create({
-                    data: {
-                        companyId: user.companyId,
-                        userId: session.user.id,
-                        description: `REVERTED: ${expense.description}`,
-                        amount: Number(expense.amount),
-                        type: 'INCOME', // or revert transaction
-                        accountId: expense.accountId,
-                        note: `Reverted/Cancelled Expense: ${expense.description} (Deleted by ${user.fullName})`,
-                        transactionDate: new Date()
-                    }
-                });
-
-                // Delete any transaction associated with this expense
+                // Remove the original ledger entry. Do not also create an INCOME
+                // reversal: once the original expense is removed, doing both would
+                // make historical running balances increase twice.
                 await tx.transaction.deleteMany({
                     where: { expenseId: expense.id }
                 });
