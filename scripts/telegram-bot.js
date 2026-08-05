@@ -2156,7 +2156,9 @@ async function processTransaction(chatId, stateKey, data) {
                     quantity: mpQty,
                     unitPrice: mpPrice,
                     totalPrice: mpTotal,
-                    supplierName
+                    supplierName,
+                    accountName: account.name,
+                    accountBalance: account.balance
                 };
             }
 
@@ -2306,6 +2308,16 @@ async function processTransaction(chatId, stateKey, data) {
                                `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                `📅 Taariikhda: ${formattedDate}\n\n` +
                                `⏳ Sugaya rasiidka si loo xaqiijiyo in lacagtaas la diray...`;
+        }
+
+        const requestedAmount = result.isPurchase ? Number(result.totalPrice) : Number(amount);
+        const availableBalance = Number(result.accountBalance);
+        if (!receiptUrl && Number.isFinite(availableBalance) && requestedAmount > availableBalance) {
+            confirmationText += `\n\n⚠️ <b>HARAAGA KOONTADU KUMA FILNA</b>\n` +
+                `Koontada waxaa ku jira: <b>${availableBalance.toLocaleString()} ETB</b>\n` +
+                `Dalabku wuxuu u baahan yahay: <b>${requestedAmount.toLocaleString()} ETB</b>\n` +
+                `Waxaa dhiman: <b>${(requestedAmount - availableBalance).toLocaleString()} ETB</b>\n\n` +
+                `Fadlan marka hore lacag ku shub koontada. Rasiid lama gelin karo ilaa haraagu ku filnaado.`;
         }
 
         // If we have an uploaded receipt image, send it.
