@@ -1291,6 +1291,8 @@ async function handleUpdate(update) {
             // STEP C: Cashier Receipt Photo Upload
             if (state.step === 'WAIT_CASHIER_RECEIPT') {
                 let receiptUrl = '';
+                let receiptTelegramFileId = '';
+                let receiptLocalPath = '';
                 const expenseId = state.data.expenseId;
                 const purchaseId = state.data.purchaseId;
 
@@ -1300,6 +1302,7 @@ async function handleUpdate(update) {
                         ? message.photo[message.photo.length - 1]
                         : message.document;
                     const fileId = uploadedImage.file_id;
+                    receiptTelegramFileId = fileId;
 
                     const fileDetails = await sendBotRequest('getFile', { file_id: fileId });
                     if (fileDetails && fileDetails.ok) {
@@ -1309,6 +1312,7 @@ async function handleUpdate(update) {
                         
                         const savedPath = await downloadTelegramFile(filePath, saveName);
                         if (savedPath) {
+                            receiptLocalPath = savedPath;
                             // Keep the Telegram file_id as the durable source. The bot's
                             // local public folder is not shared with the Vercel mini-app.
                             receiptUrl = `/api/telegram/receipt?fileId=${encodeURIComponent(fileId)}`;
@@ -1540,8 +1544,8 @@ async function handleUpdate(update) {
                 }
 
                 // Send the new photo confirmation message
-                const absolutePath = path.join(process.cwd(), 'public', receiptUrl);
-                if (fs.existsSync(absolutePath)) {
+                const absolutePath = receiptLocalPath || path.join(process.cwd(), 'public', receiptUrl);
+                if (receiptLocalPath && fs.existsSync(absolutePath)) {
                     let expectedAmount = 0;
                     if (purchaseId) {
                         const mp = await prisma.materialPurchase.findUnique({ where: { id: purchaseId } });
@@ -1570,23 +1574,16 @@ async function handleUpdate(update) {
                         }
                     }
 
-                    const formData = new FormData();
-                    formData.append('chat_id', chatId);
-                    formData.append('caption', confirmationText);
-                    formData.append('parse_mode', 'HTML');
-                    
-                    // No inline keyboard is attached here because it's PAID and finalized
-                    const inlineKeyboard = [];
-                    formData.append('reply_markup', JSON.stringify({ inline_keyboard: inlineKeyboard }));
-
-                    const blob = new Blob([fs.readFileSync(absolutePath)], { type: 'image/jpeg' });
-                    formData.append('photo', blob, 'receipt.jpg');
-
-                    const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-                        method: 'POST',
-                        body: formData
+                    // Reuse Telegram's durable file_id, so the receipt image and final
+                    // confirmation always remain together even when Vercel cannot see
+                    // the VPS local uploads folder.
+                    const resJson = await sendBotRequest('sendPhoto', {
+                        chat_id: chatId,
+                        photo: receiptTelegramFileId,
+                        caption: confirmationText,
+                        parse_mode: 'HTML',
+                        reply_markup: { inline_keyboard: [] }
                     });
-                    const resJson = await response.json();
                     if (resJson && resJson.ok) {
                         await saveTelegramMetadata(purchaseId || expenseId, !!purchaseId, chatId, resJson.result.message_id);
                     }
