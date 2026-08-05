@@ -1574,6 +1574,19 @@ async function handleUpdate(update) {
                         }
                     }
 
+                    // Delete previous text message to avoid duplicate messages in group
+                    const targetEntity = purchaseId ? 
+                        await prisma.materialPurchase.findUnique({ where: { id: purchaseId } }) :
+                        await prisma.expense.findUnique({ where: { id: expenseId } });
+                    
+                    if (targetEntity && targetEntity.telegramMessageId) {
+                        try {
+                            await sendBotRequest('deleteMessage', { chat_id: chatId, message_id: targetEntity.telegramMessageId });
+                        } catch (e) {
+                            console.error('Error deleting old text message:', e.message);
+                        }
+                    }
+
                     // Reuse Telegram's durable file_id, so the receipt image and final
                     // confirmation always remain together even when Vercel cannot see
                     // the VPS local uploads folder.
@@ -2271,10 +2284,19 @@ async function processTransaction(chatId, stateKey, data) {
         if (receiptUrl) {
             const absolutePath = path.join(process.cwd(), 'public', receiptUrl);
             if (fs.existsSync(absolutePath)) {
-                // Send photo as file upload (multipart)
+                // Delete previous message if present to avoid duplicates
+                if (result.telegramMessageId) {
+                    try {
+                        await sendBotRequest('deleteMessage', { chat_id: chatId, message_id: result.telegramMessageId });
+                    } catch (e) {
+                        console.error('Error deleting previous message:', e.message);
+                    }
+                }
+
+                // Send photo as file upload with explicit UTF-8 caption Blob
                 const formData = new FormData();
                 formData.append('chat_id', chatId);
-                formData.append('caption', confirmationText);
+                formData.append('caption', new Blob([confirmationText], { type: 'text/plain; charset=utf-8' }));
                 formData.append('parse_mode', 'HTML');
 
                 const inlineKeyboard = [];
