@@ -888,6 +888,27 @@ async function handleUpdate(update) {
             }
         } else if (data.startsWith('rcpt_mp_')) {
             const purchaseId = data.substring(8);
+            const receiptPurchase = await prisma.materialPurchase.findUnique({ where: { id: purchaseId } });
+            const purchaseAccountMatch = String(receiptPurchase?.notes || '').match(/\[AccountId:\s*([^\]]+)\]/);
+            const purchaseAccount = purchaseAccountMatch
+                ? await prisma.account.findUnique({ where: { id: purchaseAccountMatch[1] } })
+                : null;
+            if (!receiptPurchase) {
+                await sendBotRequest('answerCallbackQuery', {
+                    callback_query_id: query.id,
+                    text: 'Diiwaanka dalabkan lama helin.',
+                    show_alert: true
+                });
+                return;
+            }
+            if (purchaseAccount && Number(receiptPurchase.totalPrice) > Number(purchaseAccount.balance)) {
+                await sendBotRequest('answerCallbackQuery', {
+                    callback_query_id: query.id,
+                    text: `Koontadu kuma filna. Waxaa jira ${Number(purchaseAccount.balance).toLocaleString()} ETB, waxaana loo baahan yahay ${Number(receiptPurchase.totalPrice).toLocaleString()} ETB. Fadlan marka hore lacag ku shub koontada.`,
+                    show_alert: true
+                });
+                return;
+            }
             userStates[stateKey] = {
                 messageId: query.message.message_id,
                 step: 'WAIT_CASHIER_RECEIPT',
@@ -914,6 +935,26 @@ async function handleUpdate(update) {
             });
         } else if (data.startsWith('rcpt_')) {
             const expenseId = data.substring(5);
+            const receiptExpense = await prisma.expense.findUnique({
+                where: { id: expenseId },
+                include: { account: true }
+            });
+            if (!receiptExpense) {
+                await sendBotRequest('answerCallbackQuery', {
+                    callback_query_id: query.id,
+                    text: 'Diiwaanka kharashkan lama helin.',
+                    show_alert: true
+                });
+                return;
+            }
+            if (receiptExpense.account && Number(receiptExpense.amount) > Number(receiptExpense.account.balance)) {
+                await sendBotRequest('answerCallbackQuery', {
+                    callback_query_id: query.id,
+                    text: `Koontadu kuma filna. Waxaa jira ${Number(receiptExpense.account.balance).toLocaleString()} ETB, waxaana loo baahan yahay ${Number(receiptExpense.amount).toLocaleString()} ETB. Fadlan marka hore lacag ku shub koontada.`,
+                    show_alert: true
+                });
+                return;
+            }
             userStates[stateKey] = {
                 messageId: query.message.message_id,
                 step: 'WAIT_CASHIER_RECEIPT',
@@ -1248,37 +1289,24 @@ async function handleUpdate(update) {
             return;
         }
 
-        // Auto-fallback: If a photo is uploaded in chat, but no state is set (or state.step is not WAIT_CASHIER_RECEIPT), check DB for recent unpaid/pending expense
+        // A receipt must always be linked by clicking that expense's own upload button.
+        // Never guess the latest unpaid expense: doing so can pay the wrong request.
         const hasReceiptImage = (message.photo && message.photo.length > 0)
             || (message.document && String(message.document.mime_type || '').startsWith('image/'));
 
         if (hasReceiptImage && (!state || state.step !== 'WAIT_CASHIER_RECEIPT')) {
-            try {
-                const latestUnpaidExpense = await prisma.expense.findFirst({
-                    where: {
-                        companyId,
-                        OR: [
-                            { receiptUrl: '' },
-                            { receiptUrl: null },
-                            { paymentStatus: 'UNPAID' }
-                        ]
-                    },
-                    orderBy: { createdAt: 'desc' }
-                });
-
-                if (latestUnpaidExpense) {
-                    userStates[stateKey] = {
-                        messageId: null,
-                        step: 'WAIT_CASHIER_RECEIPT',
-                        ownerId: userId,
-                        ownerName: user,
-                        data: { expenseId: latestUnpaidExpense.id }
-                    };
-                    state = userStates[stateKey];
-                }
-            } catch (fallbackErr) {
-                console.error('Error finding DB fallback expense for receipt photo:', fallbackErr);
+            const warning = await sendBotRequest('sendMessage', {
+                chat_id: chatId,
+                reply_to_message_id: message.message_id,
+                text: '⚠️ Rasiidkan lama xiriirin wax dalab ah. Marka hore ku dhufo “Gali Rasiidka” ee dalabka saxda ah, kadib sawirka soo dir.'
+            });
+            if (warning && warning.ok) {
+                setTimeout(() => sendBotRequest('deleteMessage', {
+                    chat_id: chatId,
+                    message_id: warning.result.message_id
+                }), 8000);
             }
+            return;
         }
 
         // Handle Conversational Steps

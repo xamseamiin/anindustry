@@ -654,6 +654,26 @@ export async function POST(request: Request) {
                 }
             }
 
+            const requestedAmount = result.isPurchase ? Number(result.totalPrice) : parseFloat(amountInput);
+            const availableBalance = Number(result.accountBalance);
+            const insufficientFunds = !result.isPaid && requestedAmount > availableBalance;
+            if (insufficientFunds) {
+                telegramText += `\n\n⚠️ <b>HARAAGA KOONTADU KUMA FILNA</b>\n` +
+                    `Koontada waxaa ku jira: <b>${availableBalance.toLocaleString()} ETB</b>\n` +
+                    `Dalabku wuxuu u baahan yahay: <b>${requestedAmount.toLocaleString()} ETB</b>\n` +
+                    `Waxaa dhiman: <b>${(requestedAmount - availableBalance).toLocaleString()} ETB</b>\n\n` +
+                    `Fadlan marka hore lacag ku shub koontada. Rasiid lama gelin karo ilaa haraagu ku filnaado.`;
+
+                if (requestedAmount < 5000) {
+                    replyMarkup = {
+                        inline_keyboard: [[{
+                            text: "🔄 Hubi Haraaga / Gali Rasiidka",
+                            callback_data: result.isPurchase ? `rcpt_mp_${result.id}` : `rcpt_${result.id}`
+                        }]]
+                    };
+                }
+            }
+
             const sentMsgId = await sendTelegramMessage(token, chatId, telegramText, receiptUrl || undefined, replyMarkup);
             if (sentMsgId && !result.isPurchase && result.id) {
                 try {
