@@ -1312,7 +1312,7 @@ async function handleUpdate(update) {
                         
                         const savedPath = await downloadTelegramFile(filePath, saveName);
                         if (savedPath) {
-                            receiptLocalPath = savedPath;
+                            receiptLocalPath = path.join(process.cwd(), 'public', savedPath.replace(/^\//, ''));
                             // Keep the Telegram file_id as the durable source. The bot's
                             // local public folder is not shared with the Vercel mini-app.
                             receiptUrl = `/api/telegram/receipt?fileId=${encodeURIComponent(fileId)}`;
@@ -1544,8 +1544,8 @@ async function handleUpdate(update) {
                 }
 
                 // Send the new photo confirmation message
-                const absolutePath = receiptLocalPath || path.join(process.cwd(), 'public', receiptUrl);
-                if (receiptLocalPath && fs.existsSync(absolutePath)) {
+                const absolutePath = receiptLocalPath;
+                if (receiptTelegramFileId) {
                     let expectedAmount = 0;
                     if (purchaseId) {
                         const mp = await prisma.materialPurchase.findUnique({ where: { id: purchaseId } });
