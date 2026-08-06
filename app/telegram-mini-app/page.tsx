@@ -193,6 +193,7 @@ export default function TelegramMiniAppPage() {
     const [selectedCategoryKey, setSelectedCategoryKey] = useState(''); // 'SALARY', 'RAW_MATERIAL', or 'EXPENSE_{id}_{name}'
     const isSalary = selectedCategoryKey === 'SALARY';
     const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
+    const isDeposit = selectedCategoryKey === 'DEPOSIT';
     const isExpense = selectedCategoryKey.startsWith('EXPENSE_');
 
     // General Form Fields
@@ -238,6 +239,8 @@ export default function TelegramMiniAppPage() {
     const [amountInput, setAmountInput] = useState('');
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+    const [depositSourceName, setDepositSourceName] = useState('');
+    const [depositTransferId, setDepositTransferId] = useState('');
 
     // Edit Transaction Modal State
     const [showEditTxModal, setShowEditTxModal] = useState(false);
@@ -869,6 +872,10 @@ export default function TelegramMiniAppPage() {
         setAmount('');
         setPaymentPhone('');
         setRecipientName('');
+        setDepositSourceName('');
+        setDepositTransferId('');
+        setReceiptFile(null);
+        setReceiptPreview(null);
         setShowSavedContacts(false);
 
         if (key.startsWith('EXPENSE_')) {
@@ -995,6 +1002,25 @@ export default function TelegramMiniAppPage() {
         }
 
         const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
+
+        if (selectedCategoryKey === 'DEPOSIT') {
+            if (!isOnline) { showAlert('Deposit-ku wuxuu u baahan yahay internet si rasiidka Telegram loogu xiro.', 'warning'); setSubmitting(false); return; }
+            if (!depositSourceName.trim() || !depositTransferId.trim() || !receiptFile || Number(amount) <= 0) { showAlert('Buuxi magaca lacagta laga helay, amount-ka, Transfer ID-ga iyo sawirka rasiidka.', 'warning'); setSubmitting(false); return; }
+            try {
+                const depositData = new FormData();
+                depositData.append('accountId', selectedAccountId); depositData.append('amount', amount);
+                depositData.append('sourceName', depositSourceName.trim()); depositData.append('transferId', depositTransferId.trim());
+                depositData.append('description', note || 'Deposit / Dayn la Helay'); depositData.append('requesterName', requesterName);
+                depositData.append('requesterId', requesterId); depositData.append('chatId', chatId); depositData.append('receipt', receiptFile);
+                const response = await fetch('/api/telegram/deposits', { method: 'POST', body: depositData }); const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Deposit-ka lama diiwaangelin.');
+                triggerHaptic('success'); setAmount(''); setNote(''); setDepositSourceName(''); setDepositTransferId(''); setReceiptFile(null); setReceiptPreview(null);
+                setAccounts(previous => previous.map(account => account.id === selectedAccountId ? { ...account, balance: Number(result.balanceAfter) } : account));
+                await fetchHistory(); showAlert(`Deposit-ka waa la diiwaangeliyey. Haraaga cusub: ${Number(result.balanceAfter).toLocaleString()} ETB`, 'success', 'Deposit Waa La Xaqiijiyey');
+            } catch (error: any) { triggerHaptic('error'); showAlert(error.message || 'Deposit-ka lama diiwaangelin.', 'error'); }
+            finally { setSubmitting(false); }
+            return;
+        }
 
         // Editing deliberately reuses this exact Add form so every category-specific
         // field and validation behaves identically for create and update.
@@ -1271,7 +1297,7 @@ export default function TelegramMiniAppPage() {
     };
 
     const exportPersonalPdf = async () => {
-        const { jsPDF } = await import('jspdf');
+        const { default: jsPDF } = await import('jspdf');
         const doc = new jsPDF();
         doc.setFontSize(16);
         doc.text('AN-Industry Personal Activity Report', 14, 18);
@@ -2001,11 +2027,13 @@ export default function TelegramMiniAppPage() {
                                     {getCategoryIcon(
                                         selectedCategoryKey === 'SALARY' ? 'SALARY' : 
                                         selectedCategoryKey === 'RAW_MATERIAL' ? 'RAW_MATERIAL' : 
+                                        selectedCategoryKey === 'DEPOSIT' ? 'DEPOSIT' :
                                         selectedCategoryName
                                     )}
                                     <span>
                                         {selectedCategoryKey === 'SALARY' ? 'Bixinta Mushaharka (Salary)' :
                                          selectedCategoryKey === 'RAW_MATERIAL' ? 'Dalabka Raw Material' :
+                                         selectedCategoryKey === 'DEPOSIT' ? 'Deposit / Dayn Soo Gashay' :
                                          selectedCategoryName}
                                     </span>
                                 </>
@@ -2032,6 +2060,14 @@ export default function TelegramMiniAppPage() {
                                 <span>Bixinta Mushaharka (Salary)</span>
                             </button>
                             
+                            <button
+                                type="button"
+                                onClick={() => { handleCategoryChange('DEPOSIT', 'Deposit / Dayn Soo Gashay'); setDropdownOpen(false); }}
+                                className="w-full p-3 hover:bg-emerald-500/10 text-left text-sm font-bold flex items-center gap-2 border-b border-[var(--tg-theme-hint-color,rgba(255,255,255,0.05))] opacity-90 transition-all text-emerald-300"
+                            >
+                                <Wallet size={16} /><span>Deposit / Dayn Soo Gashay</span>
+                            </button>
+
                             <button
                                 type="button"
                                 onClick={() => {
@@ -2072,6 +2108,15 @@ export default function TelegramMiniAppPage() {
                     </div>
                 ) : (
                     <form onSubmit={handleSubmit} className="bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/10 shadow-lg rounded-3xl p-5 pb-28 flex flex-col gap-4 animate-fade-in">
+                        {isDeposit && (
+                            <div className="flex flex-col gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-400/25 animate-fade-in">
+                                <div className="flex items-center gap-2 text-emerald-300"><Wallet size={17} /><div><p className="text-xs font-black">Deposit / Dayn Soo Gashay</p><p className="text-[9px] text-emerald-200/70">Lacagta koontada ayaa lagu darayaa, rasiidkana Telegram ayaa lala xiriirinayaa.</p></div></div>
+                                <input required value={depositSourceName} onChange={e => setDepositSourceName(e.target.value)} placeholder="Magaca qofka lacagta laga helay" className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#fff)] border border-white/10 rounded-xl text-xs font-bold outline-none" />
+                                <input required value={depositTransferId} onChange={e => setDepositTransferId(e.target.value)} placeholder="Transfer ID-ga rasiidka" className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#fff)] border border-white/10 rounded-xl text-xs font-bold outline-none" />
+                                <label className="p-3 rounded-xl border border-dashed border-emerald-400/40 bg-black/10 text-center cursor-pointer"><Camera size={18} className="mx-auto mb-1 text-emerald-300" /><span className="text-[10px] font-black text-emerald-200">{receiptFile ? receiptFile.name : 'Soo geli sawirka rasiidka'}</span><input type="file" accept="image/*" required className="hidden" onChange={e => { const file=e.target.files?.[0]||null; setReceiptFile(file); if(receiptPreview) URL.revokeObjectURL(receiptPreview); setReceiptPreview(file?URL.createObjectURL(file):null); }} /></label>
+                                {receiptPreview && <img src={receiptPreview} alt="Deposit receipt preview" className="max-h-48 w-full object-contain rounded-xl bg-black/20 border border-white/10" />}
+                            </div>
+                        )}
                         
                         {/* --- TAB 1: SALARY --- */}
                         {isSalary && (
@@ -2309,7 +2354,7 @@ export default function TelegramMiniAppPage() {
                         )}
 
                         {/* Payment Contact Fields */}
-                        {!(selectedCategoryKey === 'SALARY' && selectedEmployeeId) && (
+                        {!isDeposit && !(selectedCategoryKey === 'SALARY' && selectedEmployeeId) && (
                             <div className="flex flex-col gap-2 p-3 bg-white/[0.02] border border-white/5 rounded-xl">
                                 <div className="flex justify-between items-center">
                                     <label className="text-[10px] font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
@@ -2366,7 +2411,7 @@ export default function TelegramMiniAppPage() {
                                 </button>
                             </div>
                             <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
-                                placeholder="Fadlan sharaxaad yar ka bixi kharashkan..."
+                                placeholder={isDeposit ? 'Tusaale: Pity Cash / lacag hawlgal...' : 'Fadlan sharaxaad yar ka bixi kharashkan...'}
                                 className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-xs font-bold outline-none focus:border-[var(--tg-theme-button-color,#3b82f6)]"
                             />
                         </div>
@@ -2374,7 +2419,7 @@ export default function TelegramMiniAppPage() {
                         {/* Account Selector */}
                         <div className="flex flex-col gap-1.5">
                             <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                <Wallet size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Koontada Lagaga Bixinayo
+                                <Wallet size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> {isDeposit ? 'Koontada Lagu Shubayo' : 'Koontada Lagaga Bixinayo'}
                             </label>
                             <select required value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)}
                                 className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
@@ -2388,7 +2433,7 @@ export default function TelegramMiniAppPage() {
                         </div>
 
                         {/* Batch Action Buttons */}
-                        {!editingTx && <div className="flex gap-2 pt-1">
+                        {!editingTx && !isDeposit && <div className="flex gap-2 pt-1">
                             <button type="button" onClick={handleAddToBatch}
                                 className="flex-1 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5"
                             >
@@ -2439,6 +2484,11 @@ export default function TelegramMiniAppPage() {
                                 <>
                                     Keydi Isbeddelka
                                     <Pencil size={12} />
+                                </>
+                            ) : isDeposit ? (
+                                <>
+                                    Xaqiiji Deposit-ka
+                                    <ArrowDownLeft size={13} />
                                 </>
                             ) : validBatchItems.length > 0 ? (
                                 <>
