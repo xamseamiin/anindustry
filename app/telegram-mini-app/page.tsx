@@ -325,7 +325,25 @@ export default function TelegramMiniAppPage() {
     const [customEndDate, setCustomEndDate] = useState('');
     const [historyExpenses, setHistoryExpenses] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
+    const [advancedData, setAdvancedData] = useState<any>(null);
+    const [loadingAdvanced, setLoadingAdvanced] = useState(false);
+    const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+    const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
+    const [approvalDashboardFilter, setApprovalDashboardFilter] = useState<'ALL' | 'PENDING' | 'RECEIPT' | 'REJECTED' | 'PAID'>('PENDING');
+    const [reportType, setReportType] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM'>('MONTHLY');
+    const [reportStartDate, setReportStartDate] = useState('');
+    const [reportEndDate, setReportEndDate] = useState('');
+    const [reportAccountId, setReportAccountId] = useState('');
+    const [reportCategory, setReportCategory] = useState('ALL');
+    const [reportStatus, setReportStatus] = useState('ALL');
+    const [reportIncludeReceipts, setReportIncludeReceipts] = useState(true);
+    const [reportIncludeForms, setReportIncludeForms] = useState(true);
+    const [reportOrientation, setReportOrientation] = useState<'portrait' | 'landscape'>('portrait');
+    const [reportLanguage, setReportLanguage] = useState<'so' | 'en'>('so');
+    const [reportPreview, setReportPreview] = useState<any>(null);
+    const [reportLoading, setReportLoading] = useState(false);
     const latestHistoryIdRef = useRef<string | null>(null);
+    const requestStatusRef = useRef<Record<string, string>>({});
     
     // Transactions Ledger & Detail Modal states
     const [selectedTransactionForDetails, setSelectedTransactionForDetails] = useState<any | null>(null);
@@ -370,11 +388,26 @@ export default function TelegramMiniAppPage() {
                 const newestId = data.expenses[0]?.id || null;
                 if (historyFilter === 'all') latestHistoryIdRef.current = newestId;
                 setHistoryExpenses(data.expenses);
+                setLastSyncedAt(new Date());
             }
         } catch (err) {
             console.error('Error fetching history:', err);
         } finally {
             setLoadingHistory(false);
+        }
+    };
+
+    const fetchAdvancedData = async () => {
+        setLoadingAdvanced(true);
+        try {
+            const res = await fetch(`/api/telegram/advanced?_t=${Date.now()}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Advanced financial data failed to load.');
+            setAdvancedData(data);
+        } catch (error) {
+            console.error('Advanced financial hub failed:', error);
+        } finally {
+            setLoadingAdvanced(false);
         }
     };
 
@@ -386,7 +419,14 @@ export default function TelegramMiniAppPage() {
         if (activeTab === 'TRANSACTIONS' || activeTab === 'REPORTS' || activeTab === 'DASHBOARD') {
             fetchHistory();
         }
+        if (activeTab === 'REPORTS' || activeTab === 'DASHBOARD') fetchAdvancedData();
     }, [activeTab, historyFilter, customStartDate, customEndDate]);
+
+    useEffect(() => {
+        if (activeTab !== 'REPORTS') return;
+        const timer = window.setTimeout(() => { loadEnterpriseReport(false); }, 350);
+        return () => window.clearTimeout(timer);
+    }, [activeTab, reportType, reportStartDate, reportEndDate, reportAccountId, reportCategory, reportStatus]);
 
     useEffect(() => {
         const pollForNewRequests = async () => {
@@ -394,6 +434,25 @@ export default function TelegramMiniAppPage() {
                 const res = await fetch(`/api/telegram/history?filter=all&_t=${Date.now()}`);
                 const data = await res.json();
                 const newestId = data.success && Array.isArray(data.expenses) ? data.expenses[0]?.id : null;
+                if (data.success && Array.isArray(data.expenses)) {
+                    const previous = requestStatusRef.current;
+                    for (const expense of data.expenses) {
+                        const nextStatus = expense.workflowStatus || expense.paymentStatus || 'DRAFT';
+                        const oldStatus = previous[expense.id];
+                        if (oldStatus && oldStatus !== nextStatus && isOwnerOfExpense(expense)) {
+                            playNotificationSoundAndVibrate();
+                            setAlertModal({
+                                isOpen: true,
+                                title: nextStatus === 'REJECTED' ? 'Codsiga waa la diiday' : nextStatus === 'PAID' ? 'Lacagta waa la bixiyey' : 'Codsiga waa la cusboonaysiiyey',
+                                message: `${expense.description || expense.category}: ${nextStatus.replaceAll('_', ' ')}`,
+                                type: nextStatus === 'REJECTED' ? 'warning' : 'success'
+                            });
+                            break;
+                        }
+                    }
+                    requestStatusRef.current = Object.fromEntries(data.expenses.map((expense: any) => [expense.id, expense.workflowStatus || expense.paymentStatus || 'DRAFT']));
+                    setLastSyncedAt(new Date());
+                }
                 if (latestHistoryIdRef.current && newestId && latestHistoryIdRef.current !== newestId) {
                     playNotificationSoundAndVibrate();
                     setHistoryExpenses(data.expenses);
@@ -405,12 +464,32 @@ export default function TelegramMiniAppPage() {
         };
         const notificationInterval = window.setInterval(pollForNewRequests, 15000);
         return () => window.clearInterval(notificationInterval);
-    }, []);
+    }, [requesterId, requesterName]);
 
     useEffect(() => {
         profilePreferencesRef.current = profilePreferences;
         if (requesterId) safeSetItem(`mini_profile_preferences_${requesterId}`, JSON.stringify(profilePreferences));
-    }, [profilePreferences, requesterId]);
+        if (requesterId || process.env.NEXT_PUBLIC_APP_ENV === 'local') {
+            const timer = window.setTimeout(() => {
+                fetch('/api/telegram/advanced', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'SAVE_NOTIFICATION_PREFERENCES',
+                        initData: telegramInitData,
+                        preferences: {
+                            soundEnabled: profilePreferences.sound,
+                            vibrationEnabled: profilePreferences.vibration,
+                            telegramEnabled: profilePreferences.approvals || profilePreferences.receipts,
+                            miniAppEnabled: true,
+                            language: profilePreferences.language
+                        }
+                    })
+                }).catch(() => undefined);
+            }, 500);
+            return () => window.clearTimeout(timer);
+        }
+    }, [profilePreferences, requesterId, telegramInitData]);
 
     useEffect(() => {
         if (profilePreferences.defaultAccount && accounts.some(a => a.id === profilePreferences.defaultAccount)) {
@@ -643,6 +722,10 @@ export default function TelegramMiniAppPage() {
         setUnitPrice('');
         setSelectedEmployeeId('');
         setRecipientName('');
+        setDepositSourceName('');
+        setDepositTransferId('');
+        setReceiptFile(null);
+        setReceiptPreview(null);
         setPaymentPhone('');
         setNewVendorName('');
         setNewMaterialName('');
@@ -872,10 +955,6 @@ export default function TelegramMiniAppPage() {
         setAmount('');
         setPaymentPhone('');
         setRecipientName('');
-        setDepositSourceName('');
-        setDepositTransferId('');
-        setReceiptFile(null);
-        setReceiptPreview(null);
         setShowSavedContacts(false);
 
         if (key.startsWith('EXPENSE_')) {
@@ -937,7 +1016,47 @@ export default function TelegramMiniAppPage() {
     const activeAccount = accounts.find(a => a.id === selectedAccountId);
     const isRawMaterialTemp = selectedCategoryKey === 'RAW_MATERIAL';
     const amountVal = isRawMaterialTemp ? calculatedTotal : (parseFloat(amount) || 0);
-    const isOverLimit = activeAccount && amountVal > activeAccount.balance;
+    const advancedAccount = advancedData?.accounts?.find((account: any) => account.id === selectedAccountId);
+    const spendableBalance = advancedAccount?.available ?? activeAccount?.balance ?? 0;
+    const isOverLimit = activeAccount && amountVal > spendableBalance;
+    const pendingApprovalRequests = historyExpenses.filter(e =>
+        !e.isDeposit && Number(e.amount) >= 5000 &&
+        (e.workflowStatus === 'PENDING_APPROVAL' || (!e.approved && e.paymentStatus !== 'PAID'))
+    );
+    const myPendingRequests = pendingApprovalRequests.filter(isOwnerOfExpense);
+    const visiblePendingApprovalRequests = effectiveIsManager ? pendingApprovalRequests : myPendingRequests;
+    const awaitingReceiptRequests = historyExpenses.filter(e =>
+        !e.isDeposit && e.paymentStatus !== 'PAID' &&
+        ['APPROVED', 'AWAITING_RECEIPT', 'APPROVED_AWAITING_RECEIPT', 'RECEIPT_UNDER_REVIEW'].includes(e.workflowStatus || e.paymentStatus)
+    );
+    const paidThisMonth = historyExpenses.filter(e => {
+        const date = new Date(e.createdAt || e.expenseDate);
+        const now = new Date();
+        return !e.isDeposit && e.paymentStatus === 'PAID' && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+    }).reduce((sum, e) => sum + Number(e.amount), 0);
+    const receiptMismatchCount = Number(advancedData?.workflow?.find((item: any) => item.status === 'RECEIPT_MISMATCH')?.count || 0);
+    const accountTotalBalance = Number(advancedAccount?.balance ?? activeAccount?.balance ?? 0);
+    const lowBalanceThreshold = Math.max(5000, accountTotalBalance * 0.15);
+    const isLowBalance = Number(spendableBalance) <= lowBalanceThreshold;
+    const approvalAge = (createdAt: string) => {
+        const hours = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 3600000));
+        if (hours < 1) return 'wax ka yar 1 saac';
+        if (hours < 24) return `${hours} saac`;
+        return `${Math.floor(hours / 24)} maalmood`;
+    };
+    const filteredAdminRequests = historyExpenses.filter(expense => {
+        if (expense.isDeposit) return false;
+        if (approvalDashboardFilter === 'PENDING') return pendingApprovalRequests.some(item => item.id === expense.id);
+        if (approvalDashboardFilter === 'RECEIPT') return awaitingReceiptRequests.some(item => item.id === expense.id);
+        if (approvalDashboardFilter === 'REJECTED') return expense.workflowStatus === 'REJECTED' || expense.paymentStatus === 'REJECTED';
+        if (approvalDashboardFilter === 'PAID') return expense.workflowStatus === 'PAID' || expense.paymentStatus === 'PAID';
+        return true;
+    }).slice(0, 8);
+    const refreshDashboard = async () => {
+        setDashboardRefreshing(true);
+        await Promise.all([fetchHistory(), fetchAdvancedData()]);
+        setDashboardRefreshing(false);
+    };
 
     useEffect(() => {
         if (isOverLimit) {
@@ -1004,21 +1123,41 @@ export default function TelegramMiniAppPage() {
         const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
 
         if (selectedCategoryKey === 'DEPOSIT') {
-            if (!isOnline) { showAlert('Deposit-ku wuxuu u baahan yahay internet si rasiidka Telegram loogu xiro.', 'warning'); setSubmitting(false); return; }
-            if (!depositSourceName.trim() || !depositTransferId.trim() || !receiptFile || Number(amount) <= 0) { showAlert('Buuxi magaca lacagta laga helay, amount-ka, Transfer ID-ga iyo sawirka rasiidka.', 'warning'); setSubmitting(false); return; }
+            if (!isOnline) {
+                showAlert('Deposit-ku wuxuu u baahan yahay internet si rasiidka Telegram loogu xiro.', 'warning');
+                setSubmitting(false);
+                return;
+            }
+            if (!depositSourceName.trim() || !depositTransferId.trim() || !receiptFile || Number(amount) <= 0) {
+                showAlert('Buuxi magaca lacagta laga helay, amount-ka, Transfer ID-ga iyo sawirka rasiidka.', 'warning');
+                setSubmitting(false);
+                return;
+            }
             try {
                 const depositData = new FormData();
-                depositData.append('accountId', selectedAccountId); depositData.append('amount', amount);
-                depositData.append('sourceName', depositSourceName.trim()); depositData.append('transferId', depositTransferId.trim());
-                depositData.append('description', note || 'Deposit / Dayn la Helay'); depositData.append('requesterName', requesterName);
-                depositData.append('requesterId', requesterId); depositData.append('chatId', chatId); depositData.append('receipt', receiptFile);
-                const response = await fetch('/api/telegram/deposits', { method: 'POST', body: depositData }); const result = await response.json();
+                depositData.append('accountId', selectedAccountId);
+                depositData.append('amount', amount);
+                depositData.append('sourceName', depositSourceName.trim());
+                depositData.append('transferId', depositTransferId.trim());
+                depositData.append('description', note || 'Deposit / Dayn la Helay');
+                depositData.append('requesterName', requesterName);
+                depositData.append('requesterId', requesterId);
+                depositData.append('chatId', chatId);
+                depositData.append('receipt', receiptFile);
+                const response = await fetch('/api/telegram/deposits', { method: 'POST', body: depositData });
+                const result = await response.json();
                 if (!response.ok) throw new Error(result.error || 'Deposit-ka lama diiwaangelin.');
-                triggerHaptic('success'); setAmount(''); setNote(''); setDepositSourceName(''); setDepositTransferId(''); setReceiptFile(null); setReceiptPreview(null);
+                triggerHaptic('success');
+                setAmount(''); setNote(''); setDepositSourceName(''); setDepositTransferId(''); setReceiptFile(null); setReceiptPreview(null);
                 setAccounts(previous => previous.map(account => account.id === selectedAccountId ? { ...account, balance: Number(result.balanceAfter) } : account));
-                await fetchHistory(); showAlert(`Deposit-ka waa la diiwaangeliyey. Haraaga cusub: ${Number(result.balanceAfter).toLocaleString()} ETB`, 'success', 'Deposit Waa La Xaqiijiyey');
-            } catch (error: any) { triggerHaptic('error'); showAlert(error.message || 'Deposit-ka lama diiwaangelin.', 'error'); }
-            finally { setSubmitting(false); }
+                await fetchHistory();
+                showAlert(`Deposit-ka waa la diiwaangeliyey. Haraaga cusub: ${Number(result.balanceAfter).toLocaleString()} ETB`, 'success', 'Deposit Waa La Xaqiijiyey');
+            } catch (error: any) {
+                triggerHaptic('error');
+                showAlert(error.message || 'Deposit-ka lama diiwaangelin.', 'error');
+            } finally {
+                setSubmitting(false);
+            }
             return;
         }
 
@@ -1100,12 +1239,13 @@ export default function TelegramMiniAppPage() {
                 if (item.billType) formData.append('billType', item.billType);
                 formData.append('requesterName', requesterName);
                 formData.append('requesterId', requesterId);
+                formData.append('clientRequestId', `batch-${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`);
 
                 if (!isOnline) {
                     const queue = safeParseJSON<any[]>('offline_submissions', []);
                     const offlineObj: any = {};
                     formData.forEach((value, key) => { offlineObj[key] = value; });
-                    offlineObj.id = Math.random().toString(36).substring(7);
+                    offlineObj.clientRequestId = `offline-batch-${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`;
                     queue.push(offlineObj);
                     safeSetItem('offline_submissions', JSON.stringify(queue));
                     processed++;
@@ -1201,7 +1341,7 @@ export default function TelegramMiniAppPage() {
 
             // Save to offline queue
             const queue = safeParseJSON<any[]>('offline_submissions', []);
-            queue.push({ ...payload, id: Date.now().toString() });
+            queue.push({ ...payload, clientRequestId: `offline-${Date.now()}-${Math.random().toString(36).slice(2)}` });
             safeSetItem('offline_submissions', JSON.stringify(queue));
             
             triggerHaptic('success');
@@ -1218,6 +1358,7 @@ export default function TelegramMiniAppPage() {
             formData.append('chatId', chatId);
             formData.append('requesterName', requesterName);
             formData.append('requesterId', requesterId);
+            formData.append('clientRequestId', `online-${Date.now()}-${Math.random().toString(36).slice(2)}`);
             if (paymentPhone) formData.append('paymentPhone', paymentPhone);
             if (recipientName) formData.append('recipientName', recipientName);
 
@@ -1279,6 +1420,93 @@ export default function TelegramMiniAppPage() {
         }
     };
 
+    const reportRequestPayload = () => ({
+        reportType,
+        startDate: reportStartDate,
+        endDate: reportEndDate,
+        accountId: reportAccountId || undefined,
+        category: reportCategory,
+        status: reportStatus,
+        includeReceipts: reportIncludeReceipts,
+        includeExpenseForms: reportIncludeForms,
+        orientation: reportOrientation,
+        language: reportLanguage,
+        initData: telegramInitData,
+        telegramUserId: requesterId,
+        allowPersonal: !effectiveIsManager
+    });
+
+    const loadEnterpriseReport = async (persist = false) => {
+        setReportLoading(true);
+        try {
+            const payload = reportRequestPayload();
+            const query = new URLSearchParams(Object.entries(payload).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+            const response = await fetch(persist ? '/api/telegram/reports' : `/api/telegram/reports?${query}`, persist ? {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            } : undefined);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Report generation failed.');
+            setReportPreview(data.report);
+            return data.report;
+        } catch (error: any) {
+            showAlert(error.message || 'Report-ka lama diyaarin karin.', 'error');
+            return null;
+        } finally { setReportLoading(false); }
+    };
+
+    const assetToDataUrl = async (url: string) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Asset could not be loaded.');
+        const blob = await response.blob();
+        return await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob);
+        });
+    };
+
+    const exportEnterprisePdf = async () => {
+        const report = await loadEnterpriseReport(true); if (!report) return;
+        const [{ default: jsPDF }, autoTableModule] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const autoTable = (autoTableModule as any).default || (autoTableModule as any).autoTable;
+        const pageWidth = doc.internal.pageSize.getWidth(); const pageHeight = doc.internal.pageSize.getHeight();
+        const green: [number, number, number] = [21, 155, 80]; const navy: [number, number, number] = [7, 23, 47]; const red: [number, number, number] = [220, 38, 38];
+        let logo = ''; try { logo = await assetToDataUrl('/logo.png'); } catch {}
+        const money = (value: number) => `${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB`;
+        const date = new Date(report.period.end).toLocaleDateString('en-CA');
+        if (logo) doc.addImage(logo, 'PNG', 15, 9, 25, 19);
+        doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.text('AN INDUSTRIES PARTNERSHIP', 45, 18);
+        doc.setFontSize(7); doc.setTextColor(100); doc.setFont('helvetica', 'italic'); doc.text(`${report.reportType} General Transaction Report`, 45, 25);
+        [['DATE', date], ['REF NUMBER', report.reportNumber], ['PREPARED BY', report.generatedBy || 'Administrator']].forEach(([label, value], i) => {
+            const y = 12 + i * 6.5; doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.setTextColor(...navy); doc.text(label, 148, y); doc.setFont('helvetica', 'normal'); doc.text(String(value), pageWidth - 15, y, { align: 'right' });
+        });
+        doc.setDrawColor(...green); doc.setLineWidth(0.6); doc.line(15, 36, pageWidth - 15, 36);
+        ([['MONEY IN', report.summary.totalIn, green], ['MONEY OUT', report.summary.totalOut, red], ['BALANCE', report.summary.closingBalance, navy]] as any[]).forEach(([label, value, color], i) => {
+            const x = 15 + i * 60; doc.setTextColor(105); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold'); doc.text(label, x, 47); doc.setTextColor(color[0], color[1], color[2]); doc.setFontSize(10); doc.text(money(value), x, 56);
+        });
+        doc.setDrawColor(225); doc.line(15, 61, pageWidth - 15, 61);
+        const ledgerRows = report.ledger.map((row: any) => [new Date(row.date).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }), row.category || 'General', row.requester || row.recipient || '-', row.description || '-', row.account || '-', row.inflow ? money(row.inflow) : '-', row.outflow ? money(row.outflow) : '-']);
+        autoTable(doc, {
+            startY: 66, margin: { left: 15, right: 15, bottom: 18 }, theme: 'plain', showHead: 'everyPage',
+            head: [['DATE', 'CATEGORY', 'NAME / PERSON', 'DESCRIPTION', 'ACCOUNT', 'MONEY IN', 'MONEY OUT']], body: ledgerRows.length ? ledgerRows : [['-', 'No transactions', '-', '-', '-', '-', '-']],
+            foot: [['', '', '', '', 'TOTAL', money(report.summary.totalIn), money(report.summary.totalOut)]], showFoot: 'lastPage',
+            headStyles: { textColor: navy, fontStyle: 'bold', fontSize: 5.5, lineColor: [185,190,195], lineWidth: { bottom: 0.6 }, cellPadding: 1.8 },
+            bodyStyles: { textColor: navy, lineColor: [228,231,234], lineWidth: { bottom: 0.2 }, fontSize: 5.5, cellPadding: 1.8 },
+            footStyles: { textColor: navy, fontStyle: 'bold', fillColor: [244,247,248], fontSize: 5.8, cellPadding: 2 },
+            columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 27 }, 2: { cellWidth: 30 }, 3: { cellWidth: 39 }, 4: { cellWidth: 19 }, 5: { cellWidth: 18, halign: 'right', textColor: green }, 6: { cellWidth: 17, halign: 'right', textColor: red } },
+            didDrawPage: () => { doc.setDrawColor(225); doc.line(15, pageHeight - 14, pageWidth - 15, pageHeight - 14); doc.setFontSize(6); doc.setTextColor(105); doc.text('AN Industries Partnership - Financial Report', 15, pageHeight - 9); doc.text(`Generated: ${new Date(report.generatedAt).toLocaleString()}`, pageWidth - 15, pageHeight - 9, { align: 'right' }); }
+        });
+        doc.save(`${report.reportNumber}.pdf`);
+    };
+
+    const exportEnterpriseExcel = async () => {
+        const report = reportPreview || await loadEnterpriseReport(false); if (!report) return;
+        const XLSX = await import('xlsx'); const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([report.summary]), 'Executive Summary');
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(report.categories), 'Category Analysis');
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(report.ledger), 'Ledger');
+        XLSX.writeFile(workbook, `AN-${report.reportType}-Financial-Report.xlsx`);
+    };
+
     const exportPersonalExcel = async () => {
         const XLSX = await import('xlsx');
         const rows = historyExpenses
@@ -1297,7 +1525,7 @@ export default function TelegramMiniAppPage() {
     };
 
     const exportPersonalPdf = async () => {
-        const { default: jsPDF } = await import('jspdf');
+        const jsPDF = (await import('jspdf')).default;
         const doc = new jsPDF();
         doc.setFontSize(16);
         doc.text('AN-Industry Personal Activity Report', 14, 18);
@@ -1463,11 +1691,16 @@ export default function TelegramMiniAppPage() {
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Balance</span>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight">
-                                            {activeAccount ? Number(activeAccount.balance).toLocaleString() : '100,000'}
+                                            {activeAccount ? Number(advancedAccount?.available ?? activeAccount.balance).toLocaleString() : '0'}
                                         </span>
                                         <span className="text-sm font-bold text-emerald-400">ETB</span>
                                     </div>
                                     <span className="text-[10px] font-bold text-slate-400 mt-1">Budget progress</span>
+                                    {advancedAccount && Number(advancedAccount.reserved) > 0 && (
+                                        <span className="text-[9px] font-bold text-amber-300 mt-1">
+                                            Reserved: {Number(advancedAccount.reserved).toLocaleString()} ETB · Total: {Number(advancedAccount.balance).toLocaleString()} ETB
+                                        </span>
+                                    )}
                                     <div className="w-36 bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1 border border-white/10">
                                         <div className="bg-gradient-to-r from-emerald-400 to-cyan-400 h-full rounded-full w-3/4 shadow-[0_0_8px_#34d399]" />
                                     </div>
@@ -1492,6 +1725,84 @@ export default function TelegramMiniAppPage() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Live financial summary */}
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('TRANSACTIONS')}
+                                className="min-h-[92px] rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-left shadow-[0_0_18px_rgba(16,185,129,0.12)] active:scale-95 transition-all"
+                            >
+                                <Wallet size={16} className="text-emerald-300 mb-2" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Available</p>
+                                <p className="text-sm font-black text-emerald-300 leading-tight">{Number(spendableBalance).toLocaleString()}</p>
+                                <p className="text-[8px] font-bold text-slate-500">ETB</p>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowNotificationModal(true)}
+                                className="min-h-[92px] rounded-2xl border border-amber-400/25 bg-amber-500/10 p-3 text-left shadow-[0_0_18px_rgba(245,158,11,0.12)] active:scale-95 transition-all"
+                            >
+                                <ClipboardList size={16} className="text-amber-300 mb-2" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Pending</p>
+                                <p className="text-sm font-black text-amber-300 leading-tight">{effectiveIsManager ? pendingApprovalRequests.length : myPendingRequests.length}</p>
+                                <p className="text-[8px] font-bold text-slate-500">Approval</p>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('REPORTS')}
+                                className="min-h-[92px] rounded-2xl border border-cyan-400/25 bg-cyan-500/10 p-3 text-left shadow-[0_0_18px_rgba(6,182,212,0.12)] active:scale-95 transition-all"
+                            >
+                                <BarChart3 size={16} className="text-cyan-300 mb-2" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">This month</p>
+                                <p className="text-sm font-black text-cyan-300 leading-tight">{paidThisMonth.toLocaleString()}</p>
+                                <p className="text-[8px] font-bold text-slate-500">ETB paid</p>
+                            </button>
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 flex items-center justify-between gap-3 backdrop-blur-xl">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${advancedData?.reconciliation?.issueCount ? 'bg-rose-400 shadow-[0_0_8px_#fb7185]' : 'bg-emerald-400 shadow-[0_0_8px_#34d399]'}`} />
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-black text-white">Financial system {advancedData?.reconciliation?.issueCount ? 'needs review' : 'healthy'}</p>
+                                    <p className="text-[8px] font-bold text-slate-500 truncate">API & database live · reconciliation monitored</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[8px] font-bold text-slate-500 whitespace-nowrap">
+                                    {lastSyncedAt ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'syncing'}
+                                </span>
+                                <button type="button" onClick={refreshDashboard} disabled={dashboardRefreshing} className="text-[9px] font-black text-cyan-300 whitespace-nowrap disabled:opacity-50">
+                                    {dashboardRefreshing ? 'SYNCING' : 'REFRESH'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {(isLowBalance || receiptMismatchCount > 0) && (
+                            <div className="flex flex-col gap-2">
+                                {isLowBalance && (
+                                    <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 flex items-start gap-2.5">
+                                        <AlertTriangle size={16} className="text-rose-300 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-[10px] font-black text-rose-200">Low account balance</p>
+                                            <p className="text-[9px] font-bold text-slate-400">Available-ku waa {Number(spendableBalance).toLocaleString()} ETB. Hubi codsiyada cusub ka hor ansixinta.</p>
+                                        </div>
+                                    </div>
+                                )}
+                                {receiptMismatchCount > 0 && (
+                                    <button type="button" onClick={() => setActiveTab('REPORTS')} className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3 flex items-center justify-between gap-3 text-left">
+                                        <div className="flex items-start gap-2.5">
+                                            <FileText size={16} className="text-amber-300 shrink-0 mt-0.5" />
+                                            <div>
+                                                <p className="text-[10px] font-black text-amber-200">Receipt verification needs review</p>
+                                                <p className="text-[9px] font-bold text-slate-400">Amount, phone ama transaction reference ayaa is-waafaqi waayey.</p>
+                                            </div>
+                                        </div>
+                                        <span className="text-sm font-black text-amber-300">{receiptMismatchCount}</span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
                         {/* Category Breakdown Card (Live Data) */}
                         <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-cyan-950/40 border border-cyan-500/30 rounded-3xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.15),inset_0_1px_1px_rgba(255,255,255,0.2)] flex flex-col gap-4 backdrop-blur-2xl">
@@ -1559,6 +1870,41 @@ export default function TelegramMiniAppPage() {
                             </div>
                         </div>
 
+                        {/* Recent activity with live workflow status */}
+                        <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-4 backdrop-blur-xl flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xs font-black text-white uppercase tracking-wider">Recent Activity</h3>
+                                    <p className="text-[9px] font-bold text-slate-500">Dhaqdhaqaaqii ugu dambeeyey iyo status-kiisa</p>
+                                </div>
+                                <button type="button" onClick={() => setActiveTab('TRANSACTIONS')} className="text-[9px] font-black text-cyan-300">VIEW ALL</button>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                {historyExpenses.slice(0, 5).map(expense => {
+                                    const status = expense.workflowStatus || expense.paymentStatus || (expense.isDeposit ? 'DEPOSIT' : 'DRAFT');
+                                    const statusClass = status === 'PAID' || expense.isDeposit
+                                        ? 'text-emerald-300 bg-emerald-500/10 border-emerald-400/20'
+                                        : status === 'REJECTED' || status === 'RECEIPT_MISMATCH'
+                                            ? 'text-rose-300 bg-rose-500/10 border-rose-400/20'
+                                            : status.includes('RECEIPT') || status === 'APPROVED'
+                                                ? 'text-cyan-300 bg-cyan-500/10 border-cyan-400/20'
+                                                : 'text-amber-300 bg-amber-500/10 border-amber-400/20';
+                                    return (
+                                        <button type="button" key={expense.id} onClick={() => setSelectedTransactionForDetails(expense)} className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 flex items-center justify-between gap-3 text-left active:scale-[0.98] transition-all">
+                                            <div className="min-w-0">
+                                                <p className="text-[10px] font-black text-white truncate">{expense.description || expense.category}</p>
+                                                <p className="text-[8px] font-bold text-slate-500">{new Date(expense.createdAt).toLocaleString('so-SO')}</p>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1 shrink-0">
+                                                <span className="text-[10px] font-black text-white">{expense.isDeposit ? '+' : '-'}{Number(expense.amount).toLocaleString()} ETB</span>
+                                                <span className={`px-2 py-0.5 rounded-md border text-[8px] font-black ${statusClass}`}>{String(status).replaceAll('_', ' ')}</span>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
                         {/* Manager Approval Workflow Card (Visible to Managers) */}
                         {effectiveIsManager ? (
                             <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-blue-950/60 border border-blue-500/30 rounded-3xl p-5 shadow-[0_0_35px_rgba(59,130,246,0.2),inset_0_1px_1.5px_rgba(255,255,255,0.25)] flex flex-col gap-4 backdrop-blur-2xl relative overflow-hidden">
@@ -1577,13 +1923,21 @@ export default function TelegramMiniAppPage() {
                                     </div>
                                 </div>
 
-                                {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).length === 0 ? (
+                                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                                    {(['PENDING', 'RECEIPT', 'REJECTED', 'PAID', 'ALL'] as const).map(filter => (
+                                        <button key={filter} type="button" onClick={() => setApprovalDashboardFilter(filter)} className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black border whitespace-nowrap transition-all ${approvalDashboardFilter === filter ? 'bg-blue-500/25 border-blue-400/50 text-blue-200' : 'bg-white/5 border-white/10 text-slate-400'}`}>
+                                            {filter}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {filteredAdminRequests.length === 0 ? (
                                     <div className="p-4 bg-white/5 border border-white/10 rounded-2xl text-center text-xs font-bold text-slate-300">
-                                        ✅ Majiraan dalabyo waaweyn (&gt;= 5,000 ETB) oo sugaya approval-kaaga.
+                                        Wax diiwaan ah lagama helin filter-kan.
                                     </div>
                                 ) : (
                                     <div className="flex flex-col gap-3">
-                                        {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).map((exp) => (
+                                        {filteredAdminRequests.map((exp) => (
                                             <div key={exp.id} className="p-4 bg-slate-950/80 border border-amber-500/40 rounded-2xl flex flex-col gap-3 shadow-lg">
                                                 <div className="flex justify-between items-start">
                                                     <div>
@@ -1596,12 +1950,16 @@ export default function TelegramMiniAppPage() {
                                                         {exp.requesterName && (
                                                             <p className="text-[10px] text-slate-400 font-bold mt-0.5">👤 Codsaday: {exp.requesterName}</p>
                                                         )}
+                                                        <p className="text-[9px] text-slate-500 font-bold mt-0.5">Sugayey: {approvalAge(exp.createdAt)}</p>
                                                     </div>
                                                     <span className="text-sm font-black text-amber-400">
                                                         {Number(exp.amount).toLocaleString()} ETB
                                                     </span>
                                                 </div>
 
+                                                <button type="button" onClick={() => setSelectedTransactionForDetails(exp)} className="w-full py-2 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black text-cyan-300">View request details</button>
+
+                                                {pendingApprovalRequests.some(item => item.id === exp.id) && (
                                                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10">
                                                     <button
                                                         type="button"
@@ -1643,15 +2001,61 @@ export default function TelegramMiniAppPage() {
                                                         <AlertTriangle size={14} /> Reject
                                                     </button>
                                                 </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
                         ) : (
-                            <div className="bg-slate-900/60 border border-white/10 rounded-3xl p-4 text-center backdrop-blur-xl">
-                                <p className="text-xs font-bold text-slate-400">
-                                    ℹ️ Oggolaanshaha dalabada waaweyn (&gt;= 10,000 ETB) waxaa toos u maamula Manager Abdehakim Mumin.
+                            <div className="bg-gradient-to-br from-slate-950/90 via-slate-900/90 to-amber-950/30 border border-amber-400/25 rounded-3xl p-5 backdrop-blur-xl flex flex-col gap-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-400/30 flex items-center justify-center">
+                                            <ClipboardList size={17} className="text-amber-300" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xs font-black text-white uppercase tracking-wider">Codsiyadayda</h3>
+                                            <p className="text-[10px] font-bold text-slate-400">Approval status-kaaga live</p>
+                                        </div>
+                                    </div>
+                                    <span className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-400/25 text-[10px] font-black text-amber-300">
+                                        {myPendingRequests.length} pending
+                                    </span>
+                                </div>
+
+                                {myPendingRequests.length > 0 ? (
+                                    <div className="flex flex-col gap-2">
+                                        {myPendingRequests.slice(0, 4).map(exp => (
+                                            <button type="button" onClick={() => setSelectedTransactionForDetails(exp)} key={exp.id} className="w-full text-left rounded-2xl bg-white/5 border border-white/10 p-3 flex items-center justify-between gap-3 active:scale-[0.98] transition-all">
+                                                <div className="min-w-0">
+                                                    <p className="text-[11px] font-black text-white truncate">{exp.description || exp.category}</p>
+                                                    <p className="text-[9px] font-bold text-amber-300 mt-0.5">Sugaya oggolaanshaha maamulka</p>
+                                                    <p className="text-[8px] font-bold text-slate-500 mt-0.5">Sugayey: {approvalAge(exp.createdAt)} · Guji faahfaahinta</p>
+                                                </div>
+                                                <span className="text-[11px] font-black text-white whitespace-nowrap">{Number(exp.amount).toLocaleString()} ETB</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-2xl bg-emerald-500/10 border border-emerald-400/20 p-3 flex items-center gap-2">
+                                        <CheckCircle2 size={15} className="text-emerald-300 shrink-0" />
+                                        <p className="text-[10px] font-bold text-slate-300">Ma lihid codsi hadda sugaya approval.</p>
+                                    </div>
+                                )}
+
+                                {awaitingReceiptRequests.filter(isOwnerOfExpense).length > 0 && (
+                                    <div className="rounded-2xl bg-cyan-500/10 border border-cyan-400/25 p-3 flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-[10px] font-black text-cyan-200">La oggolaaday — rasiid sugaya</p>
+                                            <p className="text-[9px] font-bold text-slate-400">Telegram-ka ka fur dalabka saxda ah oo geli rasiidka.</p>
+                                        </div>
+                                        <span className="text-sm font-black text-cyan-300">{awaitingReceiptRequests.filter(isOwnerOfExpense).length}</span>
+                                    </div>
+                                )}
+
+                                <p className="text-[10px] font-bold text-slate-400 text-center leading-relaxed">
+                                    Dalab kasta oo gaaraya ama ka badan 5,000 ETB wuxuu sugayaa oggolaanshaha admin-ka. Members-ku xaaladda way arki karaan, laakiin ma ansixin karaan.
                                 </p>
                             </div>
                         )}
@@ -1818,16 +2222,74 @@ export default function TelegramMiniAppPage() {
                                     </div>
                                     <div>
                                         <h3 className="text-xs font-black text-white uppercase tracking-wider">Reports & Financial Audit Hub</h3>
-                                        <p className="text-[10px] text-emerald-400 font-bold">Coming Soon (Baqshiinka warbixinada)</p>
+                                        <p className="text-[10px] text-emerald-400 font-bold">Live reconciliation, workflow & system health</p>
                                     </div>
                                 </div>
                                 <span className="px-3 py-1 bg-emerald-400/20 border border-emerald-400/40 text-emerald-300 text-[9px] font-black uppercase rounded-full animate-pulse">
-                                    v2.5 Release
+                                    LIVE v3
                                 </span>
                             </div>
 
-                            {/* Coming Soon Graphic Banner */}
-                            <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-cyan-950/80 border border-white/10 rounded-2xl p-6 text-center flex flex-col items-center gap-3">
+                            <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-4 flex flex-col gap-3">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h2 className="text-xs font-black text-white uppercase tracking-wider">Enterprise Report Builder</h2>
+                                        <p className="text-[9px] font-bold text-slate-400">Daily, weekly, monthly ama custom financial statement</p>
+                                    </div>
+                                    <span className="text-[8px] font-black text-emerald-300 border border-emerald-400/25 bg-emerald-500/10 rounded-full px-2 py-1">AUDIT READY</span>
+                                </div>
+
+                                <div className="grid grid-cols-4 gap-1.5">
+                                    {(['DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'] as const).map(type => (
+                                        <button key={type} type="button" onClick={() => setReportType(type)} className={`py-2 rounded-lg text-[8px] font-black border ${reportType === type ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40' : 'bg-white/5 text-slate-400 border-white/10'}`}>{type}</button>
+                                    ))}
+                                </div>
+
+                                {reportType === 'CUSTOM' && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <label className="text-[8px] font-black text-slate-400">FROM<input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="mt-1 w-full rounded-lg bg-slate-950 border border-white/10 p-2 text-[9px] text-white" /></label>
+                                        <label className="text-[8px] font-black text-slate-400">TO<input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="mt-1 w-full rounded-lg bg-slate-950 border border-white/10 p-2 text-[9px] text-white" /></label>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <select value={reportAccountId} onChange={e => setReportAccountId(e.target.value)} className="rounded-lg bg-slate-950 border border-white/10 p-2.5 text-[9px] text-white"><option value="">All Accounts</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+                                    <select value={reportCategory} onChange={e => setReportCategory(e.target.value)} className="rounded-lg bg-slate-950 border border-white/10 p-2.5 text-[9px] text-white"><option value="ALL">All Categories</option>{categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select>
+                                    <select value={reportStatus} onChange={e => setReportStatus(e.target.value)} className="rounded-lg bg-slate-950 border border-white/10 p-2.5 text-[9px] text-white"><option value="ALL">All Statuses</option><option value="PAID">Paid</option><option value="PENDING_APPROVAL">Pending Approval</option><option value="AWAITING_RECEIPT">Awaiting Receipt</option><option value="REJECTED">Rejected</option><option value="REFUNDED">Refunded</option></select>
+                                    <select value={reportOrientation} onChange={e => setReportOrientation(e.target.value as any)} className="rounded-lg bg-slate-950 border border-white/10 p-2.5 text-[9px] text-white"><option value="portrait">A4 Portrait</option><option value="landscape">A4 Landscape</option></select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <label className="rounded-xl bg-white/5 border border-white/10 p-2.5 flex items-center justify-between text-[9px] font-bold text-slate-300">Include Receipts<input type="checkbox" checked={reportIncludeReceipts} onChange={e => setReportIncludeReceipts(e.target.checked)} className="accent-emerald-500" /></label>
+                                    <label className="rounded-xl bg-white/5 border border-white/10 p-2.5 flex items-center justify-between text-[9px] font-bold text-slate-300">Expense Forms<input type="checkbox" checked={reportIncludeForms} onChange={e => setReportIncludeForms(e.target.checked)} className="accent-emerald-500" /></label>
+                                    <select value={reportLanguage} onChange={e => setReportLanguage(e.target.value as any)} className="rounded-xl bg-white/5 border border-white/10 p-2.5 text-[9px] font-bold text-white"><option value="so">Somali</option><option value="en">English</option></select>
+                                    <button type="button" onClick={() => loadEnterpriseReport(false)} disabled={reportLoading} className="rounded-xl bg-blue-500/15 border border-blue-400/25 p-2.5 text-[9px] font-black text-blue-200 disabled:opacity-50">{reportLoading ? 'CALCULATING...' : 'PREVIEW REPORT'}</button>
+                                </div>
+                            </div>
+
+                            {reportPreview && (
+                                <div className="flex flex-col gap-3">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                            ['Opening', reportPreview.summary.openingBalance, 'text-slate-200'], ['Inflows', reportPreview.summary.totalIn, 'text-emerald-300'],
+                                            ['Outflows', reportPreview.summary.totalOut, 'text-rose-300'], ['Net Cash Flow', reportPreview.summary.netCashFlow, reportPreview.summary.netCashFlow >= 0 ? 'text-emerald-300' : 'text-rose-300'],
+                                            ['Closing', reportPreview.summary.closingBalance, 'text-cyan-300'], ['Available', reportPreview.summary.available, 'text-amber-300']
+                                        ].map(([label, value, color]) => <div key={String(label)} className="rounded-xl bg-white/5 border border-white/10 p-3"><p className="text-[8px] font-black text-slate-500 uppercase">{label}</p><p className={`text-sm font-black ${color}`}>{Number(value).toLocaleString()} ETB</p></div>)}
+                                    </div>
+                                    <div className="rounded-2xl bg-white/5 border border-white/10 p-3 flex items-center justify-between">
+                                        <div><p className="text-[10px] font-black text-white">Receipt Coverage</p><p className="text-[9px] text-slate-400">{reportPreview.summary.receiptStats.attached} attached · {reportPreview.summary.receiptStats.missing} missing</p></div>
+                                        <span className="text-sm font-black text-emerald-300">{reportPreview.summary.receiptStats.total ? Math.round(reportPreview.summary.receiptStats.attached / reportPreview.summary.receiptStats.total * 100) : 100}%</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button type="button" onClick={exportEnterprisePdf} disabled={reportLoading} className="py-3 rounded-xl bg-rose-500/15 border border-rose-400/25 text-rose-200 text-[10px] font-black flex items-center justify-center gap-1"><Download size={13} /> DOWNLOAD PDF</button>
+                                        <button type="button" onClick={exportEnterpriseExcel} disabled={reportLoading} className="py-3 rounded-xl bg-emerald-500/15 border border-emerald-400/25 text-emerald-200 text-[10px] font-black flex items-center justify-center gap-1"><FileSpreadsheet size={13} /> EXPORT EXCEL</button>
+                                    </div>
+                                    <p className="text-[8px] text-slate-500 text-center">PDF: logo, cover, ledger, expense forms, receipts, QR verification, signatures, hash iyo page numbering.</p>
+                                </div>
+                            )}
+
+                            {/* Legacy roadmap is retained in source for migration reference. */}
+                            <div className="hidden">
                                 <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-emerald-500 to-cyan-400 p-0.5 shadow-[0_0_30px_rgba(16,185,129,0.5)]">
                                     <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center text-emerald-400">
                                         <PieChart size={30} />
@@ -1835,13 +2297,12 @@ export default function TelegramMiniAppPage() {
                                 </div>
                                 <h2 className="text-base font-black text-white">Qaybta Warbixinada (Reports Hub)</h2>
                                 <p className="text-xs text-slate-300 font-medium leading-relaxed max-w-xs">
-                                    Qaybtaan waxaa lagu soo kordhin doonaa warbixinada rasmiga ah ee warshada, sida PDF Exporting, Daily Financial Audit, Category Analytics, iyo Kharashyada oo dhan ee bishii la soo dhaafay.
+                                    Xaruntaan waxay si toos ah ula socotaa haraaga la isticmaali karo, lacagta la xannibay, socodka ansixinta, caafimaadka nidaamka iyo khaladaadka ledger-ka.
                                 </p>
                             </div>
 
-                            {/* Roadmap Features List */}
-                            <div className="flex flex-col gap-2.5">
-                                <span className="text-xs font-black text-slate-300 uppercase tracking-wider">Qorshaha Warbixinada Cusub:</span>
+                            <div className="hidden">
+                                <span className="text-xs font-black text-slate-300 uppercase tracking-wider">Adeegyada Warbixinta:</span>
                                 {[
                                     { title: '📄 Full Financial PDF Report Export', desc: 'Warbixinta kharashka oo PDF ah oo loo habaysay maamulka', status: 'Coming Soon' },
                                     { title: '📅 Custom Date Range Audit Logs', desc: 'Bixinta taariikh kasta iyo rasiidhada oo dhan', status: 'In Development' },
@@ -1853,10 +2314,61 @@ export default function TelegramMiniAppPage() {
                                             <span className="text-[10px] text-slate-400 font-medium">{item.desc}</span>
                                         </div>
                                         <span className="px-2.5 py-1 bg-white/10 border border-white/10 text-cyan-300 text-[9px] font-bold rounded-lg whitespace-nowrap">
-                                            {item.status}
+                                            Active
                                         </span>
                                     </div>
                                 ))}
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                                {[
+                                    ['Available', advancedData?.accounts?.reduce((sum: number, a: any) => sum + Number(a.available || 0), 0) || 0, 'text-emerald-300'],
+                                    ['Reserved', advancedData?.accounts?.reduce((sum: number, a: any) => sum + Number(a.reserved || 0), 0) || 0, 'text-amber-300'],
+                                    ['Issues', advancedData?.reconciliation?.issueCount || 0, 'text-rose-300']
+                                ].map(([label, value, color]) => (
+                                    <div key={String(label)} className="p-3 rounded-2xl bg-white/5 border border-white/10 text-center">
+                                        <p className="text-[8px] uppercase font-black text-slate-500">{label}</p>
+                                        <p className={`text-[10px] font-black ${color}`}>{typeof value === 'number' && label !== 'Issues' ? `${value.toLocaleString()} ETB` : value}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-black text-slate-300 uppercase">Live Expense Workflow</span>
+                                    <button type="button" onClick={fetchAdvancedData} className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 text-[9px] font-black">
+                                        {loadingAdvanced ? 'LOADING' : 'REFRESH'}
+                                    </button>
+                                </div>
+                                {(advancedData?.workflow || []).length ? advancedData.workflow.map((item: any) => (
+                                    <div key={item.status} className="p-3 bg-white/5 border border-white/10 rounded-xl flex items-center justify-between">
+                                        <div><p className="text-[10px] font-black text-white">{String(item.status).replaceAll('_', ' ')}</p><p className="text-[9px] text-slate-400">{Number(item.amount).toLocaleString()} ETB</p></div>
+                                        <span className="text-[9px] font-black text-cyan-300">{item.count} RECORDS</span>
+                                    </div>
+                                )) : <p className="text-[10px] text-slate-500">Local workflow records wali ma jiraan.</p>}
+                            </div>
+
+                            <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-400/20 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs font-black text-white flex items-center gap-2"><AlertTriangle size={14} className="text-rose-300" /> Reconciliation</h3>
+                                    <strong className="text-rose-300">{advancedData?.reconciliation?.issueCount || 0}</strong>
+                                </div>
+                                {[
+                                    ['Paid without receipt', advancedData?.reconciliation?.paidWithoutReceipt?.length || 0],
+                                    ['Receipt without transaction', advancedData?.reconciliation?.receiptWithoutTransaction?.length || 0],
+                                    ['Orphan transactions', advancedData?.reconciliation?.orphanTransactions?.length || 0],
+                                    ['Duplicate payments', advancedData?.reconciliation?.duplicatePayments?.length || 0]
+                                ].map(([label, count]) => <div key={String(label)} className="flex justify-between text-[10px] text-slate-300"><span>{label}</span><strong>{count}</strong></div>)}
+                            </div>
+
+                            <div className="p-4 rounded-2xl bg-cyan-500/5 border border-cyan-400/20 space-y-2">
+                                <h3 className="text-xs font-black text-white">System Health</h3>
+                                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                    <span className="p-2 rounded-lg bg-white/5 text-emerald-300">API: {advancedData?.system?.api || 'checking'}</span>
+                                    <span className="p-2 rounded-lg bg-white/5 text-emerald-300">DB: {advancedData?.system?.database || 'checking'}</span>
+                                    <span className="p-2 rounded-lg bg-white/5 text-amber-300">Jobs: {advancedData?.system?.pendingJobs || 0}</span>
+                                    <span className="p-2 rounded-lg bg-white/5 text-cyan-300">Version: {advancedData?.system?.version || 'local'}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2062,10 +2574,14 @@ export default function TelegramMiniAppPage() {
                             
                             <button
                                 type="button"
-                                onClick={() => { handleCategoryChange('DEPOSIT', 'Deposit / Dayn Soo Gashay'); setDropdownOpen(false); }}
+                                onClick={() => {
+                                    handleCategoryChange('DEPOSIT', 'Deposit / Dayn Soo Gashay');
+                                    setDropdownOpen(false);
+                                }}
                                 className="w-full p-3 hover:bg-emerald-500/10 text-left text-sm font-bold flex items-center gap-2 border-b border-[var(--tg-theme-hint-color,rgba(255,255,255,0.05))] opacity-90 transition-all text-emerald-300"
                             >
-                                <Wallet size={16} /><span>Deposit / Dayn Soo Gashay</span>
+                                <Wallet size={16} />
+                                <span>Deposit / Dayn Soo Gashay</span>
                             </button>
 
                             <button
@@ -2110,10 +2626,25 @@ export default function TelegramMiniAppPage() {
                     <form onSubmit={handleSubmit} className="bg-[var(--tg-theme-secondary-bg-color,rgba(255,255,255,0.02))] border border-white/10 shadow-lg rounded-3xl p-5 pb-28 flex flex-col gap-4 animate-fade-in">
                         {isDeposit && (
                             <div className="flex flex-col gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-400/25 animate-fade-in">
-                                <div className="flex items-center gap-2 text-emerald-300"><Wallet size={17} /><div><p className="text-xs font-black">Deposit / Dayn Soo Gashay</p><p className="text-[9px] text-emerald-200/70">Lacagta koontada ayaa lagu darayaa, rasiidkana Telegram ayaa lala xiriirinayaa.</p></div></div>
-                                <input required value={depositSourceName} onChange={e => setDepositSourceName(e.target.value)} placeholder="Magaca qofka lacagta laga helay" className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#fff)] border border-white/10 rounded-xl text-xs font-bold outline-none" />
-                                <input required value={depositTransferId} onChange={e => setDepositTransferId(e.target.value)} placeholder="Transfer ID-ga rasiidka" className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#fff)] border border-white/10 rounded-xl text-xs font-bold outline-none" />
-                                <label className="p-3 rounded-xl border border-dashed border-emerald-400/40 bg-black/10 text-center cursor-pointer"><Camera size={18} className="mx-auto mb-1 text-emerald-300" /><span className="text-[10px] font-black text-emerald-200">{receiptFile ? receiptFile.name : 'Soo geli sawirka rasiidka'}</span><input type="file" accept="image/*" required className="hidden" onChange={e => { const file=e.target.files?.[0]||null; setReceiptFile(file); if(receiptPreview) URL.revokeObjectURL(receiptPreview); setReceiptPreview(file?URL.createObjectURL(file):null); }} /></label>
+                                <div className="flex items-center gap-2 text-emerald-300">
+                                    <Wallet size={17} />
+                                    <div><p className="text-xs font-black">Deposit / Dayn Soo Gashay</p><p className="text-[9px] text-emerald-200/70">Lacagta koontada ayaa lagu darayaa, rasiidkana Telegram ayaa lala xiriirinayaa.</p></div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2">
+                                    <input required value={depositSourceName} onChange={e => setDepositSourceName(e.target.value)} placeholder="Magaca qofka lacagta laga helay"
+                                        className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#fff)] border border-white/10 rounded-xl text-xs font-bold outline-none" />
+                                    <input required value={depositTransferId} onChange={e => setDepositTransferId(e.target.value)} placeholder="Transfer ID-ga rasiidka"
+                                        className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#fff)] border border-white/10 rounded-xl text-xs font-bold outline-none" />
+                                </div>
+                                <label className="p-3 rounded-xl border border-dashed border-emerald-400/40 bg-black/10 text-center cursor-pointer">
+                                    <Camera size={18} className="mx-auto mb-1 text-emerald-300" />
+                                    <span className="text-[10px] font-black text-emerald-200">{receiptFile ? receiptFile.name : 'Soo geli sawirka rasiidka'}</span>
+                                    <input type="file" accept="image/*" required className="hidden" onChange={e => {
+                                        const file = e.target.files?.[0] || null; setReceiptFile(file);
+                                        if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+                                        setReceiptPreview(file ? URL.createObjectURL(file) : null);
+                                    }} />
+                                </label>
                                 {receiptPreview && <img src={receiptPreview} alt="Deposit receipt preview" className="max-h-48 w-full object-contain rounded-xl bg-black/20 border border-white/10" />}
                             </div>
                         )}
@@ -2734,12 +3265,12 @@ export default function TelegramMiniAppPage() {
                             </div>
 
                             {/* Status Header Badge Card */}
-                            <div className="p-4 bg-gradient-to-r from-emerald-950/60 via-slate-950 to-slate-950 border border-emerald-400/50 rounded-2xl flex items-center gap-3 shadow-lg">
-                                <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-400/60 flex items-center justify-center text-emerald-400 shadow-[0_0_15px_#10b981]">
-                                    <CheckCircle2 size={24} />
+                            <div className="p-4 bg-gradient-to-r from-blue-950/60 via-slate-950 to-slate-950 border border-blue-400/40 rounded-2xl flex items-center gap-3 shadow-lg">
+                                <div className="w-10 h-10 rounded-full bg-blue-500/20 border border-blue-400/50 flex items-center justify-center text-blue-300">
+                                    <FileText size={22} />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Withdrawal / Payment Successful</span>
+                                    <span className="text-[10px] font-black text-blue-300 uppercase tracking-widest">{String(selectedTransactionForDetails.workflowStatus || selectedTransactionForDetails.paymentStatus || 'DRAFT').replaceAll('_', ' ')}</span>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-2xl font-black text-emerald-400 tracking-tight">
                                             {Number(selectedTransactionForDetails.amount).toLocaleString()} ETB
@@ -2783,8 +3314,8 @@ export default function TelegramMiniAppPage() {
                                 )}
                                 <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
                                     <span className="text-slate-400 font-bold">Status</span>
-                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-[10px] uppercase border border-emerald-500/30">
-                                        Completed
+                                    <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-black text-[10px] uppercase border border-blue-500/30">
+                                        {String(selectedTransactionForDetails.workflowStatus || selectedTransactionForDetails.paymentStatus || 'DRAFT').replaceAll('_', ' ')}
                                     </span>
                                 </div>
                             </div>
@@ -2822,6 +3353,7 @@ export default function TelegramMiniAppPage() {
                             )}
 
                             {/* Action Buttons: Edit & Delete */}
+                            {(profileData?.permissions?.edit || effectiveIsManager) && (
                             <div className="flex justify-center gap-3 mt-1">
                                 <button
                                     type="button"
@@ -2878,6 +3410,7 @@ export default function TelegramMiniAppPage() {
                                      <Trash2 size={17} />
                                  </button>
                             </div>
+                            )}
 
                             {/* Back Button */}
                             <button
@@ -3004,11 +3537,11 @@ export default function TelegramMiniAppPage() {
                                 <div className="flex justify-between items-center text-xs font-bold">
                                     <span className="text-amber-400">⏳ Codsiyada Sugaya Approval</span>
                                     <span className="text-white bg-amber-500/20 px-2 py-0.5 rounded-full text-[10px]">
-                                        {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).length} Item(s)
+                                        {visiblePendingApprovalRequests.length} Item(s)
                                     </span>
                                 </div>
-                                {historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).length > 0 ? (
-                                    historyExpenses.filter(e => !e.approved && Number(e.amount) >= 5000).map(e => (
+                                {visiblePendingApprovalRequests.length > 0 ? (
+                                    visiblePendingApprovalRequests.map(e => (
                                         <p key={e.id} className="text-[11px] text-slate-300 font-bold">
                                             • {e.description || e.category}: <span className="text-amber-300">{Number(e.amount).toLocaleString()} ETB</span>
                                         </p>
