@@ -34,7 +34,7 @@ async function buildReport(request: Request, body?: any) {
   const reportType = String(input.reportType || 'MONTHLY').toUpperCase();
   const { from, to } = periodBounds(reportType, input.startDate, input.endDate);
 
-  const accounts = await prisma.account.findMany({ where: { companyId, isActive: true }, orderBy: { name: 'asc' } });
+  const accounts = await prisma.account.findMany({ where: { companyId, isActive: true }, select: { id: true, name: true, balance: true, currency: true }, orderBy: { name: 'asc' } });
   const selectedAccounts = input.accountId ? accounts.filter(a => a.id === input.accountId) : accounts;
   const accountIds = selectedAccounts.map(a => a.id);
   const transactions = await prisma.transaction.findMany({
@@ -46,7 +46,12 @@ async function buildReport(request: Request, body?: any) {
         ...(isAdmin ? [] : identity ? [{ OR: [{ userId: String(identity.id) }, { expense: { note: { contains: `[TelegramId: ${identity.id}]` } } }] }] : [{ id: '__unauthorized__' }])
       ]
     },
-    include: { account: true, fromAccount: true, toAccount: true, expense: { include: { expenseCategory: true, employee: true } } },
+    select: {
+      id: true, transactionDate: true, description: true, amount: true, type: true, category: true,
+      accountId: true, fromAccountId: true, toAccountId: true, receiptUrl: true, userId: true,
+      account: { select: { name: true } }, fromAccount: { select: { name: true } }, toAccount: { select: { name: true } },
+      expense: { select: { category: true, subCategory: true, amount: true, description: true, note: true, createdAt: true, paymentDate: true, paymentStatus: true, receiptUrl: true, transportType: true, equipmentName: true, rentalPeriod: true, consultantName: true, consultancyType: true, employee: { select: { fullName: true, phone: true } } } }
+    },
     orderBy: { transactionDate: 'asc' }
   });
 
@@ -81,9 +86,9 @@ async function buildReport(request: Request, body?: any) {
       inflow: signed > 0 ? signed : 0,
       outflow: signed < 0 ? Math.abs(signed) : 0,
       balance: runningBalance,
-      status: expense?.workflowStatus || expense?.paymentStatus || 'PAID',
+      status: expense?.paymentStatus || 'PAID',
       receiptUrl: tx.receiptUrl || expense?.receiptUrl || null,
-      receiptTransactionId: expense?.receiptTransactionId || null,
+      receiptTransactionId: null,
       requester: expense?.note?.match(/\[Dalbaday:\s*([^\]]+)\]/)?.[1] || '',
       paymentPhone: expense?.note?.match(/\[PaymentPhone:\s*([^\]]+)\]/)?.[1] || expense?.employee?.phone || '',
       recipient: expense?.note?.match(/\[RecipientName:\s*([^\]]+)\]/)?.[1] || expense?.employee?.fullName || '',
@@ -96,7 +101,7 @@ async function buildReport(request: Request, body?: any) {
         note: String(expense.note || '').replace(/\[[^\]]+\]/g, '').trim(),
         requestDate: expense.createdAt,
         paymentDate: expense.paymentDate,
-        workflowStatus: expense.workflowStatus,
+        workflowStatus: expense.paymentStatus,
         transportType: expense.transportType,
         equipmentName: expense.equipmentName,
         rentalPeriod: expense.rentalPeriod,
@@ -108,7 +113,7 @@ async function buildReport(request: Request, body?: any) {
   });
   const totalIn = ledger.reduce((sum, row) => sum + row.inflow, 0);
   const totalOut = ledger.reduce((sum, row) => sum + row.outflow, 0);
-  const reserved = selectedAccounts.reduce((sum, a) => sum + safeNumber(a.reservedBalance), 0);
+  const reserved = 0;
   const categories = Object.values(ledger.reduce((map: any, row) => {
     if (!map[row.category]) map[row.category] = { category: row.category, amount: 0, count: 0 };
     map[row.category].amount += row.outflow;
@@ -148,12 +153,16 @@ export async function POST(request: Request) {
     const canonical = JSON.stringify({ period: report.period, summary: report.summary, filters: report.filters, ledger: report.ledger.map(r => [r.id, r.inflow, r.outflow, r.balance]) });
     const reportHash = crypto.createHash('sha256').update(canonical).digest('hex');
     const reportNumber = `AN-${report.reportType.slice(0, 3)}-${Date.now().toString(36).toUpperCase()}`;
-    const saved = await prisma.generatedFinancialReport.create({ data: {
-      companyId: process.env.TELEGRAM_COMPANY_ID || '', reportNumber, reportType: report.reportType,
-      periodStart: new Date(report.period.start), periodEnd: new Date(report.period.end), accountId: body.accountId || null,
-      generatedBy: body.telegramUserId || null, generatedName: report.generatedBy, filters: report.filters, summary: report.summary, reportHash
-    }});
-    await prisma.financialAuditEvent.create({ data: { companyId: process.env.TELEGRAM_COMPANY_ID || '', actorId: body.telegramUserId || null, actorName: report.generatedBy, actorSource: 'MINI_APP', action: 'REPORT_GENERATED', entity: 'GeneratedFinancialReport', entityId: saved.id, after: { reportNumber, reportHash } } });
+    try {
+      const saved = await prisma.generatedFinancialReport.create({ data: {
+        companyId: process.env.TELEGRAM_COMPANY_ID || '', reportNumber, reportType: report.reportType,
+        periodStart: new Date(report.period.start), periodEnd: new Date(report.period.end), accountId: body.accountId || null,
+        generatedBy: body.telegramUserId || null, generatedName: report.generatedBy, filters: report.filters, summary: report.summary, reportHash
+      }});
+      await prisma.financialAuditEvent.create({ data: { companyId: process.env.TELEGRAM_COMPANY_ID || '', actorId: body.telegramUserId || null, actorName: report.generatedBy, actorSource: 'MINI_APP', action: 'REPORT_GENERATED', entity: 'GeneratedFinancialReport', entityId: saved.id, after: { reportNumber, reportHash } } });
+    } catch (auditError) {
+      console.warn('Report audit persistence is unavailable; PDF generation will continue.', auditError);
+    }
     return NextResponse.json({ success: true, report: { ...report, reportNumber, reportHash, verificationUrl: `/api/telegram/reports?verify=${reportHash}` } });
   } catch (error: any) { return NextResponse.json({ error: error.message }, { status: 500 }); }
 }
