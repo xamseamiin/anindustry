@@ -63,10 +63,12 @@ export async function GET(request: Request) {
             where: whereCondition,
             orderBy: { createdAt: 'desc' },
             take: 100,
-            include: {
-                expenseCategory: true,
-                account: true,
-                employee: true
+            select: {
+                id: true, description: true, amount: true, category: true, categoryId: true, subCategory: true,
+                accountId: true, expenseDate: true, createdAt: true, note: true, receiptUrl: true,
+                paymentStatus: true, approved: true, employeeId: true, telegramMessageId: true, telegramChatId: true,
+                expenseCategory: { select: { name: true } }, account: { select: { name: true } },
+                employee: { select: { fullName: true, phone: true, phoneNumber: true } }
             }
         });
 
@@ -87,9 +89,7 @@ export async function GET(request: Request) {
                 where: depositWhereCondition,
                 orderBy: { createdAt: 'desc' },
                 take: 50,
-                include: {
-                    account: true
-                }
+                select: { id: true, description: true, amount: true, accountId: true, transactionDate: true, createdAt: true, note: true, receiptUrl: true, account: { select: { name: true } } }
             });
         } catch (depositErr) {
             console.error('Error fetching transaction deposits:', depositErr);
@@ -124,6 +124,7 @@ export async function GET(request: Request) {
                 recipientName: recipMatch ? recipMatch[1].trim() : (e.employee?.fullName || ''),
                 receiptUrl: e.receiptUrl || '',
                 paymentStatus: e.paymentStatus || 'PAID',
+                workflowStatus: e.paymentStatus || 'DRAFT',
                 approved: e.approved ?? true,
                 type: 'WITHDRAWAL',
                 isDeposit: false,
@@ -152,6 +153,7 @@ export async function GET(request: Request) {
             recipientName: 'AN-Industory',
             receiptUrl: d.receiptUrl || '',
             paymentStatus: 'PAID',
+            workflowStatus: 'PAID',
             approved: true,
             type: 'DEPOSIT',
             isDeposit: true,
