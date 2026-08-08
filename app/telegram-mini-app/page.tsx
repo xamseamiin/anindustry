@@ -1017,7 +1017,8 @@ export default function TelegramMiniAppPage() {
     const isRawMaterialTemp = selectedCategoryKey === 'RAW_MATERIAL';
     const amountVal = isRawMaterialTemp ? calculatedTotal : (parseFloat(amount) || 0);
     const advancedAccount = advancedData?.accounts?.find((account: any) => account.id === selectedAccountId);
-    const spendableBalance = advancedAccount?.available ?? activeAccount?.balance ?? 0;
+    const dashboardAccount = advancedAccount || activeAccount || advancedData?.accounts?.[0] || null;
+    const spendableBalance = dashboardAccount?.available ?? dashboardAccount?.balance ?? 0;
     const isOverLimit = activeAccount && amountVal > spendableBalance;
     const pendingApprovalRequests = historyExpenses.filter(e =>
         !e.isDeposit && Number(e.amount) >= 5000 &&
@@ -1035,7 +1036,7 @@ export default function TelegramMiniAppPage() {
         return !e.isDeposit && e.paymentStatus === 'PAID' && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
     }).reduce((sum, e) => sum + Number(e.amount), 0);
     const receiptMismatchCount = Number(advancedData?.workflow?.find((item: any) => item.status === 'RECEIPT_MISMATCH')?.count || 0);
-    const accountTotalBalance = Number(advancedAccount?.balance ?? activeAccount?.balance ?? 0);
+    const accountTotalBalance = Number(dashboardAccount?.balance ?? 0);
     const lowBalanceThreshold = Math.max(5000, accountTotalBalance * 0.15);
     const isLowBalance = Number(spendableBalance) <= lowBalanceThreshold;
     const approvalAge = (createdAt: string) => {
@@ -1682,7 +1683,7 @@ export default function TelegramMiniAppPage() {
                                         <Wallet size={20} className="text-emerald-300" />
                                     </div>
                                     <span className="text-sm font-black text-white tracking-wide">
-                                        {activeAccount ? activeAccount.name : 'E-Birr Merchant Account'}
+                                        {dashboardAccount ? dashboardAccount.name : 'E-Birr Merchant Account'}
                                     </span>
                                     <ArrowRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform ml-1" />
                                 </div>
@@ -1691,12 +1692,12 @@ export default function TelegramMiniAppPage() {
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Balance</span>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight">
-                                            {activeAccount ? Number(advancedAccount?.available ?? activeAccount.balance).toLocaleString() : '0'}
+                                            {Number(dashboardAccount?.available ?? dashboardAccount?.balance ?? 0).toLocaleString()}
                                         </span>
                                         <span className="text-sm font-bold text-emerald-400">ETB</span>
                                     </div>
                                     <span className="text-[10px] font-bold text-slate-400 mt-1">Budget progress</span>
-                                    {advancedAccount && Number(advancedAccount.reserved) > 0 && (
+                                    {dashboardAccount && Number(dashboardAccount.reserved) > 0 && (
                                         <span className="text-[9px] font-bold text-amber-300 mt-1">
                                             Reserved: {Number(advancedAccount.reserved).toLocaleString()} ETB · Total: {Number(advancedAccount.balance).toLocaleString()} ETB
                                         </span>

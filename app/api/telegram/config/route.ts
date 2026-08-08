@@ -13,22 +13,27 @@ export async function GET() {
         const [employees, accounts, categories, vendors, materials] = await Promise.all([
             prisma.employee.findMany({
                 where: { companyId, isActive: true },
+                select: { id: true, fullName: true, role: true, phone: true, phoneNumber: true, monthlySalary: true, salaryPaidThisMonth: true },
                 orderBy: { fullName: 'asc' }
             }),
             prisma.account.findMany({
                 where: { companyId, isActive: true },
+                select: { id: true, name: true, balance: true, currency: true },
                 orderBy: { name: 'asc' }
             }),
             prisma.expenseCategory.findMany({
                 where: { companyId },
+                select: { id: true, name: true, type: true },
                 orderBy: { name: 'asc' }
             }),
             prisma.shopVendor.findMany({
                 where: { companyId },
+                select: { id: true, name: true, type: true },
                 orderBy: { name: 'asc' }
             }),
             prisma.factoryMaterial.findMany({
                 where: { companyId },
+                select: { id: true, name: true, unit: true, inStock: true, purchasePrice: true },
                 orderBy: { name: 'asc' }
             })
         ]);
@@ -42,7 +47,8 @@ export async function GET() {
                 companyId,
                 paymentStatus: 'PAID',
                 createdAt: { gte: startOfMonth }
-            }
+            },
+            select: { employeeId: true, amount: true, description: true }
         });
 
         const employeePaidMap: Record<string, number> = {};
@@ -102,4 +108,3 @@ export async function GET() {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }
-
