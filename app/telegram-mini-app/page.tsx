@@ -1485,7 +1485,7 @@ export default function TelegramMiniAppPage() {
             const x = 15 + i * 60; doc.setTextColor(105); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold'); doc.text(label, x, 47); doc.setTextColor(color[0], color[1], color[2]); doc.setFontSize(10); doc.text(money(value), x, 56);
         });
         doc.setDrawColor(225); doc.line(15, 61, pageWidth - 15, 61);
-        const ledgerRows = report.ledger.map((row: any) => [new Date(row.date).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }), row.category || 'General', row.requester || row.recipient || '-', row.description || '-', row.account || '-', row.inflow ? money(row.inflow) : '-', row.outflow ? money(row.outflow) : '-']);
+        const ledgerRows = report.ledger.map((row: any) => [new Date(row.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), row.category || 'General', row.person || row.recipient || '-', row.description || '-', row.account || '-', row.inflow ? money(row.inflow) : '-', row.outflow ? money(row.outflow) : '-']);
         autoTable(doc, {
             startY: 66, margin: { left: 15, right: 15, bottom: 18 }, theme: 'plain', showHead: 'everyPage',
             head: [['DATE', 'CATEGORY', 'NAME / PERSON', 'DESCRIPTION', 'ACCOUNT', 'MONEY IN', 'MONEY OUT']], body: ledgerRows.length ? ledgerRows : [['-', 'No transactions', '-', '-', '-', '-', '-']],

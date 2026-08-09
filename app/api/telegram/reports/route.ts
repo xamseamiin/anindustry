@@ -50,7 +50,7 @@ async function buildReport(request: Request, body?: any) {
       id: true, transactionDate: true, description: true, amount: true, type: true, category: true,
       accountId: true, fromAccountId: true, toAccountId: true, receiptUrl: true, userId: true,
       account: { select: { name: true } }, fromAccount: { select: { name: true } }, toAccount: { select: { name: true } },
-      expense: { select: { category: true, subCategory: true, amount: true, description: true, note: true, createdAt: true, paymentDate: true, paymentStatus: true, receiptUrl: true, transportType: true, equipmentName: true, rentalPeriod: true, consultantName: true, consultancyType: true, employee: { select: { fullName: true, phone: true } } } }
+      expense: { select: { category: true, subCategory: true, amount: true, description: true, note: true, createdAt: true, paymentDate: true, paymentStatus: true, receiptUrl: true, transportType: true, equipmentName: true, rentalPeriod: true, consultantName: true, consultancyType: true, employee: { select: { fullName: true, phone: true } }, vendor: { select: { name: true } } } }
     },
     orderBy: { transactionDate: 'asc' }
   });
@@ -75,10 +75,13 @@ async function buildReport(request: Request, body?: any) {
     const signed = signedAmount(tx);
     runningBalance += signed;
     const expense = tx.expense;
+    const cleanDescription = String(expense?.note || '').replace(/\[[^\]]+\]/g, '').trim();
+    const recipientName = expense?.note?.match(/\[RecipientName:\s*([^\]]+)\]/)?.[1] || '';
+    const person = expense?.employee?.fullName || expense?.vendor?.name || recipientName || '';
     return {
       id: tx.id,
       date: tx.transactionDate,
-      description: tx.description,
+      description: cleanDescription || tx.description,
       category: expense?.category || tx.category || (signed >= 0 ? 'Deposit' : 'General'),
       account: signed >= 0
         ? (tx.toAccount?.name || tx.account?.name || tx.fromAccount?.name || '')
@@ -89,9 +92,10 @@ async function buildReport(request: Request, body?: any) {
       status: expense?.paymentStatus || 'PAID',
       receiptUrl: tx.receiptUrl || expense?.receiptUrl || null,
       receiptTransactionId: null,
+      person,
       requester: expense?.note?.match(/\[Dalbaday:\s*([^\]]+)\]/)?.[1] || '',
       paymentPhone: expense?.note?.match(/\[PaymentPhone:\s*([^\]]+)\]/)?.[1] || expense?.employee?.phone || '',
-      recipient: expense?.note?.match(/\[RecipientName:\s*([^\]]+)\]/)?.[1] || expense?.employee?.fullName || '',
+      recipient: person,
       expenseForm: expense ? {
         category: expense.category,
         subCategory: expense.subCategory,
