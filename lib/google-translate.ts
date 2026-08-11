@@ -168,16 +168,9 @@ export const changeGoogleTranslateLanguage = (language: 'so' | 'en') => {
       // Retry after a short delay
       setTimeout(checkAndTranslate, 100);
     } else {
-      console.error('Google Translate select element not found after', maxAttempts, 'attempts');
-      // Try to reinitialize
-      if (attempts === maxAttempts) {
-        console.log('Attempting to reinitialize Google Translate...');
-        googleTranslateInitialized = false;
-        initializeGoogleTranslate();
-        setTimeout(() => {
-          changeGoogleTranslateLanguage(language);
-        }, 1000);
-      }
+      // The external widget may be blocked by Telegram, an ad blocker, or an
+      // offline connection. Stop here instead of creating an endless retry loop.
+      console.warn('Google Translate is unavailable; keeping the original language.');
     }
   };
 
@@ -220,4 +213,3 @@ export const removeGoogleTranslate = () => {
   const html = document.documentElement;
   html.setAttribute('lang', 'en');
 };
-

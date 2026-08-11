@@ -9,6 +9,7 @@
     "start": "next start -p 3001",
     "lint": "next lint",
     "postinstall": "prisma generate",
+    "seed:local": "node scripts/seed-local.js",
     "electron:dev": "concurrently --kill-others \"npm run dev\" \"wait-on http://localhost:3001 && electron .\"",
     "electron:build": "npm run build && electron-builder --config electron-builder.yml",
     "electron:pack": "npm run build && electron-builder --config electron-builder.yml --dir"

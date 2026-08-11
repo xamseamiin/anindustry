@@ -58,7 +58,7 @@ export function listBackups() {
         return [];
     }
 
-    const files = fs.readdirSync(BACKUP_DIR).filter(file => file.endsWith('.json') || file.endsWith('.sql'));
+    const files = fs.readdirSync(BACKUP_DIR).filter(file => file.endsWith('.json') || file.endsWith('.sql') || file.endsWith('.json.gz'));
 
     return files.map(file => {
         const stats = fs.statSync(path.join(BACKUP_DIR, file));

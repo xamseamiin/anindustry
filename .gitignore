@@ -42,3 +42,8 @@ next-env.d.ts
 /public/Downloads/
 .temp/
 scratch/
+.local-postgres-data/
+.local-postgres-log/
+/backups/
+.local-next.log
+.local-next-error.log

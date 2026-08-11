@@ -1,0 +1,214 @@
+{
+  "generatedAt": "2026-08-09T17:56:57.907Z",
+  "period": {
+    "from": "2026-07-31T21:00:00.000Z",
+    "to": "2026-08-31T20:59:59.999Z"
+  },
+  "accounts": [
+    {
+      "name": "E-Birr Merchant",
+      "balance": 16541.66
+    },
+    {
+      "name": "Main Cash / Khasnadda",
+      "balance": 0
+    }
+  ],
+  "summary": {
+    "totalIn": 25000,
+    "totalOut": 97748,
+    "closingBalance": 16541.66
+  },
+  "ledger": [
+    {
+      "date": "2026-08-01T04:04:35.677Z",
+      "category": "Salaries",
+      "person": "Aadan",
+      "description": "Mushaar iyo comition",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 13340,
+      "balance": 75949.66
+    },
+    {
+      "date": "2026-08-01T04:04:47.903Z",
+      "category": "Salaries",
+      "person": "Xasan",
+      "description": "Mushaar iyo comition",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 15240,
+      "balance": 60709.66
+    },
+    {
+      "date": "2026-08-01T04:20:14.447Z",
+      "category": "Salaries",
+      "person": "Abshir",
+      "description": "Mushaar iyo comition",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 13340,
+      "balance": 47369.66
+    },
+    {
+      "date": "2026-08-01T04:27:44.442Z",
+      "category": "Salaries",
+      "person": "Abshir",
+      "description": "13840 ayuu lahaa",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 500,
+      "balance": 46869.66
+    },
+    {
+      "date": "2026-08-01T05:31:24.509Z",
+      "category": "Salaries",
+      "person": "Zakariye Dambeeye",
+      "description": "Mushaar iyo comition",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 13340,
+      "balance": 33529.66
+    },
+    {
+      "date": "2026-08-02T10:10:11.811Z",
+      "category": "Transport & Fuel",
+      "person": "Kacaan",
+      "description": "Kiro",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 2200,
+      "balance": 31329.660000000003
+    },
+    {
+      "date": "2026-08-02T15:24:23.019Z",
+      "category": "Transport & Fuel",
+      "person": "Kacaan",
+      "description": "Cagadi looqaaday badiic ninka shaah ilaa saylada",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 2400,
+      "balance": 28929.660000000003
+    },
+    {
+      "date": "2026-08-04T11:40:17.000Z",
+      "category": "Transport & Fuel",
+      "person": "Mustaf",
+      "description": "Maxamuud badiic loqaday cado 300xab",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 400,
+      "balance": 28529.660000000003
+    },
+    {
+      "date": "2026-08-04T15:29:30.343Z",
+      "category": "Transport & Fuel",
+      "person": "Kacaa ka",
+      "description": "Mukhtaar loo qaaday cagado iyo Yusuf Keelaa",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 2200,
+      "balance": 26329.660000000003
+    },
+    {
+      "date": "2026-08-04T15:30:10.599Z",
+      "category": "Transport & Fuel",
+      "person": "Kacaan",
+      "description": "Craxmaan jibrigaa loo geeyay cagado",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 2200,
+      "balance": 24129.660000000003
+    },
+    {
+      "date": "2026-08-05T09:26:13.366Z",
+      "category": "Salaries",
+      "person": "qoordheere",
+      "description": "mushahar qordhere",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 19340,
+      "balance": 4789.6600000000035
+    },
+    {
+      "date": "2026-08-05T10:36:17.013Z",
+      "category": "Utilities",
+      "person": "Muxiyadin",
+      "description": "Dhakhtar baadhis guud iyo Daawo la sooqoray",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 2500,
+      "balance": 2289.6600000000035
+    },
+    {
+      "date": "2026-08-05T15:16:04.315Z",
+      "category": "Bills",
+      "person": "Ethiotelcom",
+      "description": "biilkii wifiga",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 1748,
+      "balance": 541.6600000000035
+    },
+    {
+      "date": "2026-08-06T15:08:29.153Z",
+      "category": "Transport & Fuel",
+      "person": "Kscasn",
+      "description": "Kiro kordhin",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 200,
+      "balance": 341.6600000000035
+    },
+    {
+      "date": "2026-08-06T15:43:37.518Z",
+      "category": "Deposit / Dayn la Helay",
+      "person": "-",
+      "description": "Dayn: Abdehakim Abdi Mumin - Deposit E-Birr Merchant",
+      "account": "E-Birr Merchant",
+      "inflow": 25000,
+      "outflow": 0,
+      "balance": 25341.660000000003
+    },
+    {
+      "date": "2026-08-06T16:13:35.391Z",
+      "category": "Transport & Fuel",
+      "person": "Kacaan",
+      "description": "Cagaod keelaga looqaday yusux iyo xasan",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 2200,
+      "balance": 23141.660000000003
+    },
+    {
+      "date": "2026-08-08T12:51:37.975Z",
+      "category": "Transport & Fuel",
+      "person": "Kacaanka",
+      "description": "Cagado looqaday keelaga iyo cfatax gadhwayne",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 2200,
+      "balance": 20941.660000000003
+    },
+    {
+      "date": "2026-08-08T13:22:14.213Z",
+      "category": "Transport & Fuel",
+      "person": "-",
+      "description": "Cagado looqaday jibriga",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 2200,
+      "balance": 18741.660000000003
+    },
+    {
+      "date": "2026-08-09T08:42:12.298Z",
+      "category": "Transport & Fuel",
+      "person": "Craxmaan ",
+      "description": "Mukhtaar caagado looqaday",
+      "account": "E-Birr Merchant",
+      "inflow": 0,
+      "outflow": 2200,
+      "balance": 16541.660000000003
+    }
+  ]
+}

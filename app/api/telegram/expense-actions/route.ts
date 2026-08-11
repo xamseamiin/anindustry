@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
+import { EXPENSE_STATES, releaseExpenseReservation, reserveExpenseFunds, transitionExpense } from '@/lib/financial-workflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,7 +164,7 @@ export async function PUT(request: Request) {
         const targetChatId = existingExpense.telegramChatId || defaultChatId;
         const targetMsgId = existingExpense.telegramMessageId;
 
-        if (token && targetChatId && targetMsgId) {
+        if (token && targetChatId && targetMsgId && process.env.TELEGRAM_NOTIFICATIONS_DISABLED !== 'true') {
             const formattedDate = new Date(existingExpense.createdAt).toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
             let updatedText = '';
 
@@ -320,7 +321,7 @@ export async function DELETE(request: Request) {
         });
 
         // Delete message from Telegram Group Chat completely
-        if (token && targetChatId) {
+        if (token && targetChatId && process.env.TELEGRAM_NOTIFICATIONS_DISABLED !== 'true') {
             const chats = [targetChatId, '-1005307882362', '-5307882362'].filter(Boolean);
             for (const c of chats) {
                 if (targetMsgId) {
@@ -372,21 +373,17 @@ export async function POST(request: Request) {
         }
 
         const approver = managerName || 'Abdehakim Mumin (@Abdehakimmumin)';
+        const actor = { id: String(verifiedManager.id), name: approver, source: 'MINI_APP' as const };
 
         if (action === 'approve') {
-            const updated = await prisma.expense.update({
-                where: { id },
-                data: {
-                    approved: true,
-                    paymentStatus: 'APPROVED_AWAITING_RECEIPT'
-                }
-            });
+            await reserveExpenseFunds(id, actor);
+            const updated = await transitionExpense(id, EXPENSE_STATES.AWAITING_RECEIPT, actor, { approvedBy: approver });
 
             // Edit Telegram message to prompt requester for receipt upload
             const targetChatId = expense.telegramChatId || defaultChatId;
             const targetMsgId = expense.telegramMessageId;
 
-            if (token && targetChatId && targetMsgId) {
+            if (token && targetChatId && targetMsgId && process.env.TELEGRAM_NOTIFICATIONS_DISABLED !== 'true') {
                 const approvedText =
                     `<b>AN-Industory</b>\n` +
                     `<b>📋 Codsiga ${expense.employeeId ? 'Mushaharka' : 'Kharashka'} (Sugaya Rasiidka)</b>\n\n` +
@@ -408,12 +405,13 @@ export async function POST(request: Request) {
 
             return NextResponse.json({ success: true, message: 'Dalabku waa la oggolaaday!', expense: updated });
         } else if (action === 'reject') {
-            await prisma.expense.delete({ where: { id } });
+            await releaseExpenseReservation(id, actor, 'REJECTED');
+            const rejected = await transitionExpense(id, EXPENSE_STATES.REJECTED, actor, { rejectedBy: approver });
 
             const targetChatId = expense.telegramChatId || defaultChatId;
             const targetMsgId = expense.telegramMessageId;
 
-            if (token && targetChatId && targetMsgId) {
+            if (token && targetChatId && targetMsgId && process.env.TELEGRAM_NOTIFICATIONS_DISABLED !== 'true') {
                 const rejectedText =
                     `<b>AN-Industory</b>\n` +
                     `<b>🛑 DALABKA WAA LA DIADAY (REJECTED)</b>\n\n` +
@@ -424,7 +422,7 @@ export async function POST(request: Request) {
                 await editTelegramBotMessage(token, targetChatId, targetMsgId, rejectedText);
             }
 
-            return NextResponse.json({ success: true, message: 'Dalabku waa la diaday.' });
+            return NextResponse.json({ success: true, message: 'Dalabku waa la diaday.', expense: rejected });
         }
 
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

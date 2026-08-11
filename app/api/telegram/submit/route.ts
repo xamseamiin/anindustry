@@ -3,6 +3,7 @@ import prisma from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 import { verifyReceiptImageWithAI } from '@/lib/receipt-ai';
+import { EXPENSE_STATES, makeIdempotencyKey } from '@/lib/financial-workflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
         const categoryId = formData.get('categoryId') as string;
         const customChatId = formData.get('chatId') as string;
         const receiptFile = formData.get('receiptFile') as File | null;
+        const clientRequestId = (formData.get('clientRequestId') as string) || '';
 
         // Raw Material custom fields
         const vendorId = formData.get('vendorId') as string;
@@ -129,6 +131,11 @@ export async function POST(request: Request) {
         // Requester metadata
         const requesterName = formData.get('requesterName') as string || 'WebApp User';
         const requesterId = formData.get('requesterId') as string || '';
+        const idempotencyKey = makeIdempotencyKey('telegram-submit', [companyId, requesterId, clientRequestId || `${type}:${accountId}:${amountInput}:${note}`]);
+        const completedRequest = await prisma.idempotencyRecord.findUnique({ where: { key: idempotencyKey } });
+        if (completedRequest?.status === 'COMPLETED') {
+            return NextResponse.json({ success: true, data: completedRequest.response, duplicatePrevented: true });
+        }
 
         const chatId = customChatId || defaultChatId;
 
@@ -188,6 +195,7 @@ export async function POST(request: Request) {
         const result = await prisma.$transaction(async (tx) => {
             const account = await tx.account.findUnique({ where: { id: accountId } });
             if (!account) throw new Error('Koontada la doortay lama helin.');
+            const availableBalance = Number(account.balance) - Number(account.reservedBalance);
 
             if (accountId && !finalNote.includes('[AccountId:')) {
                 finalNote = `${finalNote}\n[Account: ${account.name}] [AccountId: ${accountId}]`;
@@ -255,6 +263,7 @@ export async function POST(request: Request) {
 
                 // If receipt is uploaded, it is paid. Else unpaid.
                 const isPaid = !!receiptUrl || formData.get('isPaid') === 'true';
+                if (isPaid && mpTotal > availableBalance) throw new Error(`Haraaga la isticmaali karo waa ${availableBalance.toLocaleString()} ETB.`);
                 let purchaseNotes = finalNote;
                 if (receiptUrl) {
                     purchaseNotes = `${purchaseNotes}\n[ReceiptUrl: ${receiptUrl}]`;
@@ -331,9 +340,7 @@ export async function POST(request: Request) {
                 finalCategoryName = 'Salaries';
                 finalDescription = `Mushaharka: ${employee.fullName} (${note || 'Bixinta Mushaharka'})`;
 
-                const employeeUpdateData: any = {
-                    salaryPaidThisMonth: { increment: amount }
-                };
+                const employeeUpdateData: any = {};
 
                 // If employee doesn't have a phone number, save it!
                 if (paymentPhone && !employee.phone && !employee.phoneNumber) {
@@ -364,6 +371,15 @@ export async function POST(request: Request) {
             }
 
             const isPaid = !!receiptUrl || formData.get('isPaid') === 'true';
+            if (isPaid && amount > availableBalance) throw new Error(`Haraaga la isticmaali karo waa ${availableBalance.toLocaleString()} ETB.`);
+            const needsApproval = amount >= 5000;
+            const initialWorkflowStatus = isPaid
+                ? EXPENSE_STATES.PAID
+                : amount > availableBalance
+                    ? EXPENSE_STATES.INSUFFICIENT_FUNDS
+                    : needsApproval
+                        ? EXPENSE_STATES.PENDING_APPROVAL
+                        : EXPENSE_STATES.AWAITING_RECEIPT;
             const expense = await tx.expense.create({
                 data: {
                     companyId,
@@ -380,6 +396,8 @@ export async function POST(request: Request) {
                     paymentDate: isPaid ? new Date() : null,
                     receiptUrl: receiptUrl || null,
                     note: finalNote,
+                    workflowStatus: initialWorkflowStatus,
+                    idempotencyKey,
                     
                     // Custom fields
                     transportType: transportType || null,
@@ -393,6 +411,10 @@ export async function POST(request: Request) {
 
             let updatedBalance = account.balance;
             if (isPaid) {
+                if (type === 'SALARY' && employeeId) {
+                    await tx.employee.update({ where: { id: employeeId }, data: { salaryPaidThisMonth: { increment: amount } } });
+                }
+                const balanceBefore = Number(account.balance);
                 const updatedAcc = await tx.account.update({
                     where: { id: accountId },
                     data: { balance: { decrement: amount } }
@@ -409,7 +431,10 @@ export async function POST(request: Request) {
                         accountId: accountId,
                         expenseId: expense.id,
                         employeeId: type === 'SALARY' ? employeeId : null,
-                        receiptUrl: receiptUrl || null
+                        receiptUrl: receiptUrl || null,
+                        idempotencyKey: `${idempotencyKey}:payment`,
+                        balanceBefore,
+                        balanceAfter: balanceBefore - amount
                     }
                 });
             }
@@ -429,7 +454,7 @@ export async function POST(request: Request) {
         const eBirrMerchantBalanceLine = '';
 
         // 4. Send Telegram Notification
-        if (token && chatId) {
+        if (token && chatId && process.env.TELEGRAM_NOTIFICATIONS_DISABLED !== 'true') {
             const formattedDate = new Date().toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
             let telegramText = '';
             let replyMarkup: any = null;
@@ -493,7 +518,7 @@ export async function POST(request: Request) {
                                        paymentContactLine +
                                        `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                        `📅 Taariikhda: ${formattedDate}\n\n` +
-                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 5,000 ETB.</b>` +
+                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha admin-ka madaama uu gaarayo ama ka badan yahay 5,000 ETB.</b>` +
                                        aiStatusLine;
                         replyMarkup = {
                             inline_keyboard: [
@@ -551,7 +576,7 @@ export async function POST(request: Request) {
                                        `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                        `📝 Sharaxaad: ${cleanNoteForTelegram(note || 'Mushaharka bisha')}\n` +
                                        `📅 Taariikhda: ${formattedDate}\n\n` +
-                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 5,000 ETB.</b>` +
+                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha admin-ka madaama uu gaarayo ama ka badan yahay 5,000 ETB.</b>` +
                                        aiStatusLine;
                         replyMarkup = {
                             inline_keyboard: [
@@ -620,7 +645,7 @@ export async function POST(request: Request) {
                                        `💳 Koontada la doortay: ${result.accountName} (Haraa: ${Number(result.accountBalance).toLocaleString()} ETB)\n` +
                                        `📝 Sharaxaad: ${cleanNoteForTelegram(note)}\n` +
                                        `📅 Taariikhda: ${formattedDate}\n\n` +
-                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha Manager Abdehakim Mumin madaama uu ka badan yahay 5,000 ETB.</b>` +
+                                       `🛑 <b>Codsigan wuxuu u baahan yahay oggolaanshaha admin-ka madaama uu gaarayo ama ka badan yahay 5,000 ETB.</b>` +
                                        aiStatusLine;
                         replyMarkup = {
                             inline_keyboard: [
@@ -685,6 +710,11 @@ export async function POST(request: Request) {
             }
         }
 
+        await prisma.idempotencyRecord.upsert({
+            where: { key: idempotencyKey },
+            create: { key: idempotencyKey, scope: 'TELEGRAM_SUBMIT', companyId, status: 'COMPLETED', response: JSON.parse(JSON.stringify(result)) },
+            update: { status: 'COMPLETED', response: JSON.parse(JSON.stringify(result)) }
+        });
         return NextResponse.json({ success: true, data: result });
     } catch (e: any) {
         console.error('Error submitting Telegram transaction:', e);
