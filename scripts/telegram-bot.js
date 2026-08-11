@@ -962,6 +962,30 @@ async function handleUpdate(update) {
                 ownerName: query.from.first_name || 'User',
                 data: { expenseId }
             };
+            const receiptSessionKey = `telegram-receipt:${expenseId}:${chatId}:${userId}`;
+            await prisma.receiptSession.updateMany({
+                where: { telegramChatId: String(chatId), telegramUserId: String(userId), status: 'AWAITING_UPLOAD' },
+                data: { status: 'CANCELLED', completedAt: new Date() }
+            });
+            await prisma.receiptSession.upsert({
+                where: { idempotencyKey: receiptSessionKey },
+                create: {
+                    companyId: receiptExpense.companyId,
+                    expenseId,
+                    telegramUserId: String(userId),
+                    telegramChatId: String(chatId),
+                    telegramMessageId: query.message.message_id,
+                    idempotencyKey: receiptSessionKey,
+                    expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+                },
+                update: {
+                    status: 'AWAITING_UPLOAD',
+                    telegramMessageId: query.message.message_id,
+                    receiptFileId: null,
+                    completedAt: null,
+                    expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+                }
+            });
             await sendBotRequest('answerCallbackQuery', {
                 callback_query_id: query.id,
                 text: "📸 Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan!",
@@ -1107,7 +1131,109 @@ async function handleUpdate(update) {
         const stateKey = `${chatId}_${userId}`;
         let state = userStates[stateKey];
 
+        // Restore the exact receipt target after a bot restart. Never fall back to
+        // the newest request, because that can attach a receipt to the wrong expense.
+        const incomingIsReceipt = (message.photo && message.photo.length > 0)
+            || (message.document && String(message.document.mime_type || '').startsWith('image/'));
+        if (!state && incomingIsReceipt) {
+            const session = await prisma.receiptSession.findFirst({
+                where: {
+                    telegramChatId: String(chatId),
+                    telegramUserId: String(userId),
+                    status: 'AWAITING_UPLOAD',
+                    expiresAt: { gt: new Date() }
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+            if (session) {
+                state = {
+                    messageId: session.telegramMessageId,
+                    step: 'WAIT_CASHIER_RECEIPT',
+                    ownerId: userId,
+                    ownerName: user,
+                    data: { expenseId: session.expenseId, purchaseId: session.materialPurchaseId, receiptSessionId: session.id }
+                };
+                userStates[stateKey] = state;
+            }
+        }
+
+async function enforceGroupSecurity(message) {
+    if (!message || (message.chat.type !== 'group' && message.chat.type !== 'supergroup')) {
+        return false;
+    }
+
+    const sender = message.from;
+    if (!sender) return false;
+
+    // Admins are exempt from security filter
+    if (isFinancialAdmin(sender)) {
+        return false;
+    }
+
+    const chatId = message.chat.id;
+    const userId = sender.id;
+    const text = message.text || message.caption || '';
+
+    // Link & Phishing Detection Regex
+    const containsLink = /(https?:\/\/|t\.me\/|telegram\.me\/|joinchat|www\.|[a-zA-Z0-9-]+\.(com|org|net|xyz|info|app|co|me|vip|cc|tk|ml)\b)/i.test(text);
+    
+    // Spam / Unethical Keywords
+    const containsSpamKeywords = /(porn|sex|casino|crypto|invest|bonus|free money|earn money|airdrop|hack|hacked|password|login|click here|dm me|inbox me)/i.test(text);
+
+    if (containsLink || containsSpamKeywords) {
+        console.warn(`🚨 SECURITY SHIELD: Intercepted unauthorized link/spam from user ${getRequesterName(sender)} (ID: ${userId}) in chat ${chatId}`);
+
+        // 1. Delete spam message instantly
+        try {
+            await sendBotRequest('deleteMessage', { chat_id: chatId, message_id: message.message_id });
+        } catch (e) {
+            console.error('Error deleting spam message:', e.message);
+        }
+
+        // 2. Restrict/Mute the compromised account in group
+        try {
+            await sendBotRequest('restrictChatMember', {
+                chat_id: chatId,
+                user_id: userId,
+                permissions: {
+                    can_send_messages: false,
+                    can_send_media_messages: false,
+                    can_send_other_messages: false,
+                    can_add_web_page_previews: false
+                }
+            });
+        } catch (e) {
+            console.error('Error restricting compromised user:', e.message);
+        }
+
+        // 3. Post a security alert in group
+        try {
+            const userName = getRequesterName(sender);
+            await sendBotRequest('sendMessage', {
+                chat_id: chatId,
+                text: `🛡️ <b>AN-Industory Bot Security Shield</b>\n\n` +
+                      `⚠️ <b>DIGNIIN AMMAAN:</b> Account-ka <b>${userName}</b> (ID: <code>${userId}</code>) waxaa laga qabtay farriin shaki leh / Link aan la oggolayn.\n\n` +
+                      `🔒 <b>Tallaabada la qaaday:</b>\n` +
+                      `1. Farriintii waa la tirtiray (Deleted).\n` +
+                      `2. Account-kii waa la xiray/restricted si amaanka xubnaha kale ee group-ka loo dhowro.\n\n` +
+                      `<i>💡 Talo: Haddii account-kaaga la la wareegay (Hacked), fadlan badal password-kaaga & 2FA Telegram-ka.</i>`,
+                parse_mode: 'HTML'
+            });
+        } catch (e) {
+            console.error('Error sending security alert:', e.message);
+        }
+
+        return true; // Intercepted!
+    }
+
+    return false;
+}
+
         console.log(`Incoming message: "${text}" from ${user} (ID: ${userId}) in chat ${chatId} (${message.chat.type})`);
+
+        // Execute Security Filter Check
+        const isSecurityIntercepted = await enforceGroupSecurity(message);
+        if (isSecurityIntercepted) return;
 
         // Strip bot username suffix if present (e.g. /app@an_industory_bot -> /app)
         if (text.startsWith('/')) {
@@ -1456,6 +1582,18 @@ async function handleUpdate(update) {
                             }
                         });
                     }
+                }
+
+                if (state.data.receiptSessionId) {
+                    await prisma.receiptSession.update({
+                        where: { id: state.data.receiptSessionId },
+                        data: { status: 'COMPLETED', receiptFileId: receiptTelegramFileId, completedAt: new Date() }
+                    });
+                } else if (expenseId) {
+                    await prisma.receiptSession.updateMany({
+                        where: { expenseId, telegramChatId: String(chatId), telegramUserId: String(userId), status: 'AWAITING_UPLOAD' },
+                        data: { status: 'COMPLETED', receiptFileId: receiptTelegramFileId, completedAt: new Date() }
+                    });
                 }
 
                 // Clear the state
