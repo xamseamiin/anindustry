@@ -1165,13 +1165,12 @@ async function enforceGroupSecurity(message) {
     const sender = message.from;
     if (!sender) return false;
 
-    // Admins are exempt from security filter
+    // Admins are exempt from link filter
     if (isFinancialAdmin(sender)) {
         return false;
     }
 
     const chatId = message.chat.id;
-    const userId = sender.id;
     const text = message.text || message.caption || '';
 
     // Link & Phishing Detection Regex
@@ -1181,49 +1180,17 @@ async function enforceGroupSecurity(message) {
     const containsSpamKeywords = /(porn|sex|casino|crypto|invest|bonus|free money|earn money|airdrop|hack|hacked|password|login|click here|dm me|inbox me)/i.test(text);
 
     if (containsLink || containsSpamKeywords) {
-        console.warn(`🚨 SECURITY SHIELD: Intercepted unauthorized link/spam from user ${getRequesterName(sender)} (ID: ${userId}) in chat ${chatId}`);
+        console.warn(`🚨 SILENT CLEANUP: Instantly deleted unauthorized link/spam from user ${getRequesterName(sender)} in chat ${chatId}`);
 
-        // 1. Delete spam message instantly
+        // Silently delete the link/spam message instantly within milliseconds
         try {
             await sendBotRequest('deleteMessage', { chat_id: chatId, message_id: message.message_id });
         } catch (e) {
-            console.error('Error deleting spam message:', e.message);
+            console.error('Error silently deleting link message:', e.message);
         }
 
-        // 2. Restrict/Mute the compromised account in group
-        try {
-            await sendBotRequest('restrictChatMember', {
-                chat_id: chatId,
-                user_id: userId,
-                permissions: {
-                    can_send_messages: false,
-                    can_send_media_messages: false,
-                    can_send_other_messages: false,
-                    can_add_web_page_previews: false
-                }
-            });
-        } catch (e) {
-            console.error('Error restricting compromised user:', e.message);
-        }
-
-        // 3. Post a security alert in group
-        try {
-            const userName = getRequesterName(sender);
-            await sendBotRequest('sendMessage', {
-                chat_id: chatId,
-                text: `🛡️ <b>AN-Industory Bot Security Shield</b>\n\n` +
-                      `⚠️ <b>DIGNIIN AMMAAN:</b> Account-ka <b>${userName}</b> (ID: <code>${userId}</code>) waxaa laga qabtay farriin shaki leh / Link aan la oggolayn.\n\n` +
-                      `🔒 <b>Tallaabada la qaaday:</b>\n` +
-                      `1. Farriintii waa la tirtiray (Deleted).\n` +
-                      `2. Account-kii waa la xiray/restricted si amaanka xubnaha kale ee group-ka loo dhowro.\n\n` +
-                      `<i>💡 Talo: Haddii account-kaaga la la wareegay (Hacked), fadlan badal password-kaaga & 2FA Telegram-ka.</i>`,
-                parse_mode: 'HTML'
-            });
-        } catch (e) {
-            console.error('Error sending security alert:', e.message);
-        }
-
-        return true; // Intercepted!
+        // Silent mode: No user restrictions/bans and no public group alert messages
+        return true; // Intercepted and silently purged!
     }
 
     return false;
