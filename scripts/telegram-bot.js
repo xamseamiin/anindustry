@@ -103,15 +103,23 @@ function getRequesterName(from) {
 
 const FINANCIAL_ADMIN_IDS = new Set(['1836408854', '8230473166']);
 const FINANCIAL_ADMIN_USERNAMES = new Set(['hamsemoalin', 'abdehakimmumin']);
+const FINANCIAL_ADMIN_PHONES = new Set([
+    '251929475332', '0929475332', '+251929475332',
+    '251913437741', '0913437741', '+251913437741'
+]);
 
 function isFinancialAdmin(from) {
     if (!from) return false;
     const id = String(from.id || '');
     const username = String(from.username || '').trim().toLowerCase().replace(/^@/, '');
+    const phone = String(from.phone_number || from.phone || '').trim().replace(/\s+/g, '');
     const fullName = `${from.first_name || ''} ${from.last_name || ''}`.trim().toLowerCase();
-    return FINANCIAL_ADMIN_IDS.has(id) || FINANCIAL_ADMIN_USERNAMES.has(username) ||
-        fullName.includes('hamse moalin') || fullName.includes('hamze amiin') ||
-        fullName.includes('abdehakim mumin');
+    
+    return FINANCIAL_ADMIN_IDS.has(id) || 
+           FINANCIAL_ADMIN_USERNAMES.has(username) ||
+           FINANCIAL_ADMIN_PHONES.has(phone) ||
+           fullName.includes('hamse moalin') || fullName.includes('hamze amiin') ||
+           fullName.includes('abdehakim mumin') || fullName.includes('adeer c xakiin');
 }
 
 function cleanNoteForTelegram(rawNote) {
