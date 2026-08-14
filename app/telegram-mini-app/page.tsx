@@ -3224,7 +3224,11 @@ export default function TelegramMiniAppPage() {
                                                 {t.requesterName && <span className="text-[9px] text-slate-400 font-bold">👤 {t.requesterName}</span>}
                                             </div>
                                             <div className="flex flex-col items-end">
-                                                <span className="text-xs font-black text-rose-400">- {Number(t.amount).toLocaleString()} ETB</span>
+                                                {(t.isDeposit || t.type === 'DEPOSIT') ? (
+                                                    <span className="text-xs font-black text-emerald-400">+ {Number(t.amount).toLocaleString()} ETB</span>
+                                                ) : (
+                                                    <span className="text-xs font-black text-rose-400">- {Number(t.amount).toLocaleString()} ETB</span>
+                                                )}
                                                 {(() => {
                                                     const isDeposit = t.isDeposit || t.type === 'DEPOSIT';
                                                     if (isDeposit) {
