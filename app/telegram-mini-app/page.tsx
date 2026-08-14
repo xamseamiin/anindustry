@@ -3225,7 +3225,47 @@ export default function TelegramMiniAppPage() {
                                             </div>
                                             <div className="flex flex-col items-end">
                                                 <span className="text-xs font-black text-rose-400">- {Number(t.amount).toLocaleString()} ETB</span>
-                                                <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 mt-1">Paid</span>
+                                                {(() => {
+                                                    const isDeposit = t.isDeposit || t.type === 'DEPOSIT';
+                                                    if (isDeposit) {
+                                                        return (
+                                                            <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 mt-1">
+                                                                Deposit
+                                                            </span>
+                                                        );
+                                                    }
+                                                    const isApproved = t.approved ?? false;
+                                                    const hasReceipt = !!t.receiptUrl;
+                                                    const isPaid = t.paymentStatus === 'PAID' || t.workflowStatus === 'PAID' || (isApproved && hasReceipt);
+                                                    const isPendingApproval = !isApproved || t.workflowStatus === 'PENDING_APPROVAL';
+
+                                                    if (isPaid) {
+                                                        return (
+                                                            <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 mt-1">
+                                                                Paid
+                                                            </span>
+                                                        );
+                                                    }
+                                                    if (isPendingApproval) {
+                                                        return (
+                                                            <span className="text-[9px] font-black uppercase text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 mt-1">
+                                                                Pending Approval
+                                                            </span>
+                                                        );
+                                                    }
+                                                    if (!hasReceipt) {
+                                                        return (
+                                                            <span className="text-[9px] font-black uppercase text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20 mt-1">
+                                                                Awaiting Receipt
+                                                            </span>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <span className="text-[9px] font-black uppercase text-slate-400 bg-slate-500/10 px-2 py-0.5 rounded border border-slate-500/20 mt-1">
+                                                            {String(t.workflowStatus || t.paymentStatus || 'UNPAID').replaceAll('_', ' ')}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
                                     ))

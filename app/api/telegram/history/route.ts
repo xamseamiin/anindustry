@@ -105,6 +105,12 @@ export async function GET(request: Request) {
 
             const cleanNote = noteStr.replace(/\[(?:Dalbaday|TelegramId|PaymentPhone|RecipientName|Account|AccountId):[^\]]*\]/g, '').trim();
 
+            const isApproved = e.approved ?? false;
+            const hasReceipt = !!e.receiptUrl;
+            const calculatedStatus = !isApproved
+                ? 'PENDING_APPROVAL'
+                : (!hasReceipt && e.paymentStatus !== 'PAID' ? 'AWAITING_RECEIPT' : (e.paymentStatus || 'PAID'));
+
             return {
                 id: e.id,
                 description: e.description || e.category || 'Expense',
@@ -123,9 +129,9 @@ export async function GET(request: Request) {
                 paymentPhone: phoneMatch ? phoneMatch[1].trim() : (e.employee?.phone || e.employee?.phoneNumber || ''),
                 recipientName: recipMatch ? recipMatch[1].trim() : (e.employee?.fullName || ''),
                 receiptUrl: e.receiptUrl || '',
-                paymentStatus: e.paymentStatus || 'PAID',
-                workflowStatus: e.paymentStatus || 'DRAFT',
-                approved: e.approved ?? true,
+                paymentStatus: e.paymentStatus || (isApproved ? (hasReceipt ? 'PAID' : 'UNPAID') : 'UNPAID'),
+                workflowStatus: calculatedStatus,
+                approved: isApproved,
                 type: 'WITHDRAWAL',
                 isDeposit: false,
                 employeeName: e.employee?.fullName || null,
