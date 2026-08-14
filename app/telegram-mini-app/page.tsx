@@ -855,6 +855,8 @@ export default function TelegramMiniAppPage() {
                 const webapp = (window as any).Telegram.WebApp;
                 try { webapp.ready(); } catch(e) {}
                 try { webapp.expand(); } catch(e) {}
+                try { webapp.setHeaderColor('#020617'); } catch(e) {}
+                try { webapp.setBackgroundColor('#020617'); } catch(e) {}
                 
                 const tgInitData = webapp.initDataUnsafe;
                 if (webapp.initData) setTelegramInitData(webapp.initData);
@@ -1618,7 +1620,7 @@ export default function TelegramMiniAppPage() {
     }
 
     return (
-        <div data-theme={appTheme} className="telegram-mini-app min-h-screen bg-[var(--tg-theme-bg-color,#0b0f19)] text-[var(--tg-theme-text-color,#ffffff)] font-sans selection:bg-blue-500/20 pb-8 pt-4 px-4 relative overflow-x-hidden transition-colors duration-300">
+        <div data-theme="dark" className="telegram-mini-app dark min-h-screen bg-[#020617] text-slate-100 font-sans selection:bg-blue-500/20 pb-28 pt-4 px-4 relative overflow-x-hidden">
             <TelegramScripts />
 
             <div className="max-w-md mx-auto flex flex-col gap-4">
@@ -1732,32 +1734,32 @@ export default function TelegramMiniAppPage() {
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('TRANSACTIONS')}
-                                className="min-h-[92px] rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-left shadow-[0_0_18px_rgba(16,185,129,0.12)] active:scale-95 transition-all"
+                                className="min-h-[92px] rounded-2xl border border-emerald-400/40 bg-emerald-950/80 p-3 text-left shadow-[0_4px_20px_rgba(16,185,129,0.25)] active:scale-95 transition-all"
                             >
-                                <Wallet size={16} className="text-emerald-300 mb-2" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Available</p>
-                                <p className="text-sm font-black text-emerald-300 leading-tight">{Number(spendableBalance).toLocaleString()}</p>
-                                <p className="text-[8px] font-bold text-slate-500">ETB</p>
+                                <Wallet size={18} className="text-emerald-300 mb-1.5" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-emerald-200">Available</p>
+                                <p className="text-sm font-black text-white leading-tight">{Number(spendableBalance).toLocaleString()}</p>
+                                <p className="text-[8px] font-extrabold text-emerald-300/90 mt-0.5">ETB</p>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setShowNotificationModal(true)}
-                                className="min-h-[92px] rounded-2xl border border-amber-400/25 bg-amber-500/10 p-3 text-left shadow-[0_0_18px_rgba(245,158,11,0.12)] active:scale-95 transition-all"
+                                className="min-h-[92px] rounded-2xl border border-amber-400/40 bg-amber-950/80 p-3 text-left shadow-[0_4px_20px_rgba(245,158,11,0.25)] active:scale-95 transition-all"
                             >
-                                <ClipboardList size={16} className="text-amber-300 mb-2" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Pending</p>
-                                <p className="text-sm font-black text-amber-300 leading-tight">{effectiveIsManager ? pendingApprovalRequests.length : myPendingRequests.length}</p>
-                                <p className="text-[8px] font-bold text-slate-500">Approval</p>
+                                <ClipboardList size={18} className="text-amber-300 mb-1.5" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-amber-200">Pending</p>
+                                <p className="text-sm font-black text-white leading-tight">{effectiveIsManager ? pendingApprovalRequests.length : myPendingRequests.length}</p>
+                                <p className="text-[8px] font-extrabold text-amber-300/90 mt-0.5">Approval</p>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('REPORTS')}
-                                className="min-h-[92px] rounded-2xl border border-cyan-400/25 bg-cyan-500/10 p-3 text-left shadow-[0_0_18px_rgba(6,182,212,0.12)] active:scale-95 transition-all"
+                                className="min-h-[92px] rounded-2xl border border-cyan-400/40 bg-cyan-950/80 p-3 text-left shadow-[0_4px_20px_rgba(6,182,212,0.25)] active:scale-95 transition-all"
                             >
-                                <BarChart3 size={16} className="text-cyan-300 mb-2" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">This month</p>
-                                <p className="text-sm font-black text-cyan-300 leading-tight">{paidThisMonth.toLocaleString()}</p>
-                                <p className="text-[8px] font-bold text-slate-500">ETB paid</p>
+                                <BarChart3 size={18} className="text-cyan-300 mb-1.5" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-cyan-200">This month</p>
+                                <p className="text-sm font-black text-white leading-tight">{paidThisMonth.toLocaleString()}</p>
+                                <p className="text-[8px] font-extrabold text-cyan-300/90 mt-0.5">ETB paid</p>
                             </button>
                         </div>
 
