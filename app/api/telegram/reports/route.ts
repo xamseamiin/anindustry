@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import prisma from '@/lib/db';
 import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
+import { isSalaryCategory, payrollDetails, groupPayroll } from '@/lib/payroll-report';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,15 +10,17 @@ const inflowTypes = new Set(['INCOME', 'TRANSFER_IN', 'DEBT_RECEIVED', 'DEBT_TAK
 const outflowTypes = new Set(['EXPENSE', 'TRANSFER_OUT', 'DEBT_GIVEN', 'SALARY']);
 
 function periodBounds(type: string, start?: string | null, end?: string | null) {
-  const now = new Date();
-  let from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let to = new Date(from); to.setHours(23, 59, 59, 999);
-  if (type === 'WEEKLY') { from.setDate(from.getDate() - 6); }
-  if (type === 'MONTHLY') { from = new Date(now.getFullYear(), now.getMonth(), 1); }
+  // Jijiga/Nairobi accounting day, independent of the server's timezone.
+  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  let from = new Date(`${today}T00:00:00+03:00`);
+  let to = new Date(`${today}T23:59:59.999+03:00`);
+  if (type === 'WEEKLY') { from = new Date(from.getTime() - 6 * 86400000); }
+  if (type === 'MONTHLY') { from = new Date(`${today.slice(0, 7)}-01T00:00:00+03:00`); }
   if (type === 'CUSTOM') {
-    if (start) from = new Date(`${start}T00:00:00`);
-    if (end) to = new Date(`${end}T23:59:59.999`);
+    if (start) from = new Date(`${start}T00:00:00+03:00`);
+    if (end) to = new Date(`${end}T23:59:59.999+03:00`);
   }
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from > to) throw new Error('Invalid report date range.');
   return { from, to };
 }
 
@@ -29,10 +32,13 @@ async function buildReport(request: Request, body?: any) {
   const companyId = process.env.TELEGRAM_COMPANY_ID || '';
   if (!companyId) throw new Error('Company is not configured.');
   const identity = verifyTelegramInitData(input.initData || '');
-  const isLocal = process.env.APP_ENV === 'local';
+  const isLocal = process.env.APP_ENV === 'local' && process.env.NODE_ENV !== 'production';
+  if (!identity && !isLocal) throw new Error('Fadlan report-ka ka fur Telegram si magaca diyaariyaha loo xaqiijiyo.');
   const isAdmin = isLocal || (!!identity && isTelegramFinancialAdmin(identity));
   const reportType = String(input.reportType || 'MONTHLY').toUpperCase();
   const { from, to } = periodBounds(reportType, input.startDate, input.endDate);
+  const employeeIds = (Array.isArray(input.employeeIds) ? input.employeeIds : String(input.employeeIds || '').split(',')).map(String).filter(Boolean);
+  const salaryType = ['ADVANCE', 'REGULAR'].includes(input.salaryType) ? input.salaryType : 'ALL';
 
   const accounts = await prisma.account.findMany({ where: { companyId, isActive: true }, select: { id: true, name: true, balance: true, currency: true }, orderBy: { name: 'asc' } });
   const selectedAccounts = input.accountId ? accounts.filter(a => a.id === input.accountId) : accounts;
@@ -48,15 +54,19 @@ async function buildReport(request: Request, body?: any) {
     },
     select: {
       id: true, transactionDate: true, description: true, amount: true, type: true, category: true,
+      employeeId: true, employee: { select: { fullName: true } },
       accountId: true, fromAccountId: true, toAccountId: true, receiptUrl: true, userId: true,
       account: { select: { name: true } }, fromAccount: { select: { name: true } }, toAccount: { select: { name: true } },
-      expense: { select: { category: true, subCategory: true, amount: true, description: true, note: true, createdAt: true, paymentDate: true, paymentStatus: true, receiptUrl: true, transportType: true, equipmentName: true, rentalPeriod: true, consultantName: true, consultancyType: true, employee: { select: { fullName: true, phone: true } }, vendor: { select: { name: true } } } }
+      expense: { select: { employeeId: true, workflowStatus: true, category: true, subCategory: true, amount: true, description: true, note: true, createdAt: true, paymentDate: true, paymentStatus: true, receiptUrl: true, transportType: true, equipmentName: true, rentalPeriod: true, consultantName: true, consultancyType: true, employee: { select: { fullName: true, phone: true } }, vendor: { select: { name: true } } } }
     },
     orderBy: { transactionDate: 'asc' }
   });
 
   const filtered = transactions.filter(tx => {
-    if (input.category && input.category !== 'ALL' && (tx.expense?.category || tx.category) !== input.category) return false;
+    const payroll = payrollDetails(tx);
+    if (input.category && input.category !== 'ALL' && (isSalaryCategory(input.category) ? !payroll.salary : (tx.expense?.category || tx.category) !== input.category)) return false;
+    if (employeeIds.length && (!payroll.salary || !employeeIds.includes(payroll.employeeId))) return false;
+    if (salaryType !== 'ALL' && payroll.salaryType !== salaryType) return false;
     if (input.status && input.status !== 'ALL' && (tx.expense?.workflowStatus || tx.expense?.paymentStatus || 'PAID') !== input.status) return false;
     return true;
   });
@@ -75,14 +85,16 @@ async function buildReport(request: Request, body?: any) {
     const signed = signedAmount(tx);
     runningBalance += signed;
     const expense = tx.expense;
+    const payroll = payrollDetails(tx);
     const cleanDescription = String(expense?.note || '').replace(/\[[^\]]+\]/g, '').trim();
     const recipientName = expense?.note?.match(/\[RecipientName:\s*([^\]]+)\]/)?.[1] || '';
-    const person = expense?.employee?.fullName || expense?.vendor?.name || recipientName || '';
+    const person = payroll.employeeName || expense?.vendor?.name || recipientName || '';
     return {
       id: tx.id,
+      isSalary: payroll.salary, salaryType: payroll.salaryType, employeeId: payroll.employeeId,
       date: tx.transactionDate,
       description: cleanDescription || tx.description,
-      category: expense?.category || tx.category || (signed >= 0 ? 'Deposit' : 'General'),
+      category: payroll.salary ? 'Salary' : expense?.category || tx.category || (signed >= 0 ? 'Deposit' : 'General'),
       account: signed >= 0
         ? (tx.toAccount?.name || tx.account?.name || tx.fromAccount?.name || '')
         : (tx.fromAccount?.name || tx.account?.name || tx.toAccount?.name || ''),
@@ -132,8 +144,8 @@ async function buildReport(request: Request, body?: any) {
   const summary = { openingBalance, totalIn, totalOut, netCashFlow: totalIn - totalOut, closingBalance, reserved, available: closingBalance - reserved, transactionCount: ledger.length, receiptStats };
   return {
     reportType, period: { start: from, end: to }, accounts: selectedAccounts.map(a => ({ id: a.id, name: a.name, currency: a.currency })),
-    summary, categories, ledger, generatedAt: new Date(), generatedBy: identity ? [identity.first_name, identity.last_name].filter(Boolean).join(' ') : 'Local Admin', isAdmin,
-    filters: { accountId: input.accountId || 'ALL', category: input.category || 'ALL', status: input.status || 'ALL', includeReceipts: input.includeReceipts !== false && input.includeReceipts !== 'false', includeExpenseForms: input.includeExpenseForms !== false && input.includeExpenseForms !== 'false', language: input.language || 'so', orientation: input.orientation || 'portrait' }
+    summary, categories, ledger, payroll: groupPayroll(ledger), generatedAt: new Date(), generatedUserId: identity ? String(identity.id) : null, generatedBy: identity ? ([identity.first_name, identity.last_name].filter(Boolean).join(' ') || identity.username || String(identity.id)) : 'Local test user', isAdmin,
+    filters: { accountId: input.accountId || 'ALL', category: input.category || 'ALL', employeeIds, salaryType, status: input.status || 'ALL', includeReceipts: input.includeReceipts !== false && input.includeReceipts !== 'false', includeExpenseForms: input.includeExpenseForms !== false && input.includeExpenseForms !== 'false', language: input.language || 'so', orientation: input.orientation || 'portrait' }
   };
 }
 
@@ -161,9 +173,9 @@ export async function POST(request: Request) {
       const saved = await prisma.generatedFinancialReport.create({ data: {
         companyId: process.env.TELEGRAM_COMPANY_ID || '', reportNumber, reportType: report.reportType,
         periodStart: new Date(report.period.start), periodEnd: new Date(report.period.end), accountId: body.accountId || null,
-        generatedBy: body.telegramUserId || null, generatedName: report.generatedBy, filters: report.filters, summary: report.summary, reportHash
+        generatedBy: report.generatedUserId, generatedName: report.generatedBy, filters: report.filters, summary: report.summary, reportHash
       }});
-      await prisma.financialAuditEvent.create({ data: { companyId: process.env.TELEGRAM_COMPANY_ID || '', actorId: body.telegramUserId || null, actorName: report.generatedBy, actorSource: 'MINI_APP', action: 'REPORT_GENERATED', entity: 'GeneratedFinancialReport', entityId: saved.id, after: { reportNumber, reportHash } } });
+      await prisma.financialAuditEvent.create({ data: { companyId: process.env.TELEGRAM_COMPANY_ID || '', actorId: report.generatedUserId, actorName: report.generatedBy, actorSource: 'MINI_APP', action: 'REPORT_GENERATED', entity: 'GeneratedFinancialReport', entityId: saved.id, after: { reportNumber, reportHash } } });
     } catch (auditError) {
       console.warn('Report audit persistence is unavailable; PDF generation will continue.', auditError);
     }

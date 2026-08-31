@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { assertLegacyReceiptAllowed } from '@/lib/expense-revisions';
 import { makeIdempotencyKey } from '@/lib/financial-workflow';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
     if (!body.expenseId && !body.materialPurchaseId) return NextResponse.json({ error: 'A target record is required.' }, { status: 400 });
 
     if (body.expenseId) {
+      await assertLegacyReceiptAllowed(prisma, body.expenseId);
       const expense = await prisma.expense.findUnique({ where: { id: body.expenseId }, include: { account: true } });
       if (!expense || !expense.account) return NextResponse.json({ error: 'Expense/account not found.' }, { status: 404 });
       const available = Number(expense.account.balance) - Number(expense.account.reservedBalance);

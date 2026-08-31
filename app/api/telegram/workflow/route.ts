@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { assertNoOpenRevision } from '@/lib/expense-revisions';
 import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
 import {
   EXPENSE_STATES,
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
       const expense = await prisma.expense.findUnique({ where: { id: body.expenseId }, include: { transactions: true } });
       if (!expense || expense.workflowStatus !== EXPENSE_STATES.PAID) return NextResponse.json({ error: 'Only a paid expense can be refunded.' }, { status: 409 });
       await prisma.$transaction(async tx => {
+        await assertNoOpenRevision(tx, body.expenseId);
         const payments = expense.transactions.filter(t => t.type === 'EXPENSE' && !t.reversedAt);
         for (const payment of payments) {
           if (payment.accountId) await tx.account.update({ where: { id: payment.accountId }, data: { balance: { increment: Number(payment.amount) } } });

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { assertNoOpenRevision } from '@/lib/expense-revisions';
 import { getSessionCompanyId, requireManufacturingAccess } from '@/app/api/manufacturing/auth';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +75,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
         await prisma.$transaction(async (tx) => {
             // Find sibling if it was a transfer
+            if (existingTransaction.expenseId) await assertNoOpenRevision(tx, existingTransaction.expenseId);
             let siblingTransaction = null;
             if (existingTransaction.type === 'TRANSFER_IN' || existingTransaction.type === 'TRANSFER_OUT') {
                 siblingTransaction = await tx.transaction.findFirst({
@@ -327,6 +329,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
         // Reverse the account balance
         await prisma.$transaction(async (tx) => {
             // Find sibling if it is a transfer
+            if (existingTransaction.expenseId) await assertNoOpenRevision(tx, existingTransaction.expenseId);
             let siblingTransaction = null;
             if (existingTransaction.type === 'TRANSFER_IN' || existingTransaction.type === 'TRANSFER_OUT') {
                 siblingTransaction = await tx.transaction.findFirst({

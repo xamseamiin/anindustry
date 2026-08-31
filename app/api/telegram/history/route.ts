@@ -66,7 +66,7 @@ export async function GET(request: Request) {
             select: {
                 id: true, description: true, amount: true, category: true, categoryId: true, subCategory: true,
                 accountId: true, expenseDate: true, createdAt: true, note: true, receiptUrl: true,
-                paymentStatus: true, approved: true, employeeId: true, telegramMessageId: true, telegramChatId: true,
+                paymentStatus: true, workflowStatus: true, version: true, approved: true, employeeId: true, telegramMessageId: true, telegramChatId: true,
                 expenseCategory: { select: { name: true } }, account: { select: { name: true } },
                 employee: { select: { fullName: true, phone: true, phoneNumber: true } }
             }
@@ -77,6 +77,9 @@ export async function GET(request: Request) {
         try {
             const depositWhereCondition: any = {
                 companyId,
+                // Revision refunds/reversals are already netted against their
+                // expense below; they are not new deposits.
+                AND: [{ OR: [{ idempotencyKey: null }, { NOT: { idempotencyKey: { startsWith: 'revision:' } } }] }],
                 OR: [
                     { accountId: ebirrAccountId },
                     { toAccountId: ebirrAccountId }
@@ -96,7 +99,14 @@ export async function GET(request: Request) {
             deposits = [];
         }
 
+        const revisions = await prisma.expenseRevision.findMany({ where: { companyId, expenseId: { in: expenses.map(e => e.id) } }, orderBy: { createdAt: 'desc' } });
+        const revisionPayments = await prisma.transaction.findMany({
+            where: { companyId, expenseId: { in: revisions.map(r => r.expenseId) }, reversedAt: null, type: { in: ['EXPENSE', 'DEBT_REPAID', 'INCOME'] } },
+            select: { expenseId: true, amount: true, type: true }
+        });
         const mappedExpenses = expenses.map(e => {
+            const revision = revisions.find(r => r.expenseId === e.id);
+            const settledAmount = revision ? revisionPayments.filter(t => t.expenseId === e.id).reduce((sum, t) => sum + (t.type === 'INCOME' ? -1 : 1) * Number(t.amount), 0) : undefined;
             const noteStr = e.note || '';
             const reqMatch = noteStr.match(/\[Dalbaday:\s*([^\]]+)\]/);
             const idMatch = noteStr.match(/\[TelegramId:\s*([^\]]+)\]/);
@@ -113,8 +123,11 @@ export async function GET(request: Request) {
 
             return {
                 id: e.id,
+                version: e.version,
+                revision: revision ? { id: revision.id, status: revision.status, syncStatus: revision.syncStatus, reason: revision.reason } : null,
                 description: e.description || e.category || 'Expense',
                 amount: Number(e.amount),
+                settledAmount,
                 category: e.category || e.expenseCategory?.name || 'General',
                 categoryId: e.categoryId,
                 subCategory: e.subCategory,
@@ -130,7 +143,7 @@ export async function GET(request: Request) {
                 recipientName: recipMatch ? recipMatch[1].trim() : (e.employee?.fullName || ''),
                 receiptUrl: e.receiptUrl || '',
                 paymentStatus: e.paymentStatus || (isApproved ? (hasReceipt ? 'PAID' : 'UNPAID') : 'UNPAID'),
-                workflowStatus: calculatedStatus,
+                workflowStatus: revision && ['PENDING_APPROVAL','AWAITING_RECEIPT','RECEIPT_REVIEW'].includes(revision.status) ? 'REVISION_' + revision.status : calculatedStatus,
                 approved: isApproved,
                 type: 'WITHDRAWAL',
                 isDeposit: false,
@@ -176,7 +189,7 @@ export async function GET(request: Request) {
         const combinedList = [...mappedExpenses, ...mappedDeposits]
             .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
             .map(entry => {
-                const amount = Math.abs(Number(entry.amount));
+                const amount = Math.abs(Number('settledAmount' in entry ? entry.settledAmount ?? entry.amount : entry.amount));
                 const isPaidExpense = entry.isDeposit || entry.paymentStatus === 'PAID' || !!entry.receiptUrl;
                 if (isPaidExpense) {
                     runningBalance += entry.isDeposit || entry.type === 'DEPOSIT' ? amount : -amount;

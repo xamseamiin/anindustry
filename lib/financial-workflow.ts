@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
+import { assertNoOpenRevision, assertLegacyReceiptAllowed } from '@/lib/expense-revisions';
 
 export const EXPENSE_STATES = {
   DRAFT: 'DRAFT',
@@ -58,7 +59,8 @@ export async function getAccountAvailability(accountId: string) {
 }
 
 export async function reserveExpenseFunds(expenseId: string, actor: Actor) {
-  const outcome = await prisma.$transaction(async tx => {
+    const outcome = await prisma.$transaction(async tx => {
+    await assertNoOpenRevision(tx, expenseId);
     const expense = await tx.expense.findUnique({ where: { id: expenseId }, include: { account: true } });
     if (!expense || !expense.accountId || !expense.account) throw new Error('Expense ama account lama helin.');
 
@@ -153,6 +155,7 @@ export async function releaseExpenseReservation(expenseId: string, actor: Actor,
 
 export async function transitionExpense(expenseId: string, next: ExpenseState, actor: Actor, metadata?: unknown) {
   return prisma.$transaction(async tx => {
+    await assertNoOpenRevision(tx, expenseId);
     const expense = await tx.expense.findUnique({ where: { id: expenseId } });
     if (!expense) throw new Error('Expense lama helin.');
     const current = (expense.workflowStatus || EXPENSE_STATES.DRAFT) as ExpenseState;
@@ -197,6 +200,7 @@ export async function finalizeExpensePayment(input: {
 }) {
   return prisma.$transaction(async tx => {
     const existingOperation = await tx.idempotencyRecord.findUnique({ where: { key: input.idempotencyKey } });
+    await assertLegacyReceiptAllowed(tx, input.expenseId);
     if (existingOperation?.status === 'COMPLETED') return existingOperation.response;
 
     const expense = await tx.expense.findUnique({

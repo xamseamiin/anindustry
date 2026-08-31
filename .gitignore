@@ -47,3 +47,8 @@ scratch/
 /backups/
 .local-next.log
 .local-next-error.log
+/tmp/revision-test-pg/
+/tmp/revision-test-pg.log
+/tmp/590-receipt-review.jpg
+/tmp/payroll-layout-test-*.png
+/output/pdf/payroll-layout-test.pdf

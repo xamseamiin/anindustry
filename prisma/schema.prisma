@@ -598,6 +598,39 @@ model Transaction {
   @@map("transactions")
 }
 
+// A revision never rewrites settled money until a manager confirms its evidence.
+model ExpenseRevision {
+  id             String   @id @default(uuid()) @map("_id")
+  companyId      String
+  expenseId      String
+  version        Int
+  requestId      String   @unique
+  status         String   @default("PENDING_APPROVAL")
+  reason         String
+  actorId        String
+  actorName      String
+  before         Json
+  proposed       Json
+  payments       Json
+  changes        Json
+  material       Boolean
+  approvedBy     String?
+  receiptUrl     String?
+  receiptRef     String?  @unique
+  settlementMode String?
+  confirmedBy    String?
+  syncStatus     String   @default("PENDING")
+  messageId      Int?
+  originalSynced Boolean  @default(false)
+  chatId         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([expenseId, version])
+  @@index([companyId, status])
+  @@map("expense_revisions")
+}
+
 model AccountReservation {
   id         String    @id @default(uuid()) @map("_id")
   companyId  String

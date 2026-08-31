@@ -2,6 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 const { PrismaClient } = require('@prisma/client');
+const { handleRevisionUpdate } = require('../lib/expense-revision-bot');
+const { assertNoOpenRevision, assertLegacyReceiptAllowed } = require('../lib/expense-revisions');
+const { syncExpenseRevision } = require('../lib/expense-revision-telegram');
 
 // Load environment variables from .env
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -321,6 +324,10 @@ async function pollUpdates() {
     let delay = 10;
     try {
         const data = await sendBotRequest('getUpdates', { offset, timeout: 30 });
+        // Retry known failures with a one-minute backoff; never blindly resend an
+        // ambiguous send (UNCERTAIN), which might already have reached Telegram.
+        const retryEdits = await prisma.expenseRevision.findMany({ where: { companyId, syncStatus: { in: ['PENDING','FAILED'] }, updatedAt: { lt: new Date(Date.now()-60000) } }, take: 3, orderBy: { updatedAt: 'asc' } });
+        for (const revision of retryEdits) await syncExpenseRevision(prisma, revision.id);
         if (data && data.ok && data.result.length > 0) {
             for (const update of data.result) {
                 offset = update.update_id + 1;
@@ -335,6 +342,7 @@ async function pollUpdates() {
 }
 
 async function handleUpdate(update) {
+    if (await handleRevisionUpdate(prisma, update, companyId, sendBotRequest)) return;
     // 1. Handle Callback Queries (Button Clicks)
     if (update.callback_query) {
         const query = update.callback_query;
@@ -356,6 +364,10 @@ async function handleUpdate(update) {
 
             const isApprove = data.startsWith('approve_exp_');
             const expenseId = data.substring(isApprove ? 12 : 11);
+            try { await assertNoOpenRevision(prisma, expenseId); } catch (err) {
+                await sendBotRequest('answerCallbackQuery', { callback_query_id: query.id, text: err.message, show_alert: true });
+                return;
+            }
             const expense = await prisma.expense.findUnique({
                 where: { id: expenseId },
                 include: { employee: true, account: true }
@@ -943,6 +955,10 @@ async function handleUpdate(update) {
             });
         } else if (data.startsWith('rcpt_')) {
             const expenseId = data.substring(5);
+            try { await assertLegacyReceiptAllowed(prisma, expenseId); } catch (err) {
+                await sendBotRequest('answerCallbackQuery', { callback_query_id: query.id, text: err.message, show_alert: true });
+                return;
+            }
             const receiptExpense = await prisma.expense.findUnique({
                 where: { id: expenseId },
                 include: { account: true }
@@ -1149,6 +1165,7 @@ async function handleUpdate(update) {
                     telegramChatId: String(chatId),
                     telegramUserId: String(userId),
                     status: 'AWAITING_UPLOAD',
+                    NOT: { idempotencyKey: { startsWith: 'revision:' } },
                     expiresAt: { gt: new Date() }
                 },
                 orderBy: { createdAt: 'desc' }
@@ -1419,6 +1436,7 @@ async function enforceGroupSecurity(message) {
 
             // STEP C: Cashier Receipt Photo Upload
             if (state.step === 'WAIT_CASHIER_RECEIPT') {
+                if (state.data.expenseId) await assertLegacyReceiptAllowed(prisma, state.data.expenseId);
                 let receiptUrl = '';
                 let receiptTelegramFileId = '';
                 let receiptLocalPath = '';
@@ -1514,6 +1532,7 @@ async function enforceGroupSecurity(message) {
                     const expense = await prisma.expense.findUnique({ where: { id: expenseId } });
                     if (expense) {
                         await prisma.$transaction(async (tx) => {
+                            await assertLegacyReceiptAllowed(tx, expense.id);
                             const existingPayment = await tx.transaction.findFirst({
                                 where: { expenseId: expense.id, type: 'EXPENSE' }
                             });

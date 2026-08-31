@@ -1,6 +1,8 @@
 // app/api/telegram/expense-actions/route.ts
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import revisionService from '@/lib/expense-revisions';
+import { syncExpenseRevision } from '@/lib/expense-revision-telegram';
 import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
 import { EXPENSE_STATES, releaseExpenseReservation, reserveExpenseFunds, transitionExpense } from '@/lib/financial-workflow';
 
@@ -45,161 +47,24 @@ async function editTelegramBotMessage(token: string, chatId: string, messageId: 
     }
 }
 
-// PUT: Edit Expense
+// PUT: edits are audited proposals; financial changes need separate confirmation.
 export async function PUT(request: Request) {
     try {
         const companyId = process.env.TELEGRAM_COMPANY_ID;
-        const token = process.env.TELEGRAM_BOT_TOKEN;
-        const defaultChatId = process.env.TELEGRAM_CHAT_ID;
-
-        if (!companyId) {
-            return NextResponse.json({ error: 'TELEGRAM_COMPANY_ID not configured' }, { status: 400 });
-        }
-
+        if (!companyId) return NextResponse.json({ error: 'Company not configured.' }, { status: 400 });
         const body = await request.json();
-        const {
-            id, amount, note, paymentPhone, recipientName, categoryId, accountId, receiptUrl,
-            transportType, equipmentName, rentalPeriod, consultantName, consultancyType, billType
-        } = body;
-
-        if (!id) {
-            return NextResponse.json({ error: 'Expense ID required' }, { status: 400 });
+        const identity = verifyTelegramInitData(body.initData || '');
+        const local = process.env.APP_ENV === 'local' && process.env.NODE_ENV !== 'production';
+        if (!local && !identity) {
+            return NextResponse.json({ error: 'Telegram sign-in required.' }, { status: 403 });
         }
-
-        const existingExpense = await prisma.expense.findUnique({
-            where: { id },
-            include: { account: true, expenseCategory: true }
-        });
-
-        if (!existingExpense) {
-            return NextResponse.json({ error: 'Expense not found' }, { status: 404 });
-        }
-
-        const oldAmount = Number(existingExpense.amount);
-        const newAmount = amount !== undefined ? parseFloat(amount) : oldAmount;
-        const targetAccountId = accountId || existingExpense.accountId;
-
-        // Reconstruct note with preserved tags
-        const existingNote = existingExpense.note || '';
-        const reqMatch = existingNote.match(/\[Dalbaday:[^\]]+\]/);
-        const idMatch = existingNote.match(/\[TelegramId:[^\]]+\]/);
-
-        let finalNote = (note !== undefined ? note : existingNote.replace(/\[(?:Dalbaday|TelegramId|PaymentPhone|RecipientName|Account|AccountId):[^\]]*\]/g, '')).trim();
-        if (reqMatch) finalNote += `\n${reqMatch[0]}`;
-        if (idMatch) finalNote += ` ${idMatch[0]}`;
-        if (paymentPhone) finalNote += `\n[PaymentPhone: ${paymentPhone}]`;
-        if (recipientName) finalNote += `\n[RecipientName: ${recipientName}]`;
-
-        // Update in transaction
-        const updatedExpense = await prisma.$transaction(async (tx) => {
-            // A balance changes only when a real payment transaction exists. Approval by
-            // itself does not mean money left the account.
-            const paymentTransactions = await tx.transaction.findMany({
-                where: { expenseId: id, type: { in: ['EXPENSE', 'DEBT_REPAID'] } }
-            });
-
-            for (const payment of paymentTransactions) {
-                const oldPaymentAccountId = payment.accountId;
-                const oldPaymentAmount = Math.abs(Number(payment.amount));
-
-                if (oldPaymentAccountId) {
-                    await tx.account.update({
-                        where: { id: oldPaymentAccountId },
-                        data: { balance: { increment: oldPaymentAmount } }
-                    });
-                }
-                if (targetAccountId) {
-                    await tx.account.update({
-                        where: { id: targetAccountId },
-                        data: { balance: { decrement: newAmount } }
-                    });
-                }
-
-                await tx.transaction.update({
-                    where: { id: payment.id },
-                    data: {
-                        amount: newAmount,
-                        accountId: targetAccountId,
-                        description: finalNote || payment.description
-                    }
-                });
-            }
-
-            let categoryName = existingExpense.category;
-            if (categoryId) {
-                const cat = await tx.expenseCategory.findUnique({ where: { id: categoryId } });
-                if (cat) categoryName = cat.name;
-            }
-
-            let description = finalNote;
-            if (categoryName === 'Transport & Fuel') {
-                description = `Transport & Fuel${transportType ? ` (${transportType})` : ''}: ${note || ''}`.trim();
-            } else if (categoryName === 'Equipment Rental') {
-                const detail = [equipmentName, rentalPeriod].filter(Boolean).join(' - ');
-                description = `Equipment Rental${detail ? ` (${detail})` : ''}: ${note || ''}`.trim();
-            } else if (categoryName === 'Consultancy & Service') {
-                const detail = [consultantName, consultancyType].filter(Boolean).join(' - ');
-                description = `Consultancy & Service${detail ? ` (${detail})` : ''}: ${note || ''}`.trim();
-            } else if (categoryName === 'Bills') {
-                description = `Bills${billType ? ` (${billType})` : ''}: ${note || ''}`.trim();
-            }
-
-            return await tx.expense.update({
-                where: { id },
-                data: {
-                    amount: newAmount,
-                    note: finalNote,
-                    categoryId: categoryId || existingExpense.categoryId,
-                    category: categoryName,
-                    description,
-                    subCategory: billType || existingExpense.subCategory,
-                    accountId: targetAccountId,
-                    receiptUrl: receiptUrl !== undefined ? receiptUrl : existingExpense.receiptUrl
-                },
-                include: { account: true, expenseCategory: true, employee: true }
-            });
-        });
-
-        // Edit original Telegram message if available
-        const targetChatId = existingExpense.telegramChatId || defaultChatId;
-        const targetMsgId = existingExpense.telegramMessageId;
-
-        if (token && targetChatId && targetMsgId && process.env.TELEGRAM_NOTIFICATIONS_DISABLED !== 'true') {
-            const formattedDate = new Date(existingExpense.createdAt).toLocaleString('so-SO', { timeZone: 'Africa/Mogadishu' });
-            let updatedText = '';
-
-            const reqMatch = existingExpense.note?.match(/\[Dalbaday:\s*([^\]]+)\]/);
-            const requesterName = reqMatch ? reqMatch[1].trim() : '';
-            const requesterLine = requesterName ? `🗣 <b>Soo Dalbay:</b> ${requesterName}\n` : '';
-
-            if (existingExpense.employeeId) {
-                updatedText = `<b>AN-Industory</b>\n` +
-                              `<b>✅ Diiwaangelinta Mushaharka (Cusboonaysiin)</b>\n\n` +
-                              requesterLine +
-                              `👤 Shaqaalaha: ${updatedExpense.employee?.fullName || 'Shaqaale'}\n` +
-                              `💵 Lacagta: ${newAmount.toLocaleString()} ETB\n` +
-                              (paymentPhone ? `📱 Lambarka: ${paymentPhone}\n` : '') +
-                              `💳 Koontada: ${updatedExpense.account?.name || 'Account'} (Haraa: ${Number(updatedExpense.account?.balance || 0).toLocaleString()} ETB)\n` +
-                              `📝 Sharaxaad: ${finalNote}\n` +
-                              `📅 Taariikhda: ${formattedDate}`;
-            } else {
-                updatedText = `<b>AN-Industory</b>\n` +
-                              `<b>✅ Diiwaangelinta Kharashka (Cusboonaysiin)</b>\n\n` +
-                              requesterLine +
-                              `📂 Qaybta: ${updatedExpense.category}\n` +
-                              `💵 Lacagta: ${newAmount.toLocaleString()} ETB\n` +
-                              `💳 Koontada: ${updatedExpense.account?.name || 'Account'} (Haraa: ${Number(updatedExpense.account?.balance || 0).toLocaleString()} ETB)\n` +
-                              `📝 Sharaxaad: ${finalNote}\n` +
-                              `📅 Taariikhda: ${formattedDate}`;
-            }
-
-            await editTelegramBotMessage(token, targetChatId, targetMsgId, updatedText);
-        }
-
-        return NextResponse.json({ success: true, expense: updatedExpense });
+        const actor = { id: String(identity?.id || 'local-admin'), name: identity ? [identity.first_name, identity.last_name].filter(Boolean).join(' ') : 'Local Admin', local, source: 'MINI_APP' };
+        const revision = await revisionService.createRevision(prisma, companyId, body, actor);
+        const sync = await syncExpenseRevision(prisma, revision.id);
+        return NextResponse.json({ success: true, revision, telegramSync: sync.status,
+            message: revision.material ? 'Edit-ku wuxuu sugayaa ansixin iyo rasiid cusub. Balance lama beddelin.' : 'Qoraalka waa la saxay. Balance iyo rasiid lama beddelin.' });
     } catch (error: any) {
-        console.error('Error editing expense:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Edit failed.' }, { status: 409 });
     }
 }
 
@@ -238,6 +103,7 @@ export async function DELETE(request: Request) {
 
         // Perform deletion in transaction
         await prisma.$transaction(async (tx) => {
+            if (expense) await revisionService.assertNoOpenRevision(tx, expense.id);
             const transactionsToDelete = expense
                 ? await tx.transaction.findMany({ where: { expenseId: expense.id } })
                 : (transaction ? [transaction] : []);
@@ -372,7 +238,14 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Expense not found' }, { status: 404 });
         }
 
-        const approver = managerName || 'Abdehakim Mumin (@Abdehakimmumin)';
+        const approver = [verifiedManager.first_name, verifiedManager.last_name].filter(Boolean).join(' ');
+        const revision = await prisma.expenseRevision.findFirst({ where: { expenseId: id, companyId: process.env.TELEGRAM_COMPANY_ID, status: 'PENDING_APPROVAL' } });
+        if (revision && ['approve','reject'].includes(action)) {
+            const updatedRevision = await revisionService.approveRevision(prisma, revision.companyId, revision.id, { id: String(verifiedManager.id), name: approver, source: 'MINI_APP' }, action === 'reject');
+            const sync = await syncExpenseRevision(prisma, revision.id);
+            return NextResponse.json({ success: true, revision: updatedRevision, telegramSync: sync.status });
+        }
+        await revisionService.assertNoOpenRevision(prisma, id);
         const actor = { id: String(verifiedManager.id), name: approver, source: 'MINI_APP' as const };
 
         if (action === 'approve') {
