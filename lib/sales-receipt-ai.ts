@@ -23,6 +23,8 @@ export interface SalesReceiptAnalysisResult {
     isSuccess: boolean;
     customerName: string | null;
     customerPhone: string | null;
+    customerType: 'WALK_IN' | 'NAMED';
+    requiresCustomerRegistration: boolean;
     items: SalesReceiptLineItem[];
     productName: string | null;
     quantity: number | null;
@@ -96,6 +98,13 @@ export function normalizeSalesReceiptAnalysis(
     catalog: SalesReceiptCatalogItem[] = []
 ): Omit<SalesReceiptAnalysisResult, 'isSuccess' | 'message'> {
     const warnings: string[] = Array.isArray(parsed?.warnings) ? parsed.warnings.filter(Boolean).map(String) : [];
+    const rawCustomerName = String(parsed?.customerName || parsed?.customer || parsed?.buyerName || '').trim();
+    const normalizedCustomerName = normalizeText(rawCustomerName);
+    const walkInCustomer = !rawCustomerName || /^(walk in|walkin|customer|client|macmiil|macaamiil|cash customer|unknown|n a|na)$/.test(normalizedCustomerName);
+    const customerName = walkInCustomer ? null : rawCustomerName;
+    const customerPhone = parsed?.customerPhone || parsed?.phone || null;
+    const requiresCustomerRegistration = !walkInCustomer && !customerPhone;
+    if (requiresCustomerRegistration) warnings.push('Customer magac ayaa laga helay, laakiin telefoon/lambar lama helin; xaqiiji oo diiwaangeli customer-ka.');
     const rawItems = Array.isArray(parsed?.items) && parsed.items.length > 0
         ? parsed.items
         : [{
@@ -161,8 +170,11 @@ export function normalizeSalesReceiptAnalysis(
     const totalAmount = asNumber(parsed?.totalAmount) ?? asNumber(parsed?.grandTotal) ?? (itemTotal > 0 ? itemTotal : null);
     let paidAmount = asNumber(parsed?.paidAmount) ?? asNumber(parsed?.amountPaid) ?? null;
     const method = String(parsed?.paymentMethod || '').toUpperCase();
-    if (paidAmount === null && method === 'CASH' && totalAmount !== null) paidAmount = totalAmount;
-    const paymentMethod = ['CASH', 'CARD', 'PARTIAL', 'CREDIT'].includes(method)
+    if (walkInCustomer && totalAmount !== null) paidAmount = totalAmount;
+    else if (paidAmount === null && method === 'CASH' && totalAmount !== null) paidAmount = totalAmount;
+    const paymentMethod = walkInCustomer && totalAmount !== null
+        ? 'CASH'
+        : ['CASH', 'CARD', 'PARTIAL', 'CREDIT'].includes(method)
         ? method as SalesReceiptAnalysisResult['paymentMethod']
         : paidAmount === null
             ? null
@@ -200,8 +212,10 @@ export function normalizeSalesReceiptAnalysis(
             : 'SALE';
 
     return {
-        customerName: parsed?.customerName || parsed?.customer || parsed?.buyerName || null,
-        customerPhone: parsed?.customerPhone || parsed?.phone || null,
+        customerName,
+        customerPhone,
+        customerType: walkInCustomer ? 'WALK_IN' : 'NAMED',
+        requiresCustomerRegistration,
         items,
         productName: items[0]?.productName || parsed?.productName || null,
         quantity: items[0]?.quantity ?? asNumber(parsed?.quantity),
@@ -231,6 +245,8 @@ export async function parseSalesReceiptImageWithAI(
                 isSuccess: false,
                 customerName: null,
                 customerPhone: null,
+                customerType: 'WALK_IN',
+                requiresCustomerRegistration: false,
                 items: [],
                 productName: null,
                 quantity: null,
@@ -254,6 +270,8 @@ export async function parseSalesReceiptImageWithAI(
                 isSuccess: false,
                 customerName: null,
                 customerPhone: null,
+                customerType: 'WALK_IN',
+                requiresCustomerRegistration: false,
                 items: [],
                 productName: null,
                 quantity: null,
@@ -297,9 +315,10 @@ export async function parseSalesReceiptImageWithAI(
 ${productCatalog}
 
 Extract key sales transaction fields accurately:
-1. customerName: Name of customer or buyer (Magaca Macmiilka).
+1. customerName: Name of customer or buyer (Magaca Macmiilka). If the receipt says only customer, client, macmiil, macaamiil, walk-in, cash customer, unknown, or has no real person/company name, return null and set customerType to "WALK_IN". If a real person/company name is visible, set customerType to "NAMED" and preserve the exact name.
 2. customerPhone: Phone number of the customer if present.
-3. items: Every product/material line sold. Multiple products are common. For each item return productName, quantity, unitPrice, total.
+3. customerType: One of "WALK_IN" or "NAMED".
+4. items: Every product/material line sold. Multiple products are common. For each item return productName, quantity, unitPrice, total.
 4. totalAmount: Grand total price of the sale as a raw ETB number.
 5. paidAmount: Amount paid/deposited according to the receipt as a raw ETB number. If no payment is shown, use 0 only when the receipt clearly says credit/dayn/unpaid; otherwise use null.
 6. paymentMethod: One of "CASH", "CARD", "PARTIAL", "CREDIT". A printed heading such as "CASH SALES INVOICE" means CASH unless handwriting clearly says otherwise. If paidAmount >= totalAmount, use "CASH". If 0 < paidAmount < totalAmount, use "PARTIAL". If paidAmount == 0 and it is dayn/unpaid, use "CREDIT".
@@ -307,7 +326,8 @@ Extract key sales transaction fields accurately:
 8. receiptNumber: Invoice or receipt reference number.
 9. date: Date of transaction in YYYY-MM-DD format if visible. Somali/Ethiopian receipts may use the Ethiopian calendar. Do not silently convert an ambiguous handwritten date; return null and add a warning unless the calendar and full date are clear.
 10. transactionType: usually "SALE"; use "CUSTOMER_PAYMENT" only when the image is a payment toward an old debt without new products; use "DEPOSIT" only when it is a company deposit not a customer sale.
-11. confidence: 0-100 estimate of extraction confidence.
+11. If customerType is WALK_IN and a sale total is visible, treat the sale as full paid in CASH. If customerType is NAMED but no phone is visible, set requiresCustomerRegistration to true.
+12. confidence: 0-100 estimate of extraction confidence.
 12. warnings: short Somali/English warnings for fields that need human review.
 13. rawText: the important text you were able to read from the image.
 
@@ -315,6 +335,8 @@ Return ONLY a valid raw JSON object (strictly no markdown codeblocks or extra te
 {
   "customerName": "Abdi Hassan",
   "customerPhone": "0912345678",
+  "customerType": "NAMED",
+  "requiresCustomerRegistration": false,
   "items": [
     { "productName": "Block 15cm", "quantity": 500, "unitPrice": 150, "total": 75000 },
     { "productName": "Cement", "quantity": 10, "unitPrice": 900, "total": 9000 }
@@ -365,6 +387,8 @@ If any field cannot be found, use null for that field. All numerical fields MUST
             isSuccess: false,
             customerName: null,
             customerPhone: null,
+            customerType: 'WALK_IN',
+            requiresCustomerRegistration: false,
             items: [],
             productName: null,
             quantity: null,

@@ -241,7 +241,11 @@ export default function NewSalesOrderPage() {
                     if (matchCust) {
                         setCustomerId(matchCust.id);
                     } else {
-                        try {
+                        if (extracted.requiresCustomerRegistration) {
+                            setNewCustomer({ name: extracted.customerName, phone: extracted.customerPhone || '', address: '' });
+                            setShowCustomerModal(true);
+                            setScanMessage('Customer magac ayaa laga helay. Fadlan geli magaca saxda ah iyo lambarka telefoonka, kadib Register Customer samee.');
+                        } else try {
                             const newCustRes = await fetch('/api/manufacturing/customers', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },

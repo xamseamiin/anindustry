@@ -16,6 +16,22 @@ async function readJson(response: Response) {
   catch { return { error: `Server error (${response.status})` }; }
 }
 
+function normalizeLookup(value: unknown) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9\u00c0-\u024f\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function findCustomer(customers: Customer[], name: string, phone?: string | null) {
+  const normalizedPhone = String(phone || '').replace(/\D/g, '');
+  if (normalizedPhone) {
+    const byPhone = customers.find(customer => [customer.phone, customer.phoneNumber]
+      .some(value => String(value || '').replace(/\D/g, '') === normalizedPhone));
+    if (byPhone) return byPhone;
+  }
+  const wanted = normalizeLookup(name);
+  return customers.find(customer => normalizeLookup(customer.name) === wanted)
+    || customers.find(customer => normalizeLookup(customer.name).includes(wanted) || wanted.includes(normalizeLookup(customer.name)));
+}
+
 export default function TelegramSalesPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -78,7 +94,46 @@ export default function TelegramSalesPage() {
   const scanReceipt = async (file: File) => {
     setScanning(true); setMessage('Rasiidka AI ayaa akhrinaya...');
     const form = new FormData(); form.append('receiptFile', file);
-    try { const response = await fetch('/api/telegram/sales/scan-receipt', { method: 'POST', body: form }); const data = await readJson(response); if (!response.ok) throw new Error(data.error); const scan = data.data; setReceiptUrl(data.receiptUrl || ''); setReceiptHash(data.receiptHash || ''); if (scan.items?.length) setItems(scan.items.map((item: any) => ({ productId: item.productId || '', productName: item.productName || '', quantity: Number(item.quantity) || 1, unitPrice: Number(item.unitPrice) || 0 }))); if (scan.total) setPaidAmount(String(scan.paidAmount ?? scan.total)); setMessage(scan.warnings?.length ? `Scan waa la dhammeeyay, laakiin hubi: ${scan.warnings.join(' ')}` : 'Rasiidka waa la akhriyey. Hubi xogta ka hor Save Sale.'); } catch (error: any) { setMessage(error.message || 'Scan-ku wuu fashilmay.'); } finally { setScanning(false); }
+    try {
+      const response = await fetch('/api/telegram/sales/scan-receipt', { method: 'POST', body: form });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(data.error);
+      const scan = data.data || {};
+      setReceiptUrl(data.receiptUrl || '');
+      setReceiptHash(data.receiptHash || '');
+
+      if (scan.customerType === 'WALK_IN' || !scan.customerName) {
+        setCustomerId('');
+        if (scan.totalAmount !== null && scan.totalAmount !== undefined) {
+          setPaidAmount(String(scan.totalAmount));
+          setPaymentMethod('CASH');
+        }
+      } else {
+        const existingCustomer = findCustomer(customers, scan.customerName, scan.customerPhone);
+        if (existingCustomer) setCustomerId(existingCustomer.id);
+        else if (scan.requiresCustomerRegistration) {
+          setNewCustomerName(scan.customerName);
+          setNewCustomerPhone(scan.customerPhone || '');
+          setShowCustomerForm(true);
+          setMessage('Customer magac ayaa laga helay. Fadlan xaqiiji magaca iyo lambarka, kadib Save Customer samee.');
+        }
+      }
+
+      if (scan.items?.length) {
+        setItems(scan.items.map((item: any) => {
+          const matched = products.find(product => product.id === item.matchedProductId)
+            || products.find(product => normalizeLookup(product.name) === normalizeLookup(item.matchedProductName || item.productName));
+          return { productId: matched?.id || '', productName: matched?.name || item.productName || '', quantity: Number(item.quantity) || 1, unitPrice: Number(item.unitPrice) || 0 };
+        }));
+      }
+      if (scan.accountName) {
+        const matchedAccount = accounts.find(account => normalizeLookup(account.name).includes(normalizeLookup(scan.accountName)) || normalizeLookup(scan.accountName).includes(normalizeLookup(account.name)));
+        if (matchedAccount) setAccountId(matchedAccount.id);
+      }
+      if (scan.paidAmount !== null && scan.paidAmount !== undefined) setPaidAmount(String(scan.paidAmount));
+      if (scan.paymentMethod) setPaymentMethod(scan.paymentMethod);
+      setMessage(scan.warnings?.length ? `Scan waa la dhammeeyay, laakiin hubi: ${scan.warnings.join(' ')}` : 'Rasiidka waa la akhriyey oo form-ka waa la buuxiyay. Hubi ka hor Save Sale.');
+    } catch (error: any) { setMessage(error.message || 'Scan-ku wuu fashilmay.'); } finally { setScanning(false); }
   };
 
   const saveSale = async () => {
