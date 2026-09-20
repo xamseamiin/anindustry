@@ -50,6 +50,7 @@ model User {
   transactions      Transaction[]
 
   trustedDevices TrustedDevice[]
+  staffDevices   StaffDevice[]
 
   company  Company   @relation(fields: [companyId], references: [id])
   projects Project[] @relation("ProjectMembers")
@@ -151,6 +152,8 @@ model Company {
   vendors                 ShopVendor[]
   stockMovements          StockMovement[]
   transactions            Transaction[]
+  incomingPayments        IncomingPayment[]
+  staffDevices            StaffDevice[]
   users                   User[]
   workOrders              WorkOrder[]
   workshopJobs            WorkshopJob[]
@@ -544,6 +547,7 @@ model Account {
   company          Company       @relation(fields: [companyId], references: [id])
   expenses         Expense[]
   transactions     Transaction[]
+  incomingPayments IncomingPayment[]
   sales            Sale[]
   fromTransactions Transaction[] @relation("FromAccount")
   toTransactions   Transaction[] @relation("ToAccount")
@@ -1130,6 +1134,7 @@ model Sale {
   user                 User       @relation("UserSales", fields: [userId], references: [id])
   employee             Employee?  @relation(fields: [employeeId], references: [id])
   receiptUrl           String?
+  paymentAllocations   SalePaymentAllocation[]
 
   @@map("sales")
 }
@@ -1151,6 +1156,75 @@ model SaleItem {
   sale         Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@map("sale_items")
+}
+
+// A payment received in a real account before a cashier connects it to a sale.
+model IncomingPayment {
+  id                String                  @id @default(uuid()) @map("_id")
+  companyId         String
+  accountId         String
+  deviceId          String?
+  provider          String
+  providerReference String
+  senderName        String?
+  senderPhone       String?
+  amount            Decimal                 @db.Decimal(12, 2)
+  allocatedAmount   Decimal                 @default(0) @db.Decimal(12, 2)
+  receivedAt        DateTime
+  status            String                  @default("UNMATCHED")
+  messageHash       String?                 @unique
+  receiptUrl        String?
+  metadata          Json?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  account           Account                 @relation(fields: [accountId], references: [id])
+  company           Company                 @relation(fields: [companyId], references: [id])
+  device            StaffDevice?            @relation(fields: [deviceId], references: [id])
+  allocations       SalePaymentAllocation[]
+
+  @@unique([companyId, provider, providerReference])
+  @@index([companyId, status, receivedAt])
+  @@index([accountId, receivedAt])
+  @@map("incoming_payments")
+}
+
+// Supports split payments: one sale may use payments from several accounts.
+model SalePaymentAllocation {
+  id                String          @id @default(uuid()) @map("_id")
+  saleId            String
+  incomingPaymentId String
+  amount            Decimal         @db.Decimal(12, 2)
+  createdAt         DateTime        @default(now())
+  sale              Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  incomingPayment   IncomingPayment @relation(fields: [incomingPaymentId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@index([incomingPaymentId])
+  @@map("sale_payment_allocations")
+}
+
+// SMS ingestion can only run from an approved Android device.
+model StaffDevice {
+  id                String            @id @default(uuid()) @map("_id")
+  companyId         String
+  userId            String
+  deviceFingerprint String
+  name              String
+  platform          String            @default("ANDROID")
+  role              String            @default("STAFF")
+  isActive          Boolean           @default(true)
+  smsReaderEnabled  Boolean           @default(false)
+  apiTokenHash      String?           @unique
+  lastSeenAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  company           Company           @relation(fields: [companyId], references: [id])
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  incomingPayments  IncomingPayment[]
+
+  @@unique([companyId, deviceFingerprint])
+  @@index([userId, isActive])
+  @@map("staff_devices")
 }
 
 model PurchaseOrder {
@@ -1321,6 +1395,8 @@ enum Role {
   ADMIN
   MANAGER
   MEMBER
+  CASHIER
+  SALES
   VIEWER
   SUPER_ADMIN
   PROJECTS_ADMIN

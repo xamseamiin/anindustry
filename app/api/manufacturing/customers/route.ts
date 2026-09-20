@@ -47,14 +47,40 @@ export async function POST(request: Request) {
         const { companyId, userId } = await requireManufacturingAccess();
         const body = await request.json();
 
+        const name = String(body.name || '').trim();
+        const phone = String(body.phone || body.phoneNumber || '').trim();
+        if (!name) {
+            return NextResponse.json({ message: 'Customer name is required' }, { status: 400 });
+        }
+
+        const existing = await prisma.customer.findFirst({
+            where: {
+                companyId,
+                OR: [
+                    { name: { equals: name, mode: 'insensitive' } },
+                    ...(phone ? [
+                        { phone: { equals: phone, mode: 'insensitive' as const } },
+                        { phoneNumber: { equals: phone, mode: 'insensitive' as const } }
+                    ] : [])
+                ]
+            }
+        });
+
+        if (existing) {
+            const customer = phone && !existing.phone && !existing.phoneNumber
+                ? await prisma.customer.update({ where: { id: existing.id }, data: { phone } })
+                : existing;
+            return NextResponse.json({ customer, created: false, message: 'Existing customer matched' });
+        }
+
         const customer = await prisma.customer.create({
             data: {
                 companyId,
                 userId, // Assign Owner
-                name: body.name,
+                name,
                 companyName: body.companyName,
                 email: body.email,
-                phone: body.phone,
+                phone,
                 address: body.address,
                 type: body.type || 'Business',
                 notes: body.notes,
@@ -63,7 +89,7 @@ export async function POST(request: Request) {
             }
         });
 
-        return NextResponse.json({ customer, message: 'Customer created successfully' });
+        return NextResponse.json({ customer, created: true, message: 'Customer created successfully' });
     } catch (error) {
         console.error('Error creating customer:', error);
         return NextResponse.json({ message: 'Error creating customer' }, { status: 500 });

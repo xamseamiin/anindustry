@@ -41,7 +41,10 @@ export default function LoginPage() {
         addNotification({ type: 'success', message: 'Si guul leh ayaad u soo gashay!' });
         setTimeout(() => {
           const isSuperAdmin = session?.user?.id === process.env.NEXT_PUBLIC_SUPER_ADMIN_ID;
-          if (isSuperAdmin) {
+          const callbackUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('callbackUrl') : null;
+          if (callbackUrl && callbackUrl.startsWith('/') && !callbackUrl.startsWith('//')) {
+            router.push(callbackUrl);
+          } else if (isSuperAdmin) {
             router.push('/admin/super-dashboard');
           } else {
             router.push('/manufacturing');

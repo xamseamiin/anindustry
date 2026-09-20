@@ -7,6 +7,17 @@ import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
+const normalizedProductName = (value: unknown) => String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace('liter', 'l')
+    .replace('litre', 'l');
+
+const productUsesCap = (name: unknown) => {
+    const normalized = normalizedProductName(name);
+    return normalized === '1l' || normalized === '0.5l' || normalized === '500ml';
+};
+
 export async function GET(req: Request) {
     try {
         const session = await getServerSession(authOptions);
@@ -71,11 +82,43 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { customerId, items, date, accountId, paidAmount, paymentStatus, receiptUrl } = body;
+        const { customerId, items, date, accountId, paymentMethod = 'CASH', receiptUrl } = body;
+        const receiptNumber = String(body.receiptNumber || '').trim().slice(0, 100);
+        const receiptHash = String(body.receiptHash || '').trim().toLowerCase();
 
-        const total = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
+        if (!Array.isArray(items) || items.length === 0) {
+            return NextResponse.json({ error: 'At least one sale item is required.' }, { status: 400 });
+        }
+
+        if (receiptHash && !/^[a-f0-9]{64}$/.test(receiptHash)) {
+            return NextResponse.json({ error: 'Receipt hash is invalid.' }, { status: 400 });
+        }
+
+        const normalizedItems = items.map((item: any) => ({
+            productId: String(item.productId || ''),
+            productName: String(item.productName || '').trim(),
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unitPrice)
+        }));
+        if (normalizedItems.some((item: any) => !item.productId || !item.productName || !Number.isInteger(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unitPrice) || item.unitPrice <= 0)) {
+            return NextResponse.json({ error: 'Product, quantity iyo unit price waa inay sax yihiin; quantity-gu waa inuu noqdaa tiro dhan.' }, { status: 400 });
+        }
+
+        const subtotal = normalizedItems.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
+        const requestedTotal = Number(body.total);
+        const total = Number.isFinite(requestedTotal) && requestedTotal >= 0 && requestedTotal <= subtotal
+            ? requestedTotal
+            : subtotal;
+        const normalizedPaidAmount = Math.max(0, Math.min(Number(body.paidAmount) || 0, total));
+        const paymentStatus = body.paymentStatus || (normalizedPaidAmount >= total ? 'Paid' : normalizedPaidAmount > 0 ? 'Partial' : 'Unpaid');
+        if (normalizedPaidAmount > 0 && !accountId) {
+            return NextResponse.json({ error: 'Lacag la bixiyay waxay u baahan tahay account lagu shubo.' }, { status: 400 });
+        }
         const invoiceNumber = `AN-${Date.now().toString().slice(-6)}`;
         const saleDate = new Date(date || Date.now());
+        if (Number.isNaN(saleDate.getTime())) {
+            return NextResponse.json({ error: 'Taariikhda sale-ka ma saxna.' }, { status: 400 });
+        }
 
         // Check for Closed Fiscal Period
         const closedPeriod = await prisma.financialPeriod.findFirst({
@@ -95,13 +138,71 @@ export async function POST(req: Request) {
 
         // Use a transaction to ensure atomic updates
         const result = await prisma.$transaction(async (tx) => {
+            const customer = customerId
+                ? await tx.customer.findFirst({ where: { id: customerId, companyId: user.companyId }, select: { id: true } })
+                : null;
+            if (!customer) throw new Error('Customer-ka lama helin ama shirkaddan kama tirsana.');
+
+            if (accountId) {
+                const account = await tx.account.findFirst({ where: { id: accountId, companyId: user.companyId }, select: { id: true } });
+                if (!account) throw new Error('Account-ka lacagta lagu shubayo lama helin.');
+            }
+
+            if (receiptHash || receiptNumber) {
+                const duplicateConditions: any[] = [];
+                if (receiptHash) duplicateConditions.push({ notes: { contains: `[ReceiptHash:${receiptHash}]` } });
+                if (receiptNumber) duplicateConditions.push({ notes: { contains: `[ReceiptNumber:${receiptNumber}]` } });
+                const duplicate = await tx.sale.findFirst({
+                    where: { companyId: user.companyId, OR: duplicateConditions },
+                    select: { invoiceNumber: true }
+                });
+                if (duplicate) throw new Error(`Rasiidhkan hore ayaa loo diiwaangeliyay (${duplicate.invoiceNumber}).`);
+            }
+
             // Fetch material cost prices (purchasePrice) from FactoryMaterial
-            const productIds = items.map((item: any) => item.productId);
+            const productIds = normalizedItems.map((item: any) => item.productId);
             const dbMaterials = await tx.factoryMaterial.findMany({
-                where: { id: { in: productIds } },
-                select: { id: true, purchasePrice: true }
+                where: { id: { in: productIds }, companyId: user.companyId },
+                select: { id: true, name: true, purchasePrice: true, inStock: true }
             });
-            const costMap = new Map(dbMaterials.map(m => [m.id, m.purchasePrice]));
+            const materialMap = new Map(dbMaterials.map(m => [m.id, m]));
+
+            const missingProductIds = productIds.filter((id: string) => !id || !materialMap.has(id));
+            if (missingProductIds.length > 0) {
+                throw new Error('Fadlan product kasta inventory-ga saxda ah ka dooro ka hor intaadan save-gareyn.');
+            }
+
+            const requestedByProduct = new Map<string, number>();
+            for (const item of normalizedItems) {
+                requestedByProduct.set(item.productId, (requestedByProduct.get(item.productId) || 0) + item.quantity);
+            }
+            for (const [productId, quantity] of requestedByProduct) {
+                const material = materialMap.get(productId)!;
+                if (Number(material.inStock) < quantity) {
+                    throw new Error(`${material.name} stock kuma filna. Jira: ${Number(material.inStock).toLocaleString()}, la iibinayo: ${quantity.toLocaleString()}.`);
+                }
+            }
+
+            const capQuantity = normalizedItems.reduce((sum: number, item: any) => {
+                const material = materialMap.get(item.productId);
+                return sum + (material && productUsesCap(material.name) ? item.quantity : 0);
+            }, 0);
+            const capMaterial = capQuantity > 0
+                ? await tx.factoryMaterial.findFirst({
+                    where: { companyId: user.companyId, name: { equals: 'Fur', mode: 'insensitive' } },
+                    select: { id: true, name: true, inStock: true, purchasePrice: true }
+                })
+                : null;
+            if (capQuantity > 0 && !capMaterial) throw new Error('Fur stock record lama helin.');
+            if (capMaterial && Number(capMaterial.inStock) < capQuantity) {
+                throw new Error(`Fur stock kuma filna. Jira: ${Number(capMaterial.inStock).toLocaleString()}, loo baahan yahay: ${capQuantity.toLocaleString()}.`);
+            }
+
+            const noteParts = [
+                receiptNumber ? `[ReceiptNumber:${receiptNumber}]` : '',
+                receiptHash ? `[ReceiptHash:${receiptHash}]` : '',
+                `[CapDeducted:${capQuantity}]`
+            ].filter(Boolean);
 
             // 1. Create the Sale
             const sale = await tx.sale.create({
@@ -112,16 +213,23 @@ export async function POST(req: Request) {
                     customerId: customerId || null,
                     accountId: accountId || null,
                     receiptUrl: receiptUrl || null,
-                    subtotal: total,
+                    notes: noteParts.join(' '),
+                    subtotal,
                     tax: 0,
                     total: total,
-                    paidAmount: Number(paidAmount) || 0,
-                    paymentStatus: paymentStatus || (Number(paidAmount) >= total ? 'Paid' : Number(paidAmount) > 0 ? 'Partial' : 'Unpaid'),
+                    paidAmount: normalizedPaidAmount,
+                    paymentMethod,
+                    paymentStatus,
                     status: 'Completed',
-                    createdAt: new Date(date || Date.now()),
+                    createdAt: saleDate,
                     items: {
-                        create: items.map((item: any) => {
-                            const cost = costMap.get(item.productId) || 0;
+                        create: normalizedItems.map((item: any) => {
+                            const material = materialMap.get(item.productId);
+                            const bottleCost = Number(material?.purchasePrice || 0);
+                            const capCost = material && productUsesCap(material.name)
+                                ? Number(capMaterial?.purchasePrice || 0)
+                                : 0;
+                            const cost = bottleCost + capCost;
                             return {
                                 productId: item.productId, // This now relates to FactoryMaterial
                                 productName: item.productName,
@@ -137,24 +245,28 @@ export async function POST(req: Request) {
             });
 
             // 2. Deduct Stock from FactoryMaterial
-            for (const item of items) {
-                await tx.factoryMaterial.update({
-                    where: { id: item.productId },
-                    data: {
-                        inStock: {
-                            decrement: Number(item.quantity)
-                        }
-                    }
+            for (const [productId, quantity] of requestedByProduct) {
+                const updated = await tx.factoryMaterial.updateMany({
+                    where: { id: productId, companyId: user.companyId, inStock: { gte: quantity } },
+                    data: { inStock: { decrement: quantity } }
                 });
+                if (updated.count !== 1) throw new Error('Stock-ga ayaa isbeddelay intii sale-ka la kaydinayay; fadlan mar kale isku day.');
+            }
+            if (capMaterial && capQuantity > 0) {
+                const updatedCap = await tx.factoryMaterial.updateMany({
+                    where: { id: capMaterial.id, companyId: user.companyId, inStock: { gte: capQuantity } },
+                    data: { inStock: { decrement: capQuantity } }
+                });
+                if (updatedCap.count !== 1) throw new Error('Fur stock-ga ayaa isbeddelay intii sale-ka la kaydinayay; fadlan mar kale isku day.');
             }
 
             // 3. Update Account Balance and create Transaction if paidAmount > 0
-            if (accountId && Number(paidAmount) > 0) {
+            if (accountId && normalizedPaidAmount > 0) {
                 await tx.account.update({
                     where: { id: accountId },
                     data: {
                         balance: {
-                            increment: Number(paidAmount)
+                            increment: normalizedPaidAmount
                         }
                     }
                 });
@@ -162,12 +274,18 @@ export async function POST(req: Request) {
                 await tx.transaction.create({
                     data: {
                         description: `Iibka ${invoiceNumber}`,
-                        amount: Number(paidAmount),
+                        amount: normalizedPaidAmount,
                         type: 'INCOME',
                         accountId: accountId,
                         companyId: user.companyId,
                         userId: session.user.id,
-                        customerId: customerId || null
+                        customerId: customerId || null,
+                        transactionDate: saleDate,
+                        receiptUrl: receiptUrl || null,
+                        category: paymentStatus === 'Partial' ? 'Sales Deposit / Dayn Qayb Bixin' : 'Sales Income',
+                        note: paymentStatus === 'Partial'
+                            ? `Partial sale payment. Remaining customer debt: ${(total - normalizedPaidAmount).toLocaleString()} ETB`
+                            : `Sale payment recorded through ${paymentMethod}`
                     }
                 });
             }

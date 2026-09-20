@@ -74,6 +74,42 @@ const Modal = ({ isOpen, onClose, title, children }: any) => {
     );
 };
 
+const normalizeText = (value: any) => String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const findBestMatch = (input: string, list: any[], fields: string[]) => {
+    const source = normalizeText(input);
+    if (!source) return null;
+
+    let best: any = null;
+    let bestScore = 0;
+
+    for (const item of list) {
+        const target = normalizeText(fields.map(field => item[field] || '').join(' '));
+        if (!target) continue;
+
+        let score = 0;
+        if (source === target) score = 1;
+        else if (source.includes(target) || target.includes(source)) score = 0.88;
+        else {
+            const sourceTokens = new Set(source.split(' ').filter(Boolean));
+            const targetTokens = new Set(target.split(' ').filter(Boolean));
+            const overlap = [...sourceTokens].filter(token => targetTokens.has(token)).length;
+            score = overlap / (new Set([...sourceTokens, ...targetTokens]).size || 1);
+        }
+
+        if (score > bestScore) {
+            best = item;
+            bestScore = score;
+        }
+    }
+
+    return bestScore >= 0.45 ? best : null;
+};
+
 export default function NewSalesOrderPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
@@ -110,8 +146,13 @@ export default function NewSalesOrderPage() {
     // AI Sales Receipt Scanner States
     const [scanningReceipt, setScanningReceipt] = useState(false);
     const [scannedReceiptUrl, setScannedReceiptUrl] = useState('');
+    const [scannedReceiptNumber, setScannedReceiptNumber] = useState('');
+    const [scannedReceiptHash, setScannedReceiptHash] = useState('');
     const [scanMessage, setScanMessage] = useState('');
     const [scanSuccess, setScanSuccess] = useState(false);
+    const [scanWarnings, setScanWarnings] = useState<string[]>([]);
+    const [scanConfidence, setScanConfidence] = useState<number | null>(null);
+    const [scanRawText, setScanRawText] = useState('');
 
     const [showCustomerModal, setShowCustomerModal] = useState(false);
     const [showAccountModal, setShowAccountModal] = useState(false);
@@ -131,7 +172,9 @@ export default function NewSalesOrderPage() {
                 if (aRes.ok) {
                     const aData = await aRes.json();
                     setAccounts(aData.accounts || []);
-                    if (aData.accounts?.length > 0) setAccountId(aData.accounts[0].id);
+                    const mainCash = (aData.accounts || []).find((account: any) => normalizeText(account.name).includes('main cash'));
+                    if (mainCash) setAccountId(mainCash.id);
+                    else if (aData.accounts?.length > 0) setAccountId(aData.accounts[0].id);
                 }
             } catch (e) { console.error(e); }
         };
@@ -145,6 +188,11 @@ export default function NewSalesOrderPage() {
         setScanningReceipt(true);
         setScanMessage('Gemini 2.5 AI visual scanner is reading sales receipt details...');
         setScanSuccess(false);
+        setScanWarnings([]);
+        setScanConfidence(null);
+        setScanRawText('');
+        setScannedReceiptNumber('');
+        setScannedReceiptHash('');
 
         try {
             const formData = new FormData();
@@ -166,11 +214,16 @@ export default function NewSalesOrderPage() {
             if (responseData.receiptUrl) {
                 setScannedReceiptUrl(responseData.receiptUrl);
             }
+            if (responseData.receiptHash) setScannedReceiptHash(responseData.receiptHash);
 
             const extracted = responseData.data;
             if (extracted && extracted.isSuccess) {
                 setScanSuccess(true);
-                setScanMessage('✅ Rasiidka waa la scan gareeyay! Macluumaadka iibka waxaa lagu buuxiyay foomka si toos ah.');
+                setScanWarnings(extracted.warnings || []);
+                setScanConfidence(extracted.confidence ?? null);
+                setScanRawText(extracted.rawText || '');
+                setScannedReceiptNumber(extracted.receiptNumber || '');
+                setScanMessage(extracted.message || 'Rasiidka waa la scan gareeyay. Hubi xogta ka hor save.');
 
                 // 1. Auto-fill Date
                 if (extracted.date) {
@@ -179,10 +232,12 @@ export default function NewSalesOrderPage() {
 
                 // 2. Auto-match or Create Customer
                 if (extracted.customerName) {
-                    const matchCust = customers.find(c => 
-                        c.name.toLowerCase().includes(extracted.customerName.toLowerCase()) || 
-                        extracted.customerName.toLowerCase().includes(c.name.toLowerCase())
-                    );
+                    const normalizedPhone = String(extracted.customerPhone || '').replace(/\D/g, '');
+                    const phoneMatch = normalizedPhone
+                        ? customers.find(customer => [customer.phone, customer.phoneNumber]
+                            .some(value => String(value || '').replace(/\D/g, '') === normalizedPhone))
+                        : null;
+                    const matchCust = phoneMatch || findBestMatch(extracted.customerName, customers, ['name', 'companyName']);
                     if (matchCust) {
                         setCustomerId(matchCust.id);
                     } else {
@@ -203,23 +258,43 @@ export default function NewSalesOrderPage() {
                     }
                 }
 
-                // 3. Auto-match Product / Material & Quantities
-                if (extracted.productName || extracted.quantity || extracted.unitPrice) {
-                    let matchedProduct = null;
-                    if (extracted.productName) {
-                        matchedProduct = products.find(p => 
-                            p.name.toLowerCase().includes(extracted.productName.toLowerCase()) || 
-                            extracted.productName.toLowerCase().includes(p.name.toLowerCase())
-                        );
-                    }
+                // 3. Auto-match Product / Material & Quantities. Keep unmatched products visible but unselected for review.
+                const scannedItems = Array.isArray(extracted.items) && extracted.items.length > 0
+                    ? extracted.items
+                    : [{
+                        productName: extracted.productName,
+                        quantity: extracted.quantity,
+                        unitPrice: extracted.unitPrice,
+                        total: extracted.totalAmount
+                    }];
 
-                    setItems([{
-                        id: Date.now(),
-                        productId: matchedProduct ? matchedProduct.id : (products[0]?.id || ''),
-                        productName: matchedProduct ? matchedProduct.name : (extracted.productName || products[0]?.name || 'Item'),
-                        quantity: extracted.quantity || 1,
-                        unitPrice: extracted.unitPrice || (matchedProduct ? Number(matchedProduct.sellingPrice) : (extracted.totalAmount ? extracted.totalAmount / (extracted.quantity || 1) : 0))
-                    }]);
+                const mappedItems = scannedItems.map((scanItem: any, index: number) => {
+                    const matchedProduct = scanItem.matchedProductId
+                        ? products.find(p => p.id === scanItem.matchedProductId)
+                        : findBestMatch(scanItem.productName || scanItem.matchedProductName, products, ['name', 'sku']);
+                    const quantity = Number(scanItem.quantity) || 1;
+                    const unitPrice = Number(scanItem.unitPrice) || (Number(scanItem.total) && quantity ? Number(scanItem.total) / quantity : 0);
+
+                    return {
+                        id: Date.now() + index,
+                        productId: matchedProduct?.id || '',
+                        productName: matchedProduct?.name || scanItem.productName || 'Item',
+                        quantity,
+                        unitPrice: Number(unitPrice.toFixed(2))
+                    };
+                }).filter((item: any) => item.productName || item.unitPrice > 0);
+
+                const grouped = new Map<string, any>();
+                for (const item of mappedItems) {
+                    const key = `${item.productId || normalizeText(item.productName)}:${Number(item.unitPrice).toFixed(2)}`;
+                    const existing = grouped.get(key);
+                    if (existing) existing.quantity += item.quantity;
+                    else grouped.set(key, { ...item });
+                }
+                const normalizedItems = [...grouped.values()].map((item, index) => ({ ...item, id: Date.now() + index }));
+
+                if (normalizedItems.length > 0) {
+                    setItems(normalizedItems);
                 }
 
                 // 4. Auto-set Paid Amount & Payment Method
@@ -235,14 +310,13 @@ export default function NewSalesOrderPage() {
 
                 // 5. Auto-match Deposit Account
                 if (extracted.accountName && accounts.length > 0) {
-                    const accNameLower = extracted.accountName.toLowerCase();
-                    const matchedAcc = accounts.find(a => 
-                        a.name.toLowerCase().includes(accNameLower) || 
-                        accNameLower.includes(a.name.toLowerCase())
-                    );
+                    const matchedAcc = findBestMatch(extracted.accountName, accounts, ['name', 'type']);
                     if (matchedAcc) {
                         setAccountId(matchedAcc.id);
                     }
+                } else if (extracted.paymentMethod === 'CASH') {
+                    const mainCash = accounts.find(account => normalizeText(account.name).includes('main cash'));
+                    if (mainCash) setAccountId(mainCash.id);
                 }
             } else {
                 showAlert(extracted?.message || 'Gemini AI was unable to parse the receipt image.', 'error');
@@ -319,6 +393,16 @@ export default function NewSalesOrderPage() {
         e.preventDefault();
         setLoading(true);
         if (!customerId || !paymentMethod) { showAlert('Fadlan geli macmiilka iyo nooca lacag bixinta.', 'warning'); setLoading(false); return; }
+        if (items.some(i => !i.productId || !i.productName || Number(i.quantity) <= 0 || Number(i.unitPrice) <= 0)) {
+            showAlert('Fadlan hubi in product kasta inventory-ga laga doortay, tirada iyo qiimuhuna sax yihiin.', 'warning');
+            setLoading(false);
+            return;
+        }
+        if (paymentMethod !== 'CREDIT' && !accountId) {
+            showAlert('Fadlan dooro account-ka lacagta lagu shubayo.', 'warning');
+            setLoading(false);
+            return;
+        }
 
         try {
             const response = await fetch('/api/manufacturing/sales', {
@@ -333,10 +417,18 @@ export default function NewSalesOrderPage() {
                     discount,
                     total: grandTotal,
                     receiptUrl: scannedReceiptUrl || null,
+                    receiptNumber: scannedReceiptNumber || null,
+                    receiptHash: scannedReceiptHash || null,
                     items: items.map(i => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice }))
                 })
             });
-            if (response.ok) { setSuccess(true); setTimeout(() => router.push('/manufacturing/sales'), 1200); }
+            if (response.ok) {
+                setSuccess(true);
+                setTimeout(() => router.push('/manufacturing/sales'), 1200);
+            } else {
+                const data = await response.json().catch(() => ({}));
+                showAlert(data.error || 'Sale-ka lama kaydin. Fadlan xogta hubi.', 'error');
+            }
         } catch (error) { console.error(error); } finally { setLoading(false); }
     };
 
@@ -412,6 +504,45 @@ export default function NewSalesOrderPage() {
                             </label>
                         </div>
                     </div>
+
+                    {(scanConfidence !== null || scanWarnings.length > 0 || scanRawText) && (
+                        <div className="lg:col-span-3 bg-white/40 backdrop-blur-3xl rounded-3xl border border-white/50 shadow-xl p-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            <div className="p-4 rounded-2xl bg-slate-900 text-white">
+                                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">AI Confidence</p>
+                                <p className={`text-2xl font-black mt-2 ${Number(scanConfidence || 0) >= 85 ? 'text-emerald-400' : 'text-amber-300'}`}>
+                                    {scanConfidence ?? 0}%
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400 mt-2">
+                                    Hubi form-ka ka hor intaadan Finalize dhihin.
+                                </p>
+                            </div>
+                            <div className="lg:col-span-2 p-4 rounded-2xl bg-white/50 border border-white/60">
+                                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Review Notes</p>
+                                {scannedReceiptNumber && (
+                                    <p className="mt-2 text-[11px] font-black text-slate-700">
+                                        Receipt #: {scannedReceiptNumber}
+                                    </p>
+                                )}
+                                {scanWarnings.length > 0 ? (
+                                    <ul className="mt-3 space-y-2">
+                                        {scanWarnings.map((warning, index) => (
+                                            <li key={`${warning}-${index}`} className="flex gap-2 text-[11px] font-bold text-amber-700">
+                                                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                                                <span>{warning}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p className="mt-3 text-[11px] font-bold text-emerald-700">Wax digniin ah lama helin.</p>
+                                )}
+                                {scanRawText && (
+                                    <p className="mt-4 text-[10px] leading-relaxed font-semibold text-slate-500 line-clamp-3">
+                                        {scanRawText}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Main Workspace */}
                     <div className="lg:col-span-2 space-y-8">

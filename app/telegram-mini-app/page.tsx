@@ -324,7 +324,14 @@ export default function TelegramMiniAppPage() {
     const [recognitionObj, setRecognitionObj] = useState<any>(null);
 
     // 5-Tab iOS 26 Dock States
-    const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TRANSACTIONS' | 'NEW' | 'REPORTS' | 'PROFILE'>('DASHBOARD');
+    const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'SALES' | 'TRANSACTIONS' | 'NEW' | 'REPORTS' | 'PROFILE'>('DASHBOARD');
+
+    useEffect(() => {
+        const requestedTab = new URLSearchParams(window.location.search).get('tab');
+        if (requestedTab && ['DASHBOARD', 'TRANSACTIONS', 'NEW', 'REPORTS', 'PROFILE'].includes(requestedTab)) {
+            setActiveTab(requestedTab as 'DASHBOARD' | 'TRANSACTIONS' | 'NEW' | 'REPORTS' | 'PROFILE');
+        }
+    }, []);
     const [historyFilter, setHistoryFilter] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
@@ -1516,7 +1523,7 @@ export default function TelegramMiniAppPage() {
         if (reportCategory !== 'SALARY' && report.payroll?.length) {
             drawPayrollReport(doc, autoTable, report.payroll, (doc as any).lastAutoTable.finalY + 14);
         }
-        const totalPages = doc.getNumberOfPages();
+        const totalPages = (doc as any).getNumberOfPages();
         for (let page = 1; page <= totalPages; page++) {
             doc.setPage(page); doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(105);
             doc.text(`Page ${page} / ${totalPages}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
@@ -1754,7 +1761,17 @@ export default function TelegramMiniAppPage() {
                         </div>
 
                         {/* Live financial summary */}
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => { triggerHaptic('medium'); window.location.href = '/telegram-mini-app/sales'; }}
+                                className="min-h-[92px] rounded-2xl border border-cyan-400/40 bg-cyan-950/80 p-3 text-left shadow-[0_4px_20px_rgba(6,182,212,0.25)] active:scale-95 transition-all"
+                            >
+                                <ShoppingBag size={18} className="text-cyan-300 mb-1.5" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-cyan-200">Sales</p>
+                                <p className="text-[11px] font-black text-white leading-tight">New sale & receipt scan</p>
+                                <p className="text-[8px] font-extrabold text-cyan-300/90 mt-0.5">Open sales page</p>
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('TRANSACTIONS')}
@@ -1785,6 +1802,25 @@ export default function TelegramMiniAppPage() {
                                 <p className="text-sm font-black text-white leading-tight">{paidThisMonth.toLocaleString()}</p>
                                 <p className="text-[8px] font-extrabold text-cyan-300/90 mt-0.5">ETB paid</p>
                             </button>
+                        </div>
+
+                        <div className="rounded-2xl border border-violet-400/25 bg-violet-500/5 p-3.5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <Factory size={18} className="shrink-0 text-violet-300" />
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-black text-white">Daily production & commission</p>
+                                    <p className="text-[9px] font-bold text-slate-400">Geli wax-soo-saarka maanta iyo shaqaalihii joogay.</p>
+                                </div>
+                            </div>
+                            <button type="button" onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/production'; }} className="shrink-0 text-[9px] font-black text-violet-300">OPEN</button>
+                        </div>
+
+                        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-3.5 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="text-[10px] font-black text-white">Sales workspace</p>
+                                <p className="text-[9px] font-bold text-slate-400">Products, customers, receipt scan iyo payment status hal page.</p>
+                            </div>
+                            <button type="button" onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/sales'; }} className="shrink-0 text-[9px] font-black text-cyan-300">VIEW SALES</button>
                         </div>
 
                         <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 flex items-center justify-between gap-3 backdrop-blur-xl">
@@ -3701,7 +3737,7 @@ export default function TelegramMiniAppPage() {
                 />
 
                 {/* iOS 26 Glass Floating Bottom Dock Navigation */}
-                <div className="fixed bottom-4 left-4 right-4 z-40 max-w-md mx-auto bg-slate-950/85 backdrop-blur-2xl border border-white/20 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] rounded-full px-2 py-1.5 grid grid-cols-5 items-center">
+                <div className="fixed bottom-4 left-2 right-2 z-40 max-w-lg mx-auto bg-slate-950/85 backdrop-blur-2xl border border-white/20 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] rounded-full px-1.5 py-1.5 grid grid-cols-7 items-center">
                     {/* 1. Dashboard */}
                     <button
                         type="button"
@@ -3713,7 +3749,7 @@ export default function TelegramMiniAppPage() {
                         }`}
                     >
                         <Home size={18} className={activeTab === 'DASHBOARD' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
-                        <span className="text-[9px]">Dashboard</span>
+                        <span className="text-[8px]">Home</span>
                     </button>
 
                     {/* 2. Transactions */}
@@ -3727,21 +3763,41 @@ export default function TelegramMiniAppPage() {
                         }`}
                     >
                         <Layers size={18} className={activeTab === 'TRANSACTIONS' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
-                        <span className="text-[9px]">Transactions</span>
+                        <span className="text-[8px]">Txns</span>
                     </button>
 
-                    {/* 3. Center Floating (+) 3D Emerald Watery Button */}
+                    {/* 3. Sales */}
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/sales'; }}
+                        className="flex w-full flex-col items-center justify-center gap-0.5 rounded-full py-1.5 text-center text-slate-400 transition-all hover:text-white"
+                    >
+                        <ShoppingBag size={17} />
+                        <span className="text-[8px]">Sales</span>
+                    </button>
+
+                    {/* 4. Center Floating (+) 3D Emerald Watery Button */}
                     <button
                         type="button"
                         onClick={() => { triggerHaptic('medium'); setActiveTab('NEW'); }}
-                        className="w-12 h-12 mx-auto rounded-full bg-gradient-to-tr from-emerald-600 via-emerald-400 to-teal-300 text-slate-950 flex items-center justify-center shadow-[0_0_25px_rgba(16,185,129,0.8),inset_0_2px_4px_rgba(255,255,255,0.9)] border-2 border-emerald-200 active:scale-95 transition-all -translate-y-3 relative overflow-hidden group"
+                        className="w-11 h-11 mx-auto rounded-full bg-gradient-to-tr from-emerald-600 via-emerald-400 to-teal-300 text-slate-950 flex items-center justify-center shadow-[0_0_25px_rgba(16,185,129,0.8),inset_0_2px_4px_rgba(255,255,255,0.9)] border-2 border-emerald-200 active:scale-95 transition-all -translate-y-3 relative overflow-hidden group"
                         title="Diiwaangeli Kharash/Mushahar"
                     >
                         <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-transparent to-black/20 rounded-full pointer-events-none" />
-                        <PlusCircle size={26} className="text-slate-950 stroke-[2.5] z-10 drop-shadow-[0_1px_2px_rgba(255,255,255,0.8)]" />
+                        <PlusCircle size={24} className="text-slate-950 stroke-[2.5] z-10 drop-shadow-[0_1px_2px_rgba(255,255,255,0.8)]" />
                     </button>
 
-                    {/* 4. Reports */}
+                    {/* 5. Production */}
+                    <button
+                        type="button"
+                        onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/production'; }}
+                        className="flex w-full flex-col items-center justify-center gap-0.5 rounded-full py-1.5 text-center text-slate-400 transition-all hover:text-white"
+                    >
+                        <Factory size={17} />
+                        <span className="text-[8px]">Prod.</span>
+                    </button>
+
+                    {/* 6. Reports */}
                     <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('REPORTS'); fetchHistory(); }}
@@ -3752,10 +3808,10 @@ export default function TelegramMiniAppPage() {
                         }`}
                     >
                         <BarChart3 size={18} className={activeTab === 'REPORTS' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
-                        <span className="text-[9px]">Reports</span>
+                        <span className="text-[8px]">Reports</span>
                     </button>
 
-                    {/* 5. Profile */}
+                    {/* 7. Profile */}
                     <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('PROFILE'); }}
@@ -3766,7 +3822,7 @@ export default function TelegramMiniAppPage() {
                         }`}
                     >
                         <User size={18} className={activeTab === 'PROFILE' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
-                        <span className="text-[9px]">Profile</span>
+                        <span className="text-[8px]">Profile</span>
                     </button>
                 </div>
             </div>
