@@ -1833,7 +1833,7 @@ export default function TelegramMiniAppPage() {
                             </div>
                             <button type="button" onClick={() => {
                                 triggerHaptic('light');
-                                const downloadUrl = 'https://anindustory.online/download';
+                                const downloadUrl = `${window.location.origin}/download`;
                                 const telegram = (window as Window & {
                                     Telegram?: { WebApp?: { openLink?: (url: string, options?: { try_instant_view?: boolean }) => void } };
                                 }).Telegram?.WebApp;
