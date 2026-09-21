@@ -1823,6 +1823,17 @@ export default function TelegramMiniAppPage() {
                             <button type="button" onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/sales'; }} className="shrink-0 text-[9px] font-black text-cyan-300">VIEW SALES</button>
                         </div>
 
+                        <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/5 p-3.5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <Download size={18} className="shrink-0 text-emerald-300" />
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-black text-white">Download Staff App</p>
+                                    <p className="text-[9px] font-bold text-slate-400">Ku rakib Android-ka shaqaalaha oo ku gal account-kaaga.</p>
+                                </div>
+                            </div>
+                            <button type="button" onClick={() => { triggerHaptic('light'); window.location.href = '/download'; }} className="shrink-0 rounded-lg border border-emerald-300/30 bg-emerald-400/10 px-2.5 py-2 text-[9px] font-black text-emerald-300">DOWNLOAD</button>
+                        </div>
+
                         <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 flex items-center justify-between gap-3 backdrop-blur-xl">
                             <div className="flex items-center gap-2 min-w-0">
                                 <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${advancedData?.reconciliation?.issueCount ? 'bg-rose-400 shadow-[0_0_8px_#fb7185]' : 'bg-emerald-400 shadow-[0_0_8px_#34d399]'}`} />
