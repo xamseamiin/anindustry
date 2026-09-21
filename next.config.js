@@ -43,6 +43,23 @@ const nextConfig = {
   async headers() {
     return [
       {
+        source: '/downloads/AN-Industry-Staff-v0.1.0-debug.apk',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/vnd.android.package-archive'
+          },
+          {
+            key: 'Content-Disposition',
+            value: 'attachment; filename="AN-Industry-Staff-v0.1.0.apk"'
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=3600, immutable'
+          }
+        ],
+      },
+      {
         source: '/:path*',
         headers: [
           {
