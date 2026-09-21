@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const companyId = session?.user?.companyId;
     const role = String(session?.user?.role || '');
     if (!userId || !companyId) return NextResponse.json({ error: 'Login ayaa loo baahan yahay.' }, { status: 401 });
-    if (!canUseCashierPaymentReader(role)) return NextResponse.json({ error: 'Kaliya cashier ama maamulka ayaa device-kan diiwaangelin kara.' }, { status: 403 });
+    if (!canUseCashierPaymentReader(role)) return NextResponse.json({ error: 'Kaliya cashier-ka ayaa device-kan diiwaangelin kara.' }, { status: 403 });
 
     const body = await request.json();
     const deviceFingerprint = normalizeDeviceText(body.deviceFingerprint, 180);

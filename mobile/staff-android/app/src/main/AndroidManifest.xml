@@ -6,7 +6,10 @@
 
     <application
         android:allowBackup="false"
-        android:label="AN-Industry Staff"
+        android:icon="@drawable/an_industry_logo"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/an_industry_logo"
+        android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="true">

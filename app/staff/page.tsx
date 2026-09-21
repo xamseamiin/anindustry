@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { BellRing, Building2, Loader2, ShieldCheck, Smartphone, Store, WalletCards } from 'lucide-react';
+import { BellRing, Building2, FileText, Loader2, ShieldCheck, Smartphone, Store, WalletCards } from 'lucide-react';
 
 type Account = { id: string; name: string; type: string; currency: string };
 type Setup = { user: { id: string; name: string; role: string }; accounts: Account[]; canEnableSmsReader: boolean };
@@ -92,5 +92,6 @@ export default function StaffPortalPage() {
     <section className="rounded-3xl border border-amber-300/25 bg-amber-400/5 p-4"><div className="flex items-start gap-3"><BellRing className="mt-0.5 text-amber-200" size={20} /><div><h2 className="text-sm font-black text-amber-100">Cashier payment reader</h2><p className="mt-1 text-[10px] font-bold text-slate-400">Wuxuu qabtaa SMS cusub oo E-Birr/CBE ah oo keliya; ma akhriyo SMS-yadii hore ama OTP/PIN.</p></div></div>
       {!setup?.canEnableSmsReader ? <p className="mt-3 rounded-xl bg-slate-950/70 p-3 text-[10px] font-bold text-slate-400">Role-kan SMS reader looma fasixin.</p> : <><label className="mt-3 block text-[10px] font-black uppercase text-slate-400">E-Birr account<select value={ebirrAccountId} onChange={event => setEbirrAccountId(event.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white"><option value="">Ha isticmaalin E-Birr</option>{accountOptions.map(account => <option value={account.id} key={account.id}>{account.name}</option>)}</select></label><label className="mt-3 block text-[10px] font-black uppercase text-slate-400">CBE account<select value={cbeAccountId} onChange={event => setCbeAccountId(event.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white"><option value="">Ha isticmaalin CBE</option>{accountOptions.map(account => <option value={account.id} key={account.id}>{account.name}</option>)}</select></label><button onClick={registerCashierDevice} disabled={registering || !nativeApp} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 p-3 text-xs font-black text-slate-950 disabled:opacity-50">{registering ? <Loader2 className="animate-spin" size={15} /> : <ShieldCheck size={15} />}{nativeApp ? 'Diiwaangeli oo shid SMS reader' : 'Ku fur gudaha Staff App'}</button></>}
     </section>
+    <Link href="/privacy/staff-app" className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900/60 p-3 text-[10px] font-bold text-slate-400"><FileText size={14} />Privacy & SMS data policy</Link>
   </div></main>;
 }

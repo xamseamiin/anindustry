@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 
-const CASHIER_ROLES = new Set(['CASHIER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER', 'SHOP_ADMIN', 'MANUFACTURING_ADMIN']);
+// SMS payment ingestion is deliberately narrower than the rest of the staff
+// portal. Administrative access must not silently grant access to device SMS.
+const CASHIER_ROLES = new Set(['CASHIER']);
 
 export const canUseCashierPaymentReader = (role?: string | null) => CASHIER_ROLES.has(String(role || '').toUpperCase());
 

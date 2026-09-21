@@ -56,9 +56,13 @@ data class ParsedPayment(val provider: String, val accountId: String, val refere
 object PaymentSmsParser {
     fun parse(sender: String, message: String, ebirrAccountId: String, cbeAccountId: String): ParsedPayment? {
         val normalized = message.replace(',', ' ')
+        val normalizedSender = sender.replace(Regex("[^A-Za-z0-9]"), "")
+        // Never process authentication or secret-bearing messages, even if a
+        // provider name and an amount happen to be present.
+        if (Regex("(?i)\\b(OTP|PIN|PASSWORD|PASSCODE|VERIFICATION CODE|SECRET CODE)\\b").containsMatchIn(message)) return null
         val provider = when {
-            sender.contains("ebirr", true) || message.contains("e-birr", true) || message.contains("ebirr", true) -> "EBIRR"
-            sender.contains("cbe", true) || message.contains("cbe birr", true) || message.contains("commercial bank", true) -> "CBE"
+            normalizedSender.contains("ebirr", true) || message.contains("e-birr", true) || message.contains("ebirr", true) -> "EBIRR"
+            normalizedSender.contains("cbe", true) || message.contains("cbe birr", true) || message.contains("commercial bank", true) -> "CBE"
             else -> return null
         }
         if (!Regex("(?i)(received|credited|deposit|lacag.*soo|ku.*shub)").containsMatchIn(message)) return null
