@@ -1831,18 +1831,15 @@ export default function TelegramMiniAppPage() {
                                     <p className="text-[9px] font-bold text-slate-400">Ku rakib Android-ka shaqaalaha oo ku gal account-kaaga.</p>
                                 </div>
                             </div>
-                            <button type="button" onClick={() => {
-                                triggerHaptic('light');
-                                const downloadUrl = `${window.location.origin}/download`;
-                                const telegram = (window as Window & {
-                                    Telegram?: { WebApp?: { openLink?: (url: string, options?: { try_instant_view?: boolean }) => void } };
-                                }).Telegram?.WebApp;
-                                if (telegram?.openLink) {
-                                    telegram.openLink(downloadUrl, { try_instant_view: false });
-                                } else {
-                                    window.open(downloadUrl, '_blank', 'noopener,noreferrer');
-                                }
-                            }} className="shrink-0 rounded-lg border border-emerald-300/30 bg-emerald-400/10 px-2.5 py-2 text-[9px] font-black text-emerald-300">DOWNLOAD</button>
+                            <a
+                                href="https://www.anindustry.online/downloads/AN-Industry-Staff-v0.1.0-debug.apk?release=20260921-2"
+                                target="_blank"
+                                rel="noopener noreferrer external"
+                                onClick={() => triggerHaptic('light')}
+                                className="shrink-0 rounded-lg border border-emerald-300/30 bg-emerald-400/10 px-2.5 py-2 text-[9px] font-black text-emerald-300"
+                            >
+                                DOWNLOAD
+                            </a>
                         </div>
 
                         <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 flex items-center justify-between gap-3 backdrop-blur-xl">
