@@ -148,6 +148,30 @@ section {
   color-scheme: dark;
 }
 
+/* Keep the Mini App dark even when Telegram itself is using a light theme.
+   Telegram injects these variables on the page and form controls use them. */
+.telegram-mini-app[data-theme="dark"] {
+  --tg-theme-bg-color: #020617;
+  --tg-theme-secondary-bg-color: #0f172a;
+  --tg-theme-text-color: #f8fafc;
+  --tg-theme-hint-color: #a7b4c8;
+  --tg-theme-link-color: #38bdf8;
+  --tg-theme-button-color: #10b981;
+  --tg-theme-button-text-color: #06281f;
+  color-scheme: dark;
+}
+
+.telegram-mini-app[data-theme="dark"] select,
+.telegram-mini-app[data-theme="dark"] option {
+  color-scheme: dark;
+}
+
+.telegram-mini-app[data-theme="dark"] input::placeholder,
+.telegram-mini-app[data-theme="dark"] textarea::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
 .telegram-mini-app[data-theme="light"] {
   --mini-bg: #f4f7fb;
   --mini-surface: rgba(255, 255, 255, 0.94);
