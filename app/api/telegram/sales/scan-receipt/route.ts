@@ -19,11 +19,19 @@ export async function POST(req: Request) {
     const receiptHash = crypto.createHash('sha256').update(buffer).digest('hex');
     const duplicate = await prisma.sale.findFirst({ where: { companyId, notes: { contains: `[ReceiptHash:${receiptHash}]` } }, select: { invoiceNumber: true } });
     if (duplicate) return NextResponse.json({ error: `Rasiidhkan hore ayaa loo diiwaangeliyay (${duplicate.invoiceNumber}).` }, { status: 409 });
-    const receiptUrl = await storeReceiptImage({ buffer, mimeType: file.type, folder: 'sales_receipts', nameHint: receiptHash.slice(0, 12) });
     const catalog = await prisma.factoryMaterial.findMany({ where: { companyId }, select: { id: true, name: true, sku: true, sellingPrice: true }, orderBy: { name: 'asc' }, take: 250 });
-    // Scan the in-memory upload: Vercel's function filesystem is read-only.
+    // Read the uploaded bytes directly first. Receipt persistence is best-effort so a
+    // missing Blob token cannot prevent the AI from recognizing the receipt.
     const data = await parseSalesReceiptImageWithAI(buffer, catalog, file.type);
-    return NextResponse.json({ success: true, receiptUrl, receiptHash, data, requiresReview: data.warnings.length > 0 || data.confidence < 85 });
+    let receiptUrl: string | null = null;
+    let receiptWarning: string | null = null;
+    try {
+      receiptUrl = await storeReceiptImage({ buffer, mimeType: file.type, folder: 'sales_receipts', nameHint: receiptHash.slice(0, 12) });
+    } catch (error: any) {
+      receiptWarning = error?.message || 'Sawirka AI ayaa akhriyey, balse kaydinta rasiidku way fashilantay.';
+      console.warn('Sales receipt parsed but could not be persisted.', error);
+    }
+    return NextResponse.json({ success: true, receiptUrl, receiptHash, receiptWarning, data, requiresReview: data.warnings.length > 0 || data.confidence < 85 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Receipt scan failed.' }, { status: 500 });
   }

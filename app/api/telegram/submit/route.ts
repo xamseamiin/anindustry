@@ -5,6 +5,7 @@ import { EXPENSE_STATES, makeIdempotencyKey } from '@/lib/financial-workflow';
 import { readReceiptImage, storeReceiptImage } from '@/lib/receipt-storage';
 
 export const dynamic = 'force-dynamic';
+const MATERIAL_SUBCATEGORIES = ['Spare Parts', 'Raw Materials', 'Packaging', 'Tools & Equipment', 'Other Materials'];
 
 function cleanNoteForTelegram(note: string) {
     if (!note) return '';
@@ -107,6 +108,33 @@ export async function POST(request: Request) {
         const unitPriceInput = formData.get('unitPrice') as string;
         const sparePartItemName = (formData.get('sparePartItemName') as string || '').trim();
         const sparePartVendorName = (formData.get('sparePartVendorName') as string || '').trim();
+        const materialsSubcategory = (formData.get('materialsSubcategory') as string || 'Spare Parts').trim();
+        const sparePartItemsRaw = formData.get('sparePartItems') as string | null;
+        let sparePartItems: Array<{ itemName: string; quantity: number; unitPrice: number; total: number }> = [];
+        if (sparePartItemsRaw) {
+            try {
+                const parsedItems = JSON.parse(sparePartItemsRaw);
+                if (!Array.isArray(parsedItems) || parsedItems.length > 100) throw new Error('Liiska alaabta Spare Parts-ku sax ma aha.');
+                sparePartItems = parsedItems.map((item: any) => ({
+                    itemName: String(item?.name ?? item?.itemName ?? '').trim(),
+                    quantity: Number(item?.quantity ?? item?.qty),
+                    unitPrice: Number(item?.unitPrice ?? item?.price),
+                    total: Number(item?.total ?? item?.lineTotal)
+                }));
+            } catch (error: any) {
+                return NextResponse.json({ error: error.message || 'Liiska alaabta rasiidka lama akhrin.' }, { status: 400 });
+            }
+        } else if (sparePartItemName) {
+            // Accept older Mini App clients which still submit one spare-part name.
+            const legacyTotal = Number(amountInput) || 0;
+            const legacyQuantity = Number(quantityInput) || 1;
+            sparePartItems = [{
+                itemName: sparePartItemName,
+                quantity: legacyQuantity,
+                unitPrice: Number(unitPriceInput) || legacyTotal / legacyQuantity,
+                total: legacyTotal
+            }];
+        }
         const purchaseReceiptHash = (formData.get('purchaseReceiptHash') as string || '').trim();
 
         // Custom expense fields
@@ -192,6 +220,7 @@ export async function POST(request: Request) {
         let finalNote = note ? `${note}\n${requesterTag}` : requesterTag;
         if (purchaseReceiptUrl) finalNote += `\n[SupplierReceiptUrl: ${purchaseReceiptUrl}]`;
         if (purchaseReceiptHash) finalNote += `\n[SupplierReceiptHash:${purchaseReceiptHash}]`;
+        if (sparePartItems.length) finalNote += `\n[SparePartsItems:${encodeURIComponent(JSON.stringify(sparePartItems))}]`;
         if (paymentPhone) finalNote += `\n[PaymentPhone: ${paymentPhone}]`;
         if (recipientName) finalNote += `\n[RecipientName: ${recipientName}]`;
         if (aiVerificationResult && aiVerificationResult.isVerified) {
@@ -205,7 +234,7 @@ export async function POST(request: Request) {
         }
 
         const isRawMaterial = type === 'RAW_MATERIAL';
-        const isSpareParts = type === 'EXPENSE' && categoryId === 'SPARE_PARTS';
+        const isSpareParts = type === 'EXPENSE' && ['MATERIALS', 'SPARE_PARTS'].includes(categoryId);
 
         // 2. Perform database transaction
         const result = await prisma.$transaction(async (tx) => {
@@ -373,11 +402,17 @@ export async function POST(request: Request) {
                 const category = isSpareParts ? null : await tx.expenseCategory.findUnique({ where: { id: categoryId } });
                 if (!isSpareParts && !category) throw new Error('Nooca kharashka lama helin.');
 
-                finalCategoryName = isSpareParts ? 'Spare Parts' : category!.name;
+                finalCategoryName = isSpareParts ? 'Materials' : category!.name;
                 if (isSpareParts) {
-                    if (!sparePartItemName) throw new Error('Magaca spare part-ka/qalabka waa qasab.');
-                    if (!sparePartVendorName) throw new Error('Magaca supplier-ka spare part-ka waa qasab.');
-                    finalDescription = `Spare Parts: ${sparePartItemName} · ${sparePartVendorName}${note ? ` — ${note}` : ''}`;
+                    if (!MATERIAL_SUBCATEGORIES.includes(materialsSubcategory)) throw new Error('Nooca Materials-ka sax ma aha.');
+                    if (!sparePartVendorName) throw new Error('Magaca supplier-ka Materials-ka waa qasab.');
+                    if (!sparePartItems.length || sparePartItems.some(item => !item.itemName || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unitPrice) || item.unitPrice < 0 || !Number.isFinite(item.total) || item.total <= 0)) {
+                        throw new Error('Saf kasta oo Materials ah geli magac, qty, qiime iyo total sax ah.');
+                    }
+                    const lineItemsTotal = sparePartItems.reduce((sum, item) => sum + item.total, 0);
+                    if (Math.abs(lineItemsTotal - amount) > 0.05) throw new Error('Wadarta guud waa inay la mid noqotaa wadarta safafka alaabta.');
+                    const itemSummary = sparePartItems.map(item => `${item.itemName} (${item.quantity} × ${item.unitPrice.toLocaleString()} = ${item.total.toLocaleString()} ETB)`).join('; ');
+                    finalDescription = `Materials (${materialsSubcategory}): ${itemSummary} · ${sparePartVendorName}${note ? ` — ${note}` : ''}`;
                 } else if (finalCategoryName === 'Transport & Fuel' && transportType) {
                     finalDescription = `${finalCategoryName} (${transportType}): ${note}`;
                 } else if (finalCategoryName === 'Equipment Rental' && equipmentName) {
@@ -413,11 +448,11 @@ export async function POST(request: Request) {
                     accountId: accountId,
                     paidFrom: account.name,
                     supplierName: isSpareParts ? sparePartVendorName : null,
-                    materials: isSpareParts ? { materialName: sparePartItemName, supplierName: sparePartVendorName } : undefined,
+                    materials: isSpareParts ? { subCategory: materialsSubcategory, items: sparePartItems, supplierName: sparePartVendorName, receiptTotal: amount } : undefined,
                     approved: isPaid,
                     paymentStatus: isPaid ? 'PAID' : 'UNPAID',
                     paymentDate: isPaid ? new Date() : null,
-                    receiptUrl: receiptUrl || null,
+                    receiptUrl: isSpareParts ? (purchaseReceiptUrl || receiptUrl || null) : (receiptUrl || null),
                     note: finalNote,
                     workflowStatus: initialWorkflowStatus,
                     idempotencyKey,
@@ -428,7 +463,7 @@ export async function POST(request: Request) {
                     rentalPeriod: rentalPeriod || null,
                     consultantName: consultantName || null,
                     consultancyType: consultancyType || null,
-                    subCategory: billType || null
+                    subCategory: isSpareParts ? materialsSubcategory : billType || null
                 }
             });
 
@@ -638,8 +673,9 @@ export async function POST(request: Request) {
                     customFieldsText = `⚙️ Qalabka: ${equipmentName}\n📅 Muddada Kirada: ${rentalPeriod || ''}\n`;
                 } else if (result.categoryName === 'Consultancy & Service' && consultantName) {
                     customFieldsText = `👤 La-taliyaha: ${consultantName}\n📋 Adeegga: ${consultancyType || ''}\n`;
-                } else if (result.categoryName === 'Spare Parts') {
-                    customFieldsText = `🏭 Alaab-keenaha: ${sparePartVendorName}\n🔧 Spare part / qalab dayactir: ${sparePartItemName}\n`;
+                } else if (result.categoryName === 'Materials') {
+                    const sparePartsLines = sparePartItems.map((item, index) => `${index + 1}. ${item.itemName} · Qty ${item.quantity} × ${item.unitPrice.toLocaleString()} = ${item.total.toLocaleString()} ETB`).join('\n');
+                    customFieldsText = `📦 Nooca: ${materialsSubcategory}\n🏭 Alaab-keenaha: ${sparePartVendorName}\n🔧 Agabka la soo iibsaday:\n${sparePartsLines}\n`;
                 } else if (result.categoryName === 'Bills' && billType) {
                     customFieldsText = `🧾 Nooca Biilka: ${billType}\n`;
                 }

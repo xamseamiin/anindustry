@@ -55,7 +55,35 @@ interface BatchItem {
     consultantName?: string;
     consultancyType?: string;
     billType?: string;
+    materialsSubcategory?: string;
+    sparePartVendorName?: string;
+    sparePartItems?: Array<Omit<SparePartItem, 'id'>>;
+    purchaseReceiptFile?: File | null;
+    purchaseReceiptHash?: string;
 }
+
+interface SparePartItem {
+    id: string;
+    name: string;
+    quantity: string;
+    unitPrice: string;
+    total: string;
+}
+
+const createSparePartItem = (): SparePartItem => ({
+    id: `spare-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: '',
+    quantity: '',
+    unitPrice: '',
+    total: ''
+});
+
+const MATERIAL_SUBCATEGORIES = ['Spare Parts', 'Raw Materials', 'Packaging', 'Tools & Equipment', 'Other Materials'];
+
+const sumSparePartItems = (items: SparePartItem[]) => items.reduce((sum, item) => {
+    const value = Number(item.total);
+    return sum + (Number.isFinite(value) && value > 0 ? value : 0);
+}, 0);
 
 const triggerHaptic = (type: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection') => {
     if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.HapticFeedback) {
@@ -99,6 +127,7 @@ const getCategoryIcon = (name: string) => {
         case 'Equipment Rental':
             return <Settings size={16} className="text-purple-400" />;
         case 'Spare Parts':
+        case 'Materials':
             return <Wrench size={16} className="text-amber-300" />;
         case 'Consultancy & Service':
             return <Award size={16} className="text-indigo-400" />;
@@ -199,7 +228,7 @@ export default function TelegramMiniAppPage() {
     const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
     const isDeposit = selectedCategoryKey === 'DEPOSIT';
     const isExpense = selectedCategoryKey.startsWith('EXPENSE_');
-    const isSpareParts = selectedCategoryKey === 'EXPENSE_SPARE_PARTS';
+    const isSpareParts = selectedCategoryKey === 'EXPENSE_MATERIALS' || selectedCategoryKey === 'EXPENSE_SPARE_PARTS';
 
     // General Form Fields
     const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -245,10 +274,12 @@ export default function TelegramMiniAppPage() {
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
     const [purchaseReceiptFile, setPurchaseReceiptFile] = useState<File | null>(null);
+    const [purchaseReceiptPreview, setPurchaseReceiptPreview] = useState<string | null>(null);
     const [purchaseReceiptHash, setPurchaseReceiptHash] = useState('');
     const [purchaseReceiptScanning, setPurchaseReceiptScanning] = useState(false);
-    const [sparePartItemName, setSparePartItemName] = useState('');
+    const [sparePartItems, setSparePartItems] = useState<SparePartItem[]>([createSparePartItem()]);
     const [sparePartVendorName, setSparePartVendorName] = useState('');
+    const [materialsSubcategory, setMaterialsSubcategory] = useState('Spare Parts');
     const [depositSourceName, setDepositSourceName] = useState('');
     const [depositTransferId, setDepositTransferId] = useState('');
 
@@ -330,6 +361,12 @@ export default function TelegramMiniAppPage() {
     const [showSavedContacts, setShowSavedContacts] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [recognitionObj, setRecognitionObj] = useState<any>(null);
+
+    useEffect(() => {
+        return () => {
+            if (purchaseReceiptPreview) URL.revokeObjectURL(purchaseReceiptPreview);
+        };
+    }, [purchaseReceiptPreview]);
 
     // 5-Tab iOS 26 Dock States
     const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'SALES' | 'TRANSACTIONS' | 'NEW' | 'REPORTS' | 'PROFILE'>('DASHBOARD');
@@ -687,6 +724,12 @@ export default function TelegramMiniAppPage() {
         const isSalaryKey = selectedCategoryKey === 'SALARY';
         const isRawMaterialKey = selectedCategoryKey === 'RAW_MATERIAL';
 
+        if (isSpareParts && (!sparePartVendorName.trim() || sparePartItems.some(item => !item.name.trim() || Number(item.quantity) <= 0 || item.unitPrice === '' || Number(item.total) <= 0))) {
+            triggerHaptic('error');
+            showAlert('Materials-ka geli supplier-ka iyo saf kasta magac, qty, qiime iyo total sax ah.', 'warning');
+            return;
+        }
+
         if (isSalaryKey && !selectedEmployeeId) {
             triggerHaptic('error');
             showAlert('Fadlan dooro shaqaalaha.', 'warning');
@@ -738,7 +781,12 @@ export default function TelegramMiniAppPage() {
             rentalPeriod: rentalPeriod || undefined,
             consultantName: consultantName || undefined,
             consultancyType: consultancyType || undefined,
-            billType: billType || undefined
+            billType: billType || undefined,
+            materialsSubcategory: isSpareParts ? materialsSubcategory : undefined,
+            sparePartVendorName: isSpareParts ? sparePartVendorName : undefined,
+            sparePartItems: isSpareParts ? sparePartItems.map(({ id, ...item }) => item) : undefined,
+            purchaseReceiptFile: isSpareParts ? purchaseReceiptFile : undefined,
+            purchaseReceiptHash: isSpareParts ? purchaseReceiptHash : undefined
         };
 
         if (recipientName && paymentPhone) {
@@ -760,9 +808,12 @@ export default function TelegramMiniAppPage() {
         setReceiptPreview(null);
         setPaymentPhone('');
         setNewVendorName('');
-        setSparePartItemName('');
+        setSparePartItems([createSparePartItem()]);
         setSparePartVendorName('');
+        setMaterialsSubcategory('Spare Parts');
         setPurchaseReceiptFile(null);
+        setPurchaseReceiptPreview(null);
+        setPurchaseReceiptHash('');
         setNewMaterialName('');
         setTransportType('');
         setEquipmentName('');
@@ -987,9 +1038,11 @@ export default function TelegramMiniAppPage() {
         setSelectedMaterialName('');
         setIsNewMaterial(false);
         setNewMaterialName('');
-        setSparePartItemName('');
+        setSparePartItems([createSparePartItem()]);
         setSparePartVendorName('');
+        setMaterialsSubcategory('Spare Parts');
         setPurchaseReceiptFile(null);
+        setPurchaseReceiptPreview(null);
         setPurchaseReceiptHash('');
         setQuantity('');
         setUnitPrice('');
@@ -1011,6 +1064,7 @@ export default function TelegramMiniAppPage() {
     const scanSparePartsReceipt = async (file: File | null) => {
         if (!file) return;
         setPurchaseReceiptFile(file);
+        setPurchaseReceiptPreview(URL.createObjectURL(file));
         setPurchaseReceiptScanning(true);
         const form = new FormData();
         form.append('receiptFile', file);
@@ -1020,16 +1074,67 @@ export default function TelegramMiniAppPage() {
             if (!response.ok) throw new Error(data.error || 'AI scan-ku wuu fashilmay.');
             const draft = data.data || {};
             setPurchaseReceiptHash(data.receiptHash || '');
-            if (draft.itemName) setSparePartItemName(draft.itemName);
+            const scannedItems = Array.isArray(draft.items) ? draft.items.map((item: any) => {
+                const quantity = item.quantity == null ? '' : String(item.quantity);
+                const unitPrice = item.unitPrice == null ? '' : String(item.unitPrice);
+                const lineTotal = item.total == null
+                    ? (Number(quantity) > 0 && Number(unitPrice) >= 0 ? String(Number(quantity) * Number(unitPrice)) : '')
+                    : String(item.total);
+                return {
+                    ...createSparePartItem(),
+                    name: String(item.itemName || item.name || ''),
+                    quantity,
+                    unitPrice,
+                    total: lineTotal
+                };
+            }) : [];
+            if (!scannedItems.length && draft.itemName) {
+                const quantity = draft.quantity == null ? '' : String(draft.quantity);
+                const unitPrice = draft.unitPrice == null ? '' : String(draft.unitPrice);
+                scannedItems.push({
+                    ...createSparePartItem(),
+                    name: String(draft.itemName),
+                    quantity,
+                    unitPrice,
+                    total: draft.totalAmount == null ? '' : String(draft.totalAmount)
+                });
+            }
+            if (scannedItems.length) setSparePartItems(scannedItems);
             if (draft.vendorName) setSparePartVendorName(draft.vendorName);
-            if (draft.totalAmount) setAmount(String(draft.totalAmount));
+            const scannedTotal = Number(draft.totalAmount) || sumSparePartItems(scannedItems);
+            if (scannedTotal > 0) setAmount(String(scannedTotal));
             const detail = draft.warnings?.length ? ` Hubi: ${draft.warnings.join(' ')}` : ' Xogta la akhriyey waa la geliyey form-ka.';
-            showAlert(`Rasiidka AI ayaa akhriyey.${detail} Hubi item-ka, supplier-ka iyo lacagta ka hor dirista.`, draft.warnings?.length ? 'warning' : 'success', 'Hubi xogta rasiidka');
+            showAlert(`AI-gu wuxuu helay ${scannedItems.length} saf oo alaab ah.${detail} Hubi magaca, tirada, qiimaha saf kasta iyo wadarta ka hor dirista.`, draft.warnings?.length ? 'warning' : 'success', 'Hubi xogta rasiidka');
         } catch (error: any) {
             showAlert(`${error.message || 'Rasiidka lama akhrin.'} Sawirka wali waa la hayaa; xogta gacanta ku buuxi.`, 'warning');
         } finally {
             setPurchaseReceiptScanning(false);
         }
+    };
+
+    const updateSparePartItem = (id: string, field: keyof Omit<SparePartItem, 'id'>, value: string) => {
+        const nextItems = sparePartItems.map(item => {
+            if (item.id !== id) return item;
+            const updated = { ...item, [field]: value };
+            if (field === 'quantity' || field === 'unitPrice') {
+                const quantity = Number(updated.quantity);
+                const unitPrice = Number(updated.unitPrice);
+                updated.total = quantity > 0 && unitPrice >= 0 && updated.unitPrice !== '' ? String(quantity * unitPrice) : '';
+            }
+            return updated;
+        });
+        setSparePartItems(nextItems);
+        const total = sumSparePartItems(nextItems);
+        setAmount(total > 0 ? String(total) : '');
+    };
+
+    const addSparePartItem = () => setSparePartItems(items => [...items, createSparePartItem()]);
+
+    const removeSparePartItem = (id: string) => {
+        const nextItems = sparePartItems.length > 1 ? sparePartItems.filter(item => item.id !== id) : [createSparePartItem()];
+        setSparePartItems(nextItems);
+        const total = sumSparePartItems(nextItems);
+        setAmount(total > 0 ? String(total) : '');
     };
 
     const activeCategorySavedContacts = 
@@ -1276,6 +1381,11 @@ export default function TelegramMiniAppPage() {
 
         // If user collected batch items, submit all of them
         if (validBatchItems.length > 0) {
+            if (!isOnline && validBatchItems.some(item => item.purchaseReceiptFile)) {
+                showAlert('Batch-kan rasiidka spare parts kuma kaydin karo offline. Ku xidh internet-ka si rasiidka iyo codsigu wada xareysmaan.', 'warning');
+                setSubmitting(false);
+                return;
+            }
             let processed = 0;
             let failed = 0;
 
@@ -1304,6 +1414,11 @@ export default function TelegramMiniAppPage() {
                 if (item.consultantName) formData.append('consultantName', item.consultantName);
                 if (item.consultancyType) formData.append('consultancyType', item.consultancyType);
                 if (item.billType) formData.append('billType', item.billType);
+                if (item.materialsSubcategory) formData.append('materialsSubcategory', item.materialsSubcategory);
+                if (item.sparePartVendorName) formData.append('sparePartVendorName', item.sparePartVendorName);
+                if (item.sparePartItems?.length) formData.append('sparePartItems', JSON.stringify(item.sparePartItems));
+                if (item.purchaseReceiptFile) formData.append('purchaseReceiptFile', item.purchaseReceiptFile);
+                if (item.purchaseReceiptHash) formData.append('purchaseReceiptHash', item.purchaseReceiptHash);
                 formData.append('requesterName', requesterName);
                 formData.append('requesterId', requesterId);
                 formData.append('clientRequestId', `batch-${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`);
@@ -1397,11 +1512,12 @@ export default function TelegramMiniAppPage() {
                 payload.amount = calculatedTotal.toString();
             } else {
                 payload.type = 'EXPENSE';
-                payload.categoryId = isSpareParts ? 'SPARE_PARTS' : selectedCategoryId;
+                payload.categoryId = isSpareParts ? 'MATERIALS' : selectedCategoryId;
                 payload.amount = amount;
                 if (isSpareParts) {
-                    payload.sparePartItemName = sparePartItemName;
+                    payload.materialsSubcategory = materialsSubcategory;
                     payload.sparePartVendorName = sparePartVendorName;
+                    payload.sparePartItems = JSON.stringify(sparePartItems.map(({ id, ...item }) => item));
                 }
                 
                 if (selectedCategoryName === 'Transport & Fuel') {
@@ -1459,11 +1575,12 @@ export default function TelegramMiniAppPage() {
                 formData.append('amount', calculatedTotal.toString());
             } else {
                 formData.append('type', 'EXPENSE');
-                formData.append('categoryId', isSpareParts ? 'SPARE_PARTS' : selectedCategoryId);
+                formData.append('categoryId', isSpareParts ? 'MATERIALS' : selectedCategoryId);
                 formData.append('amount', amount);
                 if (isSpareParts) {
-                    formData.append('sparePartItemName', sparePartItemName);
+                    formData.append('materialsSubcategory', materialsSubcategory);
                     formData.append('sparePartVendorName', sparePartVendorName);
+                    formData.append('sparePartItems', JSON.stringify(sparePartItems.map(({ id, ...item }) => item)));
                 }
                 
                 if (selectedCategoryName === 'Transport & Fuel') {
@@ -1657,6 +1774,9 @@ export default function TelegramMiniAppPage() {
         setOfflineSubmitted(false);
         setAmount('');
         setNote('');
+        setSparePartItems([createSparePartItem()]);
+        setSparePartVendorName('');
+        setMaterialsSubcategory('Spare Parts');
         setSelectedEmployeeId('');
         setSelectedVendorId('');
         setIsNewVendor(false);
@@ -2919,9 +3039,36 @@ export default function TelegramMiniAppPage() {
 
                         {isSpareParts && (
                             <div className="flex flex-col gap-3 rounded-2xl border border-amber-400/25 bg-amber-500/5 p-3 animate-fade-in">
-                                <p className="text-[10px] font-bold text-amber-100">Qaybtan waxaa loogu talagalay qaybo iyo agab warshadda loogu soo iibiyo dayactirka; looma gelinayo stock-ga alaabta la iibiyo.</p>
-                                <input required value={sparePartItemName} onChange={e => setSparePartItemName(e.target.value)} placeholder="Magaca spare part-ka / qalabka la iibsanayo" className="w-full rounded-xl border border-white/10 bg-slate-950/70 p-3 text-xs font-bold text-white" />
+                                <p className="text-[10px] font-bold leading-relaxed text-amber-100">Materials waa kharash agab-warshadeed, stock-ga alaabta iibka lagu darimayo. Gacanta ku qor safafka ama sawir/soo geli rasiidka; AI-gu wuu buuxinayaa, adiguna waad sixi kartaa.</p>
+                                <label className="flex flex-col gap-1 text-[9px] font-black uppercase tracking-wide text-slate-300">Nooca agabka
+                                    <select value={materialsSubcategory} onChange={e => setMaterialsSubcategory(e.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-xs font-bold normal-case text-white">{MATERIAL_SUBCATEGORIES.map(value => <option key={value} value={value}>{value}</option>)}</select>
+                                </label>
                                 <input required value={sparePartVendorName} onChange={e => setSparePartVendorName(e.target.value)} placeholder="Magaca vendor / supplier-ka" className="w-full rounded-xl border border-white/10 bg-slate-950/70 p-3 text-xs font-bold text-white" />
+                                <div className="flex flex-col gap-2">
+                                    {sparePartItems.map((item, index) => (
+                                        <div key={item.id} className="flex flex-col gap-2 rounded-xl border border-amber-300/20 bg-slate-950/65 p-2.5">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-wide text-amber-200">Alaab #{index + 1}</span>
+                                                {sparePartItems.length > 1 && <button type="button" aria-label={`Ka saar alaabta ${index + 1}`} onClick={() => removeSparePartItem(item.id)} className="rounded-lg p-1.5 text-rose-300 hover:bg-rose-500/10"><Trash2 size={14} /></button>}
+                                            </div>
+                                            <input required value={item.name} onChange={e => updateSparePartItem(item.id, 'name', e.target.value)} placeholder={`Magaca ${materialsSubcategory.toLowerCase()} / agabka`} className="w-full rounded-lg border border-white/10 bg-slate-900 p-2.5 text-xs font-bold text-white placeholder:text-slate-400" />
+                                            <div className="grid grid-cols-3 gap-1.5">
+                                                <label className="min-w-0 text-[9px] font-bold text-slate-300">Qty
+                                                    <input required type="number" min="0.01" step="any" value={item.quantity} onChange={e => updateSparePartItem(item.id, 'quantity', e.target.value)} placeholder="1" className="mt-1 w-full min-w-0 rounded-lg border border-white/10 bg-slate-900 p-2 text-xs font-bold text-white placeholder:text-slate-500" />
+                                                </label>
+                                                <label className="min-w-0 text-[9px] font-bold text-slate-300">Qiime / xabo
+                                                    <input required type="number" min="0" step="any" value={item.unitPrice} onChange={e => updateSparePartItem(item.id, 'unitPrice', e.target.value)} placeholder="0" className="mt-1 w-full min-w-0 rounded-lg border border-white/10 bg-slate-900 p-2 text-xs font-bold text-white placeholder:text-slate-500" />
+                                                </label>
+                                                <label className="min-w-0 text-[9px] font-bold text-slate-300">Total
+                                                    <input required type="number" min="0.01" step="any" value={item.total} onChange={e => updateSparePartItem(item.id, 'total', e.target.value)} placeholder="0" className="mt-1 w-full min-w-0 rounded-lg border border-amber-300/25 bg-slate-900 p-2 text-xs font-black text-amber-200 placeholder:text-slate-500" />
+                                                </label>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={addSparePartItem} className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-dashed border-amber-300/40 bg-amber-500/10 text-[10px] font-black text-amber-100 active:scale-[0.98]">
+                                        <PlusCircle size={14} /> Ku dar saf alaab kale
+                                    </button>
+                                </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <label className="cursor-pointer rounded-xl border border-dashed border-amber-300/40 bg-black/10 p-3 text-center text-[10px] font-black text-amber-100">
                                         <Camera size={16} className="mx-auto mb-1" /> {purchaseReceiptScanning ? 'AI ayaa akhrinaya…' : 'Sawir & akhri rasiidka'}
@@ -2933,6 +3080,8 @@ export default function TelegramMiniAppPage() {
                                     </label>
                                 </div>
                                 {purchaseReceiptFile && <p className="truncate text-[10px] font-bold text-emerald-200">Rasiidka alaabta: {purchaseReceiptFile.name}</p>}
+                                {purchaseReceiptPreview && <img src={purchaseReceiptPreview} alt="Rasiidka alaabta la soo iibsaday" className="max-h-52 w-full rounded-xl border border-white/10 bg-black/20 object-contain" />}
+                                {purchaseReceiptScanning && <p className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-cyan-200"><Loader2 size={13} className="animate-spin" /> Gemini wuxuu akhrinayaa safafka rasiidka…</p>}
                             </div>
                         )}
 
@@ -3024,12 +3173,13 @@ export default function TelegramMiniAppPage() {
                         {!isRawMaterial && (
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                    <DollarSign size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Lacagta (Amount ETB)
+                                    <DollarSign size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> {isSpareParts ? 'Wadarta guud ee rasiidka (ETB)' : 'Lacagta (Amount ETB)'}
                                 </label>
                                 <input type="number" step="any" required value={amount} onChange={(e) => setAmount(e.target.value)}
-                                    placeholder="Geli lacagta ETB..."
+                                    placeholder={isSpareParts ? 'Wadartu si toos ah ayay u xisaabmaysaa' : 'Geli lacagta ETB...'}
                                     className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-emerald-400 font-extrabold border border-white/10 rounded-xl text-base outline-none focus:border-[var(--tg-theme-button-color,#3b82f6)]"
                                 />
+                                {isSpareParts && <span className="text-[9px] font-bold text-slate-400">Wadartu waxay ka kooban tahay total-ka saf kasta oo alaab ah.</span>}
                             </div>
                         )}
 

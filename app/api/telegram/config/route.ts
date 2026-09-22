@@ -66,13 +66,13 @@ export async function GET() {
             });
         });
 
-        const categoryRows = categories.map(c => ({ id: c.id, name: c.name, type: c.type }));
-        // Virtual category: it is intentionally not a DB foreign-key category because
-        // repair parts are recorded as expenses, not saleable inventory/material stock.
-        const sparePartsIndex = categoryRows.findIndex(category => category.name.trim().toLowerCase() === 'spare parts');
-        const virtualSpareParts = { id: 'SPARE_PARTS', name: 'Spare Parts', type: 'EXPENSE' };
-        if (sparePartsIndex >= 0) categoryRows[sparePartsIndex] = virtualSpareParts;
-        else categoryRows.push(virtualSpareParts);
+        const categoryRows = categories
+            .filter(category => !['materials', 'spare parts'].includes(category.name.trim().toLowerCase()))
+            .map(c => ({ id: c.id, name: c.name, type: c.type }));
+        // Materials is an expense pathway, not saleable inventory. Keep the virtual
+        // id so old deployments do not require an expense-category migration.
+        const virtualMaterials = { id: 'MATERIALS', name: 'Materials', type: 'EXPENSE' };
+        categoryRows.push(virtualMaterials);
 
         return NextResponse.json({
             employees: employees.map(e => {
