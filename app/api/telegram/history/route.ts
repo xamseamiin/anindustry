@@ -109,11 +109,18 @@ export async function GET(request: Request) {
             console.error('Error fetching direct account withdrawals:', withdrawalErr);
         }
 
-        const revisions = await prisma.expenseRevision.findMany({ where: { companyId, expenseId: { in: expenses.map(e => e.id) } }, orderBy: { createdAt: 'desc' } });
-        const revisionPayments = await prisma.transaction.findMany({
+        let revisions: any[] = [];
+        try {
+            revisions = await prisma.expenseRevision.findMany({ where: { companyId, expenseId: { in: expenses.map(e => e.id) } }, orderBy: { createdAt: 'desc' } });
+        } catch (revisionErr) {
+            // The revision workflow table may not yet exist in older production DBs.
+            // It is optional for reading the ledger; don't let it take down Transactions.
+            console.warn('Expense revision history is unavailable; continuing without revision badges.', revisionErr);
+        }
+        const revisionPayments = revisions.length ? await prisma.transaction.findMany({
             where: { companyId, expenseId: { in: revisions.map(r => r.expenseId) }, reversedAt: null, type: { in: ['EXPENSE', 'DEBT_REPAID', 'INCOME'] } },
             select: { expenseId: true, amount: true, type: true }
-        });
+        }) : [];
         const mappedExpenses = expenses.map(e => {
             const revision = revisions.find(r => r.expenseId === e.id);
             const settledAmount = revision ? revisionPayments.filter(t => t.expenseId === e.id).reduce((sum, t) => sum + (t.type === 'INCOME' ? -1 : 1) * Number(t.amount), 0) : undefined;
