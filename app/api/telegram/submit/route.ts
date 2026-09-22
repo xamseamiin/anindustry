@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
-import fs from 'fs';
-import path from 'path';
 import { verifyReceiptImageWithAI } from '@/lib/receipt-ai';
 import { EXPENSE_STATES, makeIdempotencyKey } from '@/lib/financial-workflow';
+import { readReceiptImage, storeReceiptImage } from '@/lib/receipt-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,14 +14,18 @@ function cleanNoteForTelegram(note: string) {
         .replace(/\[TelegramId:\s*[^\]]+\]/g, '')
         .replace(/\[Dalbaday:\s*[^\]]+\]/g, '')
         .replace(/\[ReceiptUrl:\s*[^\]]+\]/g, '')
+        .replace(/\[SupplierReceiptUrl:\s*[^\]]+\]/g, '')
+        .replace(/\[PurchaseReceiptUrl:\s*[^\]]+\]/g, '')
+        .replace(/\[SupplierReceiptHash:\s*[^\]]+\]/g, '')
+        .replace(/\[PurchaseReceiptHash:\s*[^\]]+\]/g, '')
         .trim();
 }
 
 async function sendTelegramMessage(token: string, chatId: string, text: string, receiptUrl?: string, replyMarkup?: any) {
     try {
         if (receiptUrl) {
-            const absolutePath = path.join(process.cwd(), 'public', receiptUrl);
-            if (fs.existsSync(absolutePath)) {
+            const image = await readReceiptImage(receiptUrl);
+            if (image) {
                 const formData = new FormData();
                 formData.append('chat_id', chatId);
                 formData.append('caption', text);
@@ -30,9 +33,8 @@ async function sendTelegramMessage(token: string, chatId: string, text: string, 
                 if (replyMarkup) {
                     formData.append('reply_markup', JSON.stringify(replyMarkup));
                 }
-                const fileBuffer = fs.readFileSync(absolutePath);
-                const blob = new Blob([fileBuffer], { type: 'image/jpeg' });
-                formData.append('photo', blob, 'receipt.jpg');
+                const blob = new Blob([Uint8Array.from(image.buffer)], { type: image.mimeType });
+                formData.append('photo', blob, `receipt.${image.mimeType.split('/')[1] || 'jpg'}`);
 
                 const url = `https://api.telegram.org/bot${token}/sendPhoto`;
                 const response = await fetch(url, {
@@ -92,6 +94,7 @@ export async function POST(request: Request) {
         const categoryId = formData.get('categoryId') as string;
         const customChatId = formData.get('chatId') as string;
         const receiptFile = formData.get('receiptFile') as File | null;
+        const purchaseReceiptFile = formData.get('purchaseReceiptFile') as File | null;
         const clientRequestId = (formData.get('clientRequestId') as string) || '';
 
         // Raw Material custom fields
@@ -102,6 +105,9 @@ export async function POST(request: Request) {
         const newMaterialName = formData.get('newMaterialName') as string;
         const quantityInput = formData.get('quantity') as string;
         const unitPriceInput = formData.get('unitPrice') as string;
+        const sparePartItemName = (formData.get('sparePartItemName') as string || '').trim();
+        const sparePartVendorName = (formData.get('sparePartVendorName') as string || '').trim();
+        const purchaseReceiptHash = (formData.get('purchaseReceiptHash') as string || '').trim();
 
         // Custom expense fields
         const transportType = formData.get('transportType') as string;
@@ -141,29 +147,23 @@ export async function POST(request: Request) {
 
         // 1. Handle File Upload & AI Vision Verification
         let receiptUrl = '';
+        let purchaseReceiptUrl = '';
         let aiVerificationResult: any = null;
 
         if (receiptFile && receiptFile.size > 0) {
             const buffer = Buffer.from(await receiptFile.arrayBuffer());
-            const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'receipts');
-            
-            if (!fs.existsSync(uploadsDir)) {
-                fs.mkdirSync(uploadsDir, { recursive: true });
+            if (!new Set(['image/jpeg', 'image/png', 'image/webp']).has(receiptFile.type)) {
+                return NextResponse.json({ error: 'Rasiidka JPG, PNG ama WEBP ha noqdo.' }, { status: 400 });
             }
-
-            const cleanFileName = `${Date.now()}-${receiptFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-            const filePath = path.join(uploadsDir, cleanFileName);
-            fs.writeFileSync(filePath, buffer);
-            receiptUrl = `/uploads/receipts/${cleanFileName}`;
+            if (buffer.length > 10 * 1024 * 1024) return NextResponse.json({ error: 'Rasiidku kama weynaan karo 10MB.' }, { status: 400 });
+            receiptUrl = await storeReceiptImage({ buffer, mimeType: receiptFile.type, folder: 'receipts', nameHint: receiptFile.name });
 
             // Trigger AI Vision scan with Google Gemini 1.5/2.0 Flash
             const expectedAmount = parseFloat(amountInput) || (parseFloat(quantityInput) * parseFloat(unitPriceInput)) || 0;
             if (expectedAmount > 0) {
                 try {
-                    aiVerificationResult = await verifyReceiptImageWithAI(filePath, expectedAmount, paymentPhone);
+                    aiVerificationResult = await verifyReceiptImageWithAI(buffer, expectedAmount, paymentPhone);
                     if (aiVerificationResult.isVerified && !aiVerificationResult.isMatch) {
-                        // Delete invalid receipt file
-                        try { fs.unlinkSync(filePath); } catch (_) {}
                         return NextResponse.json({ 
                             error: aiVerificationResult.message || 'Rasiidka aad soo gelisay iyo lacagta/lambarka la dalbay isma laha!' 
                         }, { status: 400 });
@@ -174,9 +174,24 @@ export async function POST(request: Request) {
             }
         }
 
+        if (purchaseReceiptFile && purchaseReceiptFile.size > 0) {
+            if (!new Set(['image/jpeg', 'image/png', 'image/webp']).has(purchaseReceiptFile.type)) {
+                return NextResponse.json({ error: 'Rasiidka alaabta JPG, PNG ama WEBP ha noqdo.' }, { status: 400 });
+            }
+            if (purchaseReceiptFile.size > 10 * 1024 * 1024) return NextResponse.json({ error: 'Rasiidka alaabta kama weynaan karo 10MB.' }, { status: 400 });
+            purchaseReceiptUrl = await storeReceiptImage({
+                buffer: Buffer.from(await purchaseReceiptFile.arrayBuffer()),
+                mimeType: purchaseReceiptFile.type,
+                folder: 'purchase_receipts',
+                nameHint: purchaseReceiptFile.name
+            });
+        }
+
         // Build requester tags (Preserve requester name permanently)
         const requesterTag = `[Dalbaday: ${requesterName}] [TelegramId: ${requesterId}]`;
         let finalNote = note ? `${note}\n${requesterTag}` : requesterTag;
+        if (purchaseReceiptUrl) finalNote += `\n[SupplierReceiptUrl: ${purchaseReceiptUrl}]`;
+        if (purchaseReceiptHash) finalNote += `\n[SupplierReceiptHash:${purchaseReceiptHash}]`;
         if (paymentPhone) finalNote += `\n[PaymentPhone: ${paymentPhone}]`;
         if (recipientName) finalNote += `\n[RecipientName: ${recipientName}]`;
         if (aiVerificationResult && aiVerificationResult.isVerified) {
@@ -190,6 +205,7 @@ export async function POST(request: Request) {
         }
 
         const isRawMaterial = type === 'RAW_MATERIAL';
+        const isSpareParts = type === 'EXPENSE' && categoryId === 'SPARE_PARTS';
 
         // 2. Perform database transaction
         const result = await prisma.$transaction(async (tx) => {
@@ -268,6 +284,7 @@ export async function POST(request: Request) {
                 if (receiptUrl) {
                     purchaseNotes = `${purchaseNotes}\n[ReceiptUrl: ${receiptUrl}]`;
                 }
+                if (purchaseReceiptUrl) purchaseNotes += `\n[PurchaseReceiptUrl: ${purchaseReceiptUrl}]`;
 
                 const purchase = await tx.materialPurchase.create({
                     data: {
@@ -353,20 +370,24 @@ export async function POST(request: Request) {
                     data: employeeUpdateData
                 });
             } else {
-                const category = await tx.expenseCategory.findUnique({ where: { id: categoryId } });
-                if (!category) throw new Error('Nooca kharashka lama helin.');
+                const category = isSpareParts ? null : await tx.expenseCategory.findUnique({ where: { id: categoryId } });
+                if (!isSpareParts && !category) throw new Error('Nooca kharashka lama helin.');
 
-                finalCategoryName = category.name;
-                if (finalCategoryName === 'Transport & Fuel' && transportType) {
-                    finalDescription = `${category.name} (${transportType}): ${note}`;
+                finalCategoryName = isSpareParts ? 'Spare Parts' : category!.name;
+                if (isSpareParts) {
+                    if (!sparePartItemName) throw new Error('Magaca spare part-ka/qalabka waa qasab.');
+                    if (!sparePartVendorName) throw new Error('Magaca supplier-ka spare part-ka waa qasab.');
+                    finalDescription = `Spare Parts: ${sparePartItemName} · ${sparePartVendorName}${note ? ` — ${note}` : ''}`;
+                } else if (finalCategoryName === 'Transport & Fuel' && transportType) {
+                    finalDescription = `${finalCategoryName} (${transportType}): ${note}`;
                 } else if (finalCategoryName === 'Equipment Rental' && equipmentName) {
-                    finalDescription = `${category.name} (${equipmentName} - ${rentalPeriod || ''}): ${note}`;
+                    finalDescription = `${finalCategoryName} (${equipmentName} - ${rentalPeriod || ''}): ${note}`;
                 } else if (finalCategoryName === 'Consultancy & Service' && consultantName) {
-                    finalDescription = `${category.name} (${consultantName} - ${consultancyType || ''}): ${note}`;
+                    finalDescription = `${finalCategoryName} (${consultantName} - ${consultancyType || ''}): ${note}`;
                 } else if (finalCategoryName === 'Bills' && billType) {
-                    finalDescription = `${category.name} (${billType}): ${note}`;
+                    finalDescription = `${finalCategoryName} (${billType}): ${note}`;
                 } else {
-                    finalDescription = `${category.name}: ${note}`;
+                    finalDescription = `${finalCategoryName}: ${note}`;
                 }
             }
 
@@ -387,10 +408,12 @@ export async function POST(request: Request) {
                     description: finalDescription,
                     amount: amount,
                     category: finalCategoryName,
-                    categoryId: type === 'EXPENSE' ? categoryId : null,
+                    categoryId: type === 'EXPENSE' && !isSpareParts ? categoryId : null,
                     employeeId: type === 'SALARY' ? employeeId : null,
                     accountId: accountId,
                     paidFrom: account.name,
+                    supplierName: isSpareParts ? sparePartVendorName : null,
+                    materials: isSpareParts ? { materialName: sparePartItemName, supplierName: sparePartVendorName } : undefined,
                     approved: isPaid,
                     paymentStatus: isPaid ? 'PAID' : 'UNPAID',
                     paymentDate: isPaid ? new Date() : null,
@@ -615,6 +638,8 @@ export async function POST(request: Request) {
                     customFieldsText = `⚙️ Qalabka: ${equipmentName}\n📅 Muddada Kirada: ${rentalPeriod || ''}\n`;
                 } else if (result.categoryName === 'Consultancy & Service' && consultantName) {
                     customFieldsText = `👤 La-taliyaha: ${consultantName}\n📋 Adeegga: ${consultancyType || ''}\n`;
+                } else if (result.categoryName === 'Spare Parts') {
+                    customFieldsText = `🏭 Alaab-keenaha: ${sparePartVendorName}\n🔧 Spare part / qalab dayactir: ${sparePartItemName}\n`;
                 } else if (result.categoryName === 'Bills' && billType) {
                     customFieldsText = `🧾 Nooca Biilka: ${billType}\n`;
                 }
@@ -699,13 +724,20 @@ export async function POST(request: Request) {
                 }
             }
 
-            const sentMsgId = await sendTelegramMessage(token, chatId, telegramText, receiptUrl || undefined, replyMarkup);
-            if (sentMsgId && !result.isPurchase && result.id) {
+            const sentMsgId = await sendTelegramMessage(token, chatId, telegramText, (receiptUrl || purchaseReceiptUrl) || undefined, replyMarkup);
+            if (sentMsgId && result.id) {
                 try {
+                    if (result.isPurchase) {
+                        const purchase = await prisma.materialPurchase.findUnique({ where: { id: result.id }, select: { notes: true } });
+                        const oldNotes = purchase?.notes || '';
+                        const notes = `${oldNotes.replace(/\[TelegramChatId:\s*[^\]]+\]/g, '').replace(/\[TelegramMessageId:\s*[^\]]+\]/g, '').trim()}\n[TelegramChatId: ${chatId}] [TelegramMessageId: ${sentMsgId}]`.trim();
+                        await prisma.materialPurchase.update({ where: { id: result.id }, data: { notes } });
+                    } else {
                     await prisma.expense.update({
                         where: { id: result.id },
                         data: { telegramMessageId: sentMsgId, telegramChatId: chatId }
                     });
+                    }
                 } catch (_) { /* non-critical */ }
             }
         }

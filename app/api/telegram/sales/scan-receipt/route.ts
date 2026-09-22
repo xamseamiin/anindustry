@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
 import { parseSalesReceiptImageWithAI } from '@/lib/sales-receipt-ai';
+import { storeReceiptImage } from '@/lib/receipt-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,14 +19,11 @@ export async function POST(req: Request) {
     const receiptHash = crypto.createHash('sha256').update(buffer).digest('hex');
     const duplicate = await prisma.sale.findFirst({ where: { companyId, notes: { contains: `[ReceiptHash:${receiptHash}]` } }, select: { invoiceNumber: true } });
     if (duplicate) return NextResponse.json({ error: `Rasiidhkan hore ayaa loo diiwaangeliyay (${duplicate.invoiceNumber}).` }, { status: 409 });
-    const dir = path.join(process.cwd(), 'public', 'uploads', 'sales_receipts');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const extension = file.type === 'image/png' ? '.png' : file.type === 'image/webp' ? '.webp' : '.jpg';
-    const fileName = `${Date.now()}-${receiptHash.slice(0, 12)}${extension}`;
-    fs.writeFileSync(path.join(dir, fileName), buffer);
+    const receiptUrl = await storeReceiptImage({ buffer, mimeType: file.type, folder: 'sales_receipts', nameHint: receiptHash.slice(0, 12) });
     const catalog = await prisma.factoryMaterial.findMany({ where: { companyId }, select: { id: true, name: true, sku: true, sellingPrice: true }, orderBy: { name: 'asc' }, take: 250 });
-    const data = await parseSalesReceiptImageWithAI(path.join(dir, fileName), catalog, file.type);
-    return NextResponse.json({ success: true, receiptUrl: `/uploads/sales_receipts/${fileName}`, receiptHash, data, requiresReview: data.warnings.length > 0 || data.confidence < 85 });
+    // Scan the in-memory upload: Vercel's function filesystem is read-only.
+    const data = await parseSalesReceiptImageWithAI(buffer, catalog, file.type);
+    return NextResponse.json({ success: true, receiptUrl, receiptHash, data, requiresReview: data.warnings.length > 0 || data.confidence < 85 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Receipt scan failed.' }, { status: 500 });
   }

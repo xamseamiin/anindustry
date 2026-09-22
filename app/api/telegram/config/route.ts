@@ -66,6 +66,14 @@ export async function GET() {
             });
         });
 
+        const categoryRows = categories.map(c => ({ id: c.id, name: c.name, type: c.type }));
+        // Virtual category: it is intentionally not a DB foreign-key category because
+        // repair parts are recorded as expenses, not saleable inventory/material stock.
+        const sparePartsIndex = categoryRows.findIndex(category => category.name.trim().toLowerCase() === 'spare parts');
+        const virtualSpareParts = { id: 'SPARE_PARTS', name: 'Spare Parts', type: 'EXPENSE' };
+        if (sparePartsIndex >= 0) categoryRows[sparePartsIndex] = virtualSpareParts;
+        else categoryRows.push(virtualSpareParts);
+
         return NextResponse.json({
             employees: employees.map(e => {
                 const paidThisMonth = employeePaidMap[e.id] !== undefined ? employeePaidMap[e.id] : Number(e.salaryPaidThisMonth || 0);
@@ -85,11 +93,7 @@ export async function GET() {
                 balance: a.balance,
                 currency: a.currency
             })),
-            categories: categories.map(c => ({
-                id: c.id,
-                name: c.name,
-                type: c.type
-            })),
+            categories: categoryRows,
             vendors: vendors.map(v => ({
                 id: v.id,
                 name: v.name,

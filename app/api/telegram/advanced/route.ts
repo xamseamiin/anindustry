@@ -10,7 +10,7 @@ export async function GET() {
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
     const accounts = await prisma.account.findMany({
       where: { companyId, isActive: true },
-      select: { id: true, name: true, balance: true, currency: true },
+      select: { id: true, name: true, balance: true, reservedBalance: true, currency: true },
       orderBy: { name: 'asc' }
     });
     const statusGroups = await prisma.expense.groupBy({
@@ -18,8 +18,8 @@ export async function GET() {
     });
     return NextResponse.json({
       success: true,
-      accounts: accounts.map(account => ({ id: account.id, name: account.name, currency: account.currency, balance: Number(account.balance), reserved: 0, available: Number(account.balance) })),
-      selectedAccount: accounts[0] ? { id: accounts[0].id, name: accounts[0].name, currency: accounts[0].currency, balance: Number(accounts[0].balance), reserved: 0, available: Number(accounts[0].balance) } : null,
+      accounts: accounts.map(account => ({ id: account.id, name: account.name, currency: account.currency, balance: Number(account.balance), reserved: Number(account.reservedBalance || 0), available: Number(account.balance) - Number(account.reservedBalance || 0) })),
+      selectedAccount: accounts[0] ? { id: accounts[0].id, name: accounts[0].name, currency: accounts[0].currency, balance: Number(accounts[0].balance), reserved: Number(accounts[0].reservedBalance || 0), available: Number(accounts[0].balance) - Number(accounts[0].reservedBalance || 0) } : null,
       workflow: statusGroups.map(group => ({ status: group.paymentStatus || 'UNPAID', count: group._count._all, amount: Number(group._sum.amount || 0) })),
       reconciliation: { paidWithoutReceipt: [], receiptWithoutTransaction: [], orphanTransactions: [], duplicatePayments: [], issueCount: 0 },
       system: { api: 'online', database: 'online', pendingJobs: 0, heartbeats: [], backups: [], version: process.env.VERCEL_GIT_COMMIT_SHA || process.env.npm_package_version || 'live' },

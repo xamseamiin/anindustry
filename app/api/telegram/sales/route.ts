@@ -4,7 +4,7 @@ import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram
 
 export const dynamic = 'force-dynamic';
 type PaymentAllocationInput = { incomingPaymentId: string; amount: number };
-type SaleItemInput = { productId: string; quantity: number; unitPrice: number };
+type SaleItemInput = { productId: string; quantity: number; unitPrice: number; customerId?: string | null };
 
 function identityAllowed(initData: string) {
   const identity = verifyTelegramInitData(initData || '');
@@ -53,12 +53,20 @@ export async function POST(req: Request) {
     if (!identity) return NextResponse.json({ error: 'Telegram admin access is required.' }, { status: 403 });
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     const userId = process.env.TELEGRAM_USER_ID || String((identity as any).id);
-    const items: SaleItemInput[] = Array.isArray(body.items) ? body.items.map((item: any): SaleItemInput => ({ productId: String(item.productId || ''), quantity: Number(item.quantity), unitPrice: money(item.unitPrice) })) : [];
+    const items: SaleItemInput[] = Array.isArray(body.items) ? body.items.map((item: any): SaleItemInput => ({ productId: String(item.productId || ''), quantity: Number(item.quantity), unitPrice: money(item.unitPrice), customerId: item.customerId ? String(item.customerId) : null })) : [];
     const allocationInputs: PaymentAllocationInput[] = Array.isArray(body.paymentAllocations) ? body.paymentAllocations.map((payment: any) => ({ incomingPaymentId: String(payment.incomingPaymentId || ''), amount: money(payment.amount) })) : [];
     if (!companyId || !items.length || items.some(item => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0 || item.unitPrice <= 0)) return NextResponse.json({ error: 'Product, quantity iyo price waa qasab.' }, { status: 400 });
     if (allocationInputs.some(payment => !payment.incomingPaymentId || payment.amount <= 0)) return NextResponse.json({ error: 'Lacagta la dooranayo waa inay leedahay amount sax ah.' }, { status: 400 });
     if (new Set(allocationInputs.map(payment => payment.incomingPaymentId)).size !== allocationInputs.length) return NextResponse.json({ error: 'Hal incoming payment hal mar oo keliya ayaad sale-kan ku xiriirin kartaa.' }, { status: 400 });
     const subtotal = money(items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0));
+    const itemGroups = [...items.reduce((groups, item) => {
+      const customerId = item.customerId || (body.customerId ? String(body.customerId) : null);
+      const group = groups.get(customerId || '') || { customerId, items: [] as SaleItemInput[], subtotal: 0 };
+      group.items.push(item);
+      group.subtotal = money(group.subtotal + item.quantity * item.unitPrice);
+      groups.set(customerId || '', group);
+      return groups;
+    }, new Map<string, { customerId: string | null; items: SaleItemInput[]; subtotal: number }>()).values()];
     const requestedPaidAmount = Math.max(0, Math.min(money(body.paidAmount), subtotal));
     const result = await prisma.$transaction(async tx => {
       const materials = await tx.factoryMaterial.findMany({ where: { companyId, id: { in: items.map(item => item.productId) } }, select: { id: true, name: true, inStock: true, purchasePrice: true } });
@@ -68,9 +76,10 @@ export async function POST(req: Request) {
         if (!material) throw new Error('Product-ka inventory-ga kama helin.');
         if (Number(material.inStock) < item.quantity) throw new Error(material.name + ' stock kuma filna.');
       }
-      if (body.customerId) {
-        const customer = await tx.customer.findFirst({ where: { id: String(body.customerId), companyId }, select: { id: true } });
-        if (!customer) throw new Error('Customer-ka lama helin.');
+      const customerIds = [...new Set(itemGroups.map(group => group.customerId).filter(Boolean))] as string[];
+      if (customerIds.length) {
+        const customerCount = await tx.customer.count({ where: { id: { in: customerIds }, companyId } });
+        if (customerCount !== customerIds.length) throw new Error('Customer-ka mid ka mid ah lama helin.');
       }
       let paidAmount = requestedPaidAmount;
       let saleAccountId = body.accountId ? String(body.accountId) : null;
@@ -94,18 +103,56 @@ export async function POST(req: Request) {
         const account = await tx.account.findFirst({ where: { id: saleAccountId, companyId, isActive: true }, select: { id: true } });
         if (!account) throw new Error('Account-ka lama helin.');
       }
-      const paymentStatus = paidAmount >= subtotal ? 'Paid' : paidAmount > 0 ? 'Partial' : 'Unpaid';
-      const invoiceNumber = 'AN-TG-' + Date.now().toString().slice(-8);
-      const sale = await tx.sale.create({
-        data: {
-          invoiceNumber, userId, companyId, customerId: body.customerId || null, accountId: saleAccountId,
-          subtotal, tax: 0, total: subtotal, paidAmount, paymentMethod: String(body.paymentMethod || 'CASH'), paymentStatus, status: 'Completed',
-          notes: String(body.note || 'Telegram Mini App sale'),
-          items: { create: items.map(item => { const material = materialMap.get(item.productId)!; return { productId: material.id, productName: material.name, quantity: item.quantity, unitPrice: item.unitPrice, total: item.quantity * item.unitPrice, costPrice: Number(material.purchasePrice || 0), totalCost: Number(material.purchasePrice || 0) * item.quantity }; }) },
-          ...(resolvedAllocations.length ? { paymentAllocations: { create: resolvedAllocations.map(payment => ({ incomingPaymentId: payment.incomingPaymentId, amount: payment.amount })) } } : {})
-        },
-        include: { items: true, paymentAllocations: true }
-      });
+      const saleNotes = `${String(body.note || 'Telegram Mini App sale')}\n${body.receiptHash ? `[ReceiptHash:${String(body.receiptHash)}]` : ''}`.trim();
+      let remainingPaid = paidAmount;
+      let allocationIndex = 0;
+      let allocationRemaining = resolvedAllocations[0]?.amount || 0;
+      const groupPaymentAmounts: number[] = [];
+      const groupAllocations: Array<Array<{ incomingPaymentId: string; amount: number; accountId: string }>> = [];
+      for (let groupIndex = 0; groupIndex < itemGroups.length; groupIndex += 1) {
+        const group = itemGroups[groupIndex];
+        const proportionalPaid = groupIndex === itemGroups.length - 1
+          ? remainingPaid
+          : Math.min(group.subtotal, money(paidAmount * group.subtotal / subtotal));
+        const groupPaid = Math.min(group.subtotal, proportionalPaid);
+        groupPaymentAmounts.push(groupPaid);
+        remainingPaid = money(remainingPaid - groupPaid);
+        let need = resolvedAllocations.length ? groupPaid : 0;
+        const allocationsForGroup: Array<{ incomingPaymentId: string; amount: number; accountId: string }> = [];
+        while (need > 0.001 && allocationIndex < resolvedAllocations.length) {
+          const source = resolvedAllocations[allocationIndex];
+          const chunk = money(Math.min(need, allocationRemaining));
+          if (chunk > 0) allocationsForGroup.push({ incomingPaymentId: source.incomingPaymentId, amount: chunk, accountId: source.accountId });
+          need = money(need - chunk);
+          allocationRemaining = money(allocationRemaining - chunk);
+          if (allocationRemaining <= 0.001) {
+            allocationIndex += 1;
+            allocationRemaining = resolvedAllocations[allocationIndex]?.amount || 0;
+          }
+        }
+        groupAllocations.push(allocationsForGroup);
+      }
+      const baseInvoice = 'AN-TG-' + Date.now().toString().slice(-8);
+      const sales = [];
+      for (let index = 0; index < itemGroups.length; index += 1) {
+        const group = itemGroups[index];
+        const groupPaid = groupPaymentAmounts[index];
+        const paymentStatus = groupPaid >= group.subtotal ? 'Paid' : groupPaid > 0 ? 'Partial' : 'Unpaid';
+        const groupAccountIds = [...new Set(groupAllocations[index].map(payment => payment.accountId))];
+        const groupAccountId = resolvedAllocations.length ? (groupAccountIds.length === 1 ? groupAccountIds[0] : null) : saleAccountId;
+        const invoiceNumber = itemGroups.length === 1 ? baseInvoice : `${baseInvoice}-${index + 1}`;
+        sales.push(await tx.sale.create({
+          data: {
+            invoiceNumber, userId, companyId, customerId: group.customerId, accountId: groupAccountId,
+            subtotal: group.subtotal, tax: 0, total: group.subtotal, paidAmount: groupPaid, paymentMethod: String(body.paymentMethod || 'CASH'), paymentStatus, status: 'Completed',
+            notes: itemGroups.length > 1 ? `${saleNotes}\nReceipt group ${index + 1}/${itemGroups.length}` : saleNotes,
+            receiptUrl: body.receiptUrl || null,
+            items: { create: group.items.map(item => { const material = materialMap.get(item.productId)!; return { productId: material.id, productName: material.name, quantity: item.quantity, unitPrice: item.unitPrice, total: item.quantity * item.unitPrice, costPrice: Number(material.purchasePrice || 0), totalCost: Number(material.purchasePrice || 0) * item.quantity }; }) },
+            ...(groupAllocations[index].length ? { paymentAllocations: { create: groupAllocations[index].map(payment => ({ incomingPaymentId: payment.incomingPaymentId, amount: payment.amount })) } } : {})
+          },
+          include: { items: true, paymentAllocations: true }
+        }));
+      }
       for (const item of items) {
         const updated = await tx.factoryMaterial.updateMany({ where: { id: item.productId, companyId, inStock: { gte: item.quantity } }, data: { inStock: { decrement: item.quantity } } });
         if (updated.count !== 1) throw new Error('Stock-ku isbeddelay; fadlan mar kale isku day.');
@@ -118,11 +165,16 @@ export async function POST(req: Request) {
       } else if (paidAmount > 0 && saleAccountId) {
         // Matched payments entered the account on arrival; never credit them twice here.
         await tx.account.update({ where: { id: saleAccountId }, data: { balance: { increment: paidAmount } } });
-        await tx.transaction.create({ data: { description: 'Iibka ' + invoiceNumber, amount: paidAmount, type: 'INCOME', accountId: saleAccountId, companyId, userId, customerId: body.customerId || null, transactionDate: new Date(), category: paymentStatus === 'Partial' ? 'Sales Deposit / Dayn Qayb Bixin' : 'Sales Income', note: 'Telegram Mini App · ' + paymentStatus } });
+        for (let index = 0; index < sales.length; index += 1) {
+          const groupPaid = groupPaymentAmounts[index];
+          if (groupPaid <= 0) continue;
+          const sale = sales[index];
+          await tx.transaction.create({ data: { description: 'Iibka ' + sale.invoiceNumber, amount: groupPaid, type: 'INCOME', accountId: saleAccountId, companyId, userId, customerId: sale.customerId, transactionDate: new Date(), category: groupPaid >= sale.total ? 'Sales Income' : 'Sales Deposit / Dayn Qayb Bixin', note: 'Telegram Mini App · ' + sale.paymentStatus } });
+        }
       }
-      return sale;
+      return sales;
     });
-    return NextResponse.json({ success: true, sale: result });
+    return NextResponse.json({ success: true, sale: result[0], sales: result });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Sale lama kaydin.' }, { status: 500 });
   }

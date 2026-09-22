@@ -11,6 +11,8 @@ export interface SalesReceiptCatalogItem {
 
 export interface SalesReceiptLineItem {
     productName: string | null;
+    customerName?: string | null;
+    customerPhone?: string | null;
     matchedProductId?: string | null;
     matchedProductName?: string | null;
     quantity: number | null;
@@ -100,7 +102,9 @@ export function normalizeSalesReceiptAnalysis(
     const warnings: string[] = Array.isArray(parsed?.warnings) ? parsed.warnings.filter(Boolean).map(String) : [];
     const rawCustomerName = String(parsed?.customerName || parsed?.customer || parsed?.buyerName || '').trim();
     const normalizedCustomerName = normalizeText(rawCustomerName);
-    const walkInCustomer = !rawCustomerName || /^(walk in|walkin|customer|client|macmiil|macaamiil|cash customer|unknown|n a|na)$/.test(normalizedCustomerName);
+    const walkInCustomer = String(parsed?.customerType || '').toUpperCase() === 'WALK_IN'
+        || !rawCustomerName
+        || /^(walk in(?: customer)?|walkin(?: customer)?|customer|client|macmiil|macaamiil|cash customer|unknown|n a|na)$/.test(normalizedCustomerName);
     const customerName = walkInCustomer ? null : rawCustomerName;
     const customerPhone = parsed?.customerPhone || parsed?.phone || null;
     const requiresCustomerRegistration = !walkInCustomer && !customerPhone;
@@ -131,6 +135,8 @@ export function normalizeSalesReceiptAnalysis(
 
             return {
                 productName,
+                customerName: item?.customerName || item?.buyerName || null,
+                customerPhone: item?.customerPhone || item?.buyerPhone || null,
                 matchedProductId: match?.product.id || null,
                 matchedProductName: match?.product.name || null,
                 quantity,
@@ -148,8 +154,8 @@ export function normalizeSalesReceiptAnalysis(
         const normalizedName = normalizeText(item.matchedProductName || item.productName || '');
         const priceKey = Number(item.unitPrice || 0).toFixed(4);
         const key = item.matchedProductId
-            ? `${item.matchedProductId}:${priceKey}`
-            : `${normalizedName}:${priceKey}`;
+            ? `${item.matchedProductId}:${priceKey}:${normalizeText(item.customerName || '')}`
+            : `${normalizedName}:${priceKey}:${normalizeText(item.customerName || '')}`;
         const existing = mergedItems.get(key);
         if (!existing) {
             mergedItems.set(key, { ...item });
@@ -234,7 +240,7 @@ export function normalizeSalesReceiptAnalysis(
 }
 
 export async function parseSalesReceiptImageWithAI(
-    imagePath: string,
+    imageSource: string | Buffer,
     catalog: SalesReceiptCatalogItem[] = [],
     mimeType = 'image/jpeg'
 ): Promise<SalesReceiptAnalysisResult> {
@@ -265,7 +271,7 @@ export async function parseSalesReceiptImageWithAI(
             };
         }
 
-        if (!fs.existsSync(imagePath)) {
+        if (typeof imageSource === 'string' && !fs.existsSync(imageSource)) {
             return {
                 isSuccess: false,
                 customerName: null,
@@ -298,7 +304,7 @@ export async function parseSalesReceiptImageWithAI(
             model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
         }
 
-        const fileBuffer = fs.readFileSync(imagePath);
+        const fileBuffer = Buffer.isBuffer(imageSource) ? imageSource : fs.readFileSync(imageSource);
         const imagePart = {
             inlineData: {
                 data: fileBuffer.toString('base64'),
@@ -315,10 +321,10 @@ export async function parseSalesReceiptImageWithAI(
 ${productCatalog}
 
 Extract key sales transaction fields accurately:
-1. customerName: Name of customer or buyer (Magaca Macmiilka). If the receipt says only customer, client, macmiil, macaamiil, walk-in, cash customer, unknown, or has no real person/company name, return null and set customerType to "WALK_IN". If a real person/company name is visible, set customerType to "NAMED" and preserve the exact name.
+1. customerName: Name of customer or buyer (Magaca Macmiilka). If it says only customer/client/macmiil or explicitly "walk-in customer", treat it as generic, return null and set customerType to "WALK_IN". A Walk-in sale is cash and fully paid at the receipt total. If a real person/company name is visible, set customerType to "NAMED" and preserve the exact name; do not guess missing names or phone numbers.
 2. customerPhone: Phone number of the customer if present.
 3. customerType: One of "WALK_IN" or "NAMED".
-4. items: Every product/material line sold. Multiple products are common. For each item return productName, quantity, unitPrice, total.
+4. items: Every product/material line sold. Multiple products are common. If the receipt is a combined list containing different buyers/customers, return customerName and customerPhone for each product line (only where the receipt clearly associates that line with a person); for a single-customer invoice these may be null. For each item return productName, quantity, unitPrice, total.
 4. totalAmount: Grand total price of the sale as a raw ETB number.
 5. paidAmount: Amount paid/deposited according to the receipt as a raw ETB number. If no payment is shown, use 0 only when the receipt clearly says credit/dayn/unpaid; otherwise use null.
 6. paymentMethod: One of "CASH", "CARD", "PARTIAL", "CREDIT". A printed heading such as "CASH SALES INVOICE" means CASH unless handwriting clearly says otherwise. If paidAmount >= totalAmount, use "CASH". If 0 < paidAmount < totalAmount, use "PARTIAL". If paidAmount == 0 and it is dayn/unpaid, use "CREDIT".
@@ -338,8 +344,8 @@ Return ONLY a valid raw JSON object (strictly no markdown codeblocks or extra te
   "customerType": "NAMED",
   "requiresCustomerRegistration": false,
   "items": [
-    { "productName": "Block 15cm", "quantity": 500, "unitPrice": 150, "total": 75000 },
-    { "productName": "Cement", "quantity": 10, "unitPrice": 900, "total": 9000 }
+    { "customerName": "Abdi Hassan", "customerPhone": null, "productName": "Block 15cm", "quantity": 500, "unitPrice": 150, "total": 75000 },
+    { "customerName": "Abdi Hassan", "customerPhone": null, "productName": "Cement", "quantity": 10, "unitPrice": 900, "total": 9000 }
   ],
   "totalAmount": 75000,
   "paidAmount": 75000,

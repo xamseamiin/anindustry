@@ -10,7 +10,7 @@ import {
     Award, ArrowRight, Layers, Factory, Package,
     Hash, Banknote, Calendar, ClipboardList, Wrench, Phone,
     Mic, MicOff, PlusCircle, Trash2, Pencil, AlertTriangle, ChevronLeft, Bell,
-    Home, ArrowUpRight, ArrowDownLeft, Search, Filter, Share2, ExternalLink, Download, UserCheck, ShieldCheck, BarChart3, PieChart,
+    Home, ArrowUpRight, ArrowDownLeft, Search, Filter, Share2, ExternalLink, Download, Upload, UserCheck, ShieldCheck, BarChart3, PieChart,
     Eye, EyeOff, Lock, Smartphone, SlidersHorizontal, LogOut, Camera, FileSpreadsheet
 } from 'lucide-react';
 
@@ -98,6 +98,8 @@ const getCategoryIcon = (name: string) => {
             return <Truck size={16} className="text-amber-400" />;
         case 'Equipment Rental':
             return <Settings size={16} className="text-purple-400" />;
+        case 'Spare Parts':
+            return <Wrench size={16} className="text-amber-300" />;
         case 'Consultancy & Service':
             return <Award size={16} className="text-indigo-400" />;
         default:
@@ -197,6 +199,7 @@ export default function TelegramMiniAppPage() {
     const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
     const isDeposit = selectedCategoryKey === 'DEPOSIT';
     const isExpense = selectedCategoryKey.startsWith('EXPENSE_');
+    const isSpareParts = selectedCategoryKey === 'EXPENSE_SPARE_PARTS';
 
     // General Form Fields
     const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -241,6 +244,11 @@ export default function TelegramMiniAppPage() {
     const [amountInput, setAmountInput] = useState('');
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+    const [purchaseReceiptFile, setPurchaseReceiptFile] = useState<File | null>(null);
+    const [purchaseReceiptHash, setPurchaseReceiptHash] = useState('');
+    const [purchaseReceiptScanning, setPurchaseReceiptScanning] = useState(false);
+    const [sparePartItemName, setSparePartItemName] = useState('');
+    const [sparePartVendorName, setSparePartVendorName] = useState('');
     const [depositSourceName, setDepositSourceName] = useState('');
     const [depositTransferId, setDepositTransferId] = useState('');
 
@@ -336,6 +344,9 @@ export default function TelegramMiniAppPage() {
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [historyExpenses, setHistoryExpenses] = useState<any[]>([]);
+    const [historyAccount, setHistoryAccount] = useState<any>(null);
+    const [historySummary, setHistorySummary] = useState({ moneyIn: 0, moneyOut: 0, net: 0 });
+    const [historyCategoryBreakdown, setHistoryCategoryBreakdown] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [advancedData, setAdvancedData] = useState<any>(null);
     const [loadingAdvanced, setLoadingAdvanced] = useState(false);
@@ -396,12 +407,16 @@ export default function TelegramMiniAppPage() {
                 if (customStartDate) url += `&startDate=${encodeURIComponent(customStartDate)}`;
                 if (customEndDate) url += `&endDate=${encodeURIComponent(customEndDate)}`;
             }
+            if (selectedAccountId) url += `&accountId=${encodeURIComponent(selectedAccountId)}`;
             const res = await fetch(url);
             const data = await res.json();
             if (data.success && Array.isArray(data.expenses)) {
                 const newestId = data.expenses[0]?.id || null;
                 if (historyFilter === 'all') latestHistoryIdRef.current = newestId;
                 setHistoryExpenses(data.expenses);
+                setHistoryAccount(data.account || null);
+                setHistorySummary(data.summary || { moneyIn: 0, moneyOut: 0, net: 0 });
+                setHistoryCategoryBreakdown(data.categoryBreakdown || []);
                 setLastSyncedAt(new Date());
             }
         } catch (err) {
@@ -434,7 +449,7 @@ export default function TelegramMiniAppPage() {
             fetchHistory();
         }
         if (activeTab === 'REPORTS' || activeTab === 'DASHBOARD') fetchAdvancedData();
-    }, [activeTab, historyFilter, customStartDate, customEndDate]);
+    }, [activeTab, historyFilter, customStartDate, customEndDate, selectedAccountId]);
 
     useEffect(() => {
         if (activeTab !== 'REPORTS') return;
@@ -745,6 +760,9 @@ export default function TelegramMiniAppPage() {
         setReceiptPreview(null);
         setPaymentPhone('');
         setNewVendorName('');
+        setSparePartItemName('');
+        setSparePartVendorName('');
+        setPurchaseReceiptFile(null);
         setNewMaterialName('');
         setTransportType('');
         setEquipmentName('');
@@ -969,6 +987,10 @@ export default function TelegramMiniAppPage() {
         setSelectedMaterialName('');
         setIsNewMaterial(false);
         setNewMaterialName('');
+        setSparePartItemName('');
+        setSparePartVendorName('');
+        setPurchaseReceiptFile(null);
+        setPurchaseReceiptHash('');
         setQuantity('');
         setUnitPrice('');
         setAmount('');
@@ -983,6 +1005,30 @@ export default function TelegramMiniAppPage() {
             if (!name && parts.length >= 3) {
                 setSelectedCategoryName(parts.slice(2).join('_'));
             }
+        }
+    };
+
+    const scanSparePartsReceipt = async (file: File | null) => {
+        if (!file) return;
+        setPurchaseReceiptFile(file);
+        setPurchaseReceiptScanning(true);
+        const form = new FormData();
+        form.append('receiptFile', file);
+        try {
+            const response = await fetch('/api/telegram/spare-parts/scan-receipt', { method: 'POST', body: form });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'AI scan-ku wuu fashilmay.');
+            const draft = data.data || {};
+            setPurchaseReceiptHash(data.receiptHash || '');
+            if (draft.itemName) setSparePartItemName(draft.itemName);
+            if (draft.vendorName) setSparePartVendorName(draft.vendorName);
+            if (draft.totalAmount) setAmount(String(draft.totalAmount));
+            const detail = draft.warnings?.length ? ` Hubi: ${draft.warnings.join(' ')}` : ' Xogta la akhriyey waa la geliyey form-ka.';
+            showAlert(`Rasiidka AI ayaa akhriyey.${detail} Hubi item-ka, supplier-ka iyo lacagta ka hor dirista.`, draft.warnings?.length ? 'warning' : 'success', 'Hubi xogta rasiidka');
+        } catch (error: any) {
+            showAlert(`${error.message || 'Rasiidka lama akhrin.'} Sawirka wali waa la hayaa; xogta gacanta ku buuxi.`, 'warning');
+        } finally {
+            setPurchaseReceiptScanning(false);
         }
     };
 
@@ -1314,6 +1360,13 @@ export default function TelegramMiniAppPage() {
         const isSalary = selectedCategoryKey === 'SALARY';
         const isRawMaterial = selectedCategoryKey === 'RAW_MATERIAL';
 
+        if (purchaseReceiptFile && !isOnline) {
+            triggerHaptic('error');
+            showAlert('Rasiidka alaabta lama diri karo adigoo offline ah. Ku xidh internet-ka si sawirka iyo codsigu u wada xareysmaan.', 'warning');
+            setSubmitting(false);
+            return;
+        }
+
         if (!isOnline) {
             const payload: any = {
                 accountId: selectedAccountId,
@@ -1344,8 +1397,12 @@ export default function TelegramMiniAppPage() {
                 payload.amount = calculatedTotal.toString();
             } else {
                 payload.type = 'EXPENSE';
-                payload.categoryId = selectedCategoryId;
+                payload.categoryId = isSpareParts ? 'SPARE_PARTS' : selectedCategoryId;
                 payload.amount = amount;
+                if (isSpareParts) {
+                    payload.sparePartItemName = sparePartItemName;
+                    payload.sparePartVendorName = sparePartVendorName;
+                }
                 
                 if (selectedCategoryName === 'Transport & Fuel') {
                     payload.transportType = transportType;
@@ -1402,8 +1459,12 @@ export default function TelegramMiniAppPage() {
                 formData.append('amount', calculatedTotal.toString());
             } else {
                 formData.append('type', 'EXPENSE');
-                formData.append('categoryId', selectedCategoryId);
+                formData.append('categoryId', isSpareParts ? 'SPARE_PARTS' : selectedCategoryId);
                 formData.append('amount', amount);
+                if (isSpareParts) {
+                    formData.append('sparePartItemName', sparePartItemName);
+                    formData.append('sparePartVendorName', sparePartVendorName);
+                }
                 
                 if (selectedCategoryName === 'Transport & Fuel') {
                     formData.append('transportType', transportType);
@@ -1417,6 +1478,9 @@ export default function TelegramMiniAppPage() {
                     formData.append('billType', billType);
                 }
             }
+
+            if (purchaseReceiptFile) formData.append('purchaseReceiptFile', purchaseReceiptFile);
+            if (purchaseReceiptHash) formData.append('purchaseReceiptHash', purchaseReceiptHash);
 
             const res = await fetch('/api/telegram/submit', {
                 method: 'POST',
@@ -1895,55 +1959,27 @@ export default function TelegramMiniAppPage() {
                                     </div>
                                     Category Breakdown
                                 </h3>
-                                <span className="text-slate-400 text-xs font-bold">Live Database</span>
+                                <span className="text-slate-400 text-[10px] font-bold">{dashboardAccount?.name || 'Account'} · Live</span>
                             </div>
 
                             <div className="flex flex-col gap-3.5">
-                                {[
-                                    { name: 'Salaries (Mushaharka)', color: 'bg-blue-500 shadow-[0_0_10px_#3b82f6]', icon: <User size={14} className="text-blue-400" /> },
-                                    { name: 'Utilities & Rent (Biilasha & Kiro)', color: 'bg-indigo-500 shadow-[0_0_10px_#6366f1]', icon: <FileText size={14} className="text-indigo-400" /> },
-                                    { name: 'Transport & Fuel (Gaadiidka)', color: 'bg-amber-500 shadow-[0_0_10px_#f59e0b]', icon: <Truck size={14} className="text-amber-400" /> },
-                                    { name: 'Raw Materials & Rentals', color: 'bg-emerald-500 shadow-[0_0_10px_#10b981]', icon: <Package size={14} className="text-emerald-400" /> }
-                                ].map((item) => {
-                                    const catTotal = historyExpenses
-                                        .filter(e => !e.isDeposit && e.type !== 'DEPOSIT')
-                                        .filter(e => {
-                                            const c = (e.category || '').toLowerCase();
-                                            const d = (e.description || '').toLowerCase();
-                                            if (item.name.includes('Salaries')) {
-                                                return c.includes('salary') || c.includes('mushahar') || d.includes('mushahar') || d.includes('mushaar');
-                                            }
-                                            if (item.name.includes('Utilities')) {
-                                                return c.includes('utility') || c.includes('utilities') || c.includes('rent') || d.includes('biil') || d.includes('laydh') || d.includes('kiro') || d.includes('rent');
-                                            }
-                                            if (item.name.includes('Transport')) {
-                                                return c.includes('transport') || c.includes('fuel') || d.includes('transport') || d.includes('gaadhi') || d.includes('cagado') || d.includes('bajaaj');
-                                            }
-                                            if (item.name.includes('Raw Materials')) {
-                                                return c.includes('raw') || c.includes('material') || c.includes('equipment') || c.includes('rental') || d.includes('raw') || d.includes('qalab');
-                                            }
-                                            return false;
-                                        })
-                                        .reduce((s, e) => s + Number(e.amount), 0);
-
-                                    const totalWithdrawals = historyExpenses
-                                        .filter(e => !e.isDeposit && e.type !== 'DEPOSIT')
-                                        .reduce((s, e) => s + Number(e.amount), 0) || 1;
-
-                                    const percent = Math.min(100, Math.round((catTotal / totalWithdrawals) * 100)) || 0;
-
+                                {historyCategoryBreakdown.length === 0 ? <p className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs font-bold text-slate-400">Muddadan category expense ah lagama helin account-kan.</p> : historyCategoryBreakdown.map((item, index) => {
+                                    const colors = ['bg-blue-500', 'bg-indigo-500', 'bg-amber-500', 'bg-emerald-500', 'bg-cyan-500', 'bg-violet-500'];
+                                    const catTotal = Number(item.amount || 0);
+                                    const totalWithdrawals = Math.max(1, Number(historySummary.moneyOut || 0));
+                                    const percent = Math.min(100, Math.round((catTotal / totalWithdrawals) * 100));
                                     return (
                                         <div key={item.name} className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-                                                {item.icon}
+                                                <Layers size={14} className="text-cyan-300" />
                                             </div>
                                             <div className="flex-1 flex flex-col gap-1">
                                                 <div className="flex justify-between text-xs font-bold">
-                                                    <span className="text-slate-200">{item.name}</span>
-                                                    <span className="text-slate-400">{catTotal.toLocaleString()} ETB ({percent}%)</span>
+                                                    <span className="text-slate-200">{item.name} <span className="text-[9px] text-slate-500">({item.count})</span></span>
+                                                    <span className="text-slate-400">{catTotal.toLocaleString()} ETB · {percent}%</span>
                                                 </div>
                                                 <div className="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden border border-white/5">
-                                                    <div className={`h-full rounded-full ${item.color}`} style={{ width: `${Math.max(4, percent)}%` }} />
+                                                    <div className={`h-full rounded-full ${colors[index % colors.length]}`} style={{ width: `${percent}%` }} />
                                                 </div>
                                             </div>
                                         </div>
@@ -2144,6 +2180,14 @@ export default function TelegramMiniAppPage() {
                     </div>
                 ) : activeTab === 'TRANSACTIONS' ? (
                     <div className="flex flex-col gap-4 animate-fade-in pb-20">
+                        <label className="block rounded-xl border border-white/10 bg-slate-950/70 p-3 text-[9px] font-black uppercase tracking-wide text-slate-400">Account-ka transactions-ka
+                            <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 p-2.5 text-xs font-bold normal-case text-white">
+                                {(accounts || []).filter((account: any) => account.isActive !== false).map((account: any) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                            </select>
+                        </label>
+                        <div className="grid grid-cols-4 gap-1.5">
+                            {(['all', 'today', 'week', 'month'] as const).map(period => <button key={period} type="button" onClick={() => setHistoryFilter(period)} className={`rounded-lg border px-2 py-2 text-[9px] font-black uppercase ${historyFilter === period ? 'border-cyan-300/50 bg-cyan-500/20 text-cyan-100' : 'border-white/10 bg-slate-950/60 text-slate-400'}`}>{period === 'all' ? 'All time' : period}</button>)}
+                        </div>
                         {/* Summary Cards Row */}
                         <div className="grid grid-cols-3 gap-2">
                             {/* Deposits Card */}
@@ -2154,10 +2198,10 @@ export default function TelegramMiniAppPage() {
                                 <div className="flex flex-col mt-2">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Deposits</span>
                                     <span className="text-xs font-black text-emerald-400 tracking-tight">
-                                        {historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0).toLocaleString()} ETB
+                                        {Number(historySummary.moneyIn || 0).toLocaleString()} ETB
                                     </span>
                                     <span className="text-[8px] text-slate-400 font-bold mt-0.5">
-                                        {historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').length} Transactions
+                                        {historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').length}{historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').length >= 50 ? '+' : ''} shown
                                     </span>
                                 </div>
                             </div>
@@ -2170,10 +2214,10 @@ export default function TelegramMiniAppPage() {
                                 <div className="flex flex-col mt-2">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Withdrawals</span>
                                     <span className="text-xs font-black text-blue-400 tracking-tight">
-                                        {historyExpenses.filter(e => !e.isDeposit && e.type !== 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0).toLocaleString()} ETB
+                                        {Number(historySummary.moneyOut || 0).toLocaleString()} ETB
                                     </span>
                                     <span className="text-[8px] text-slate-400 font-bold mt-0.5">
-                                        {historyExpenses.filter(e => !e.isDeposit && e.type !== 'DEPOSIT').length} Transactions
+                                        {historyExpenses.filter(e => !e.isDeposit && e.type !== 'DEPOSIT').length}{historyExpenses.filter(e => !e.isDeposit && e.type !== 'DEPOSIT').length >= 100 ? '+' : ''} shown
                                     </span>
                                 </div>
                             </div>
@@ -2186,12 +2230,9 @@ export default function TelegramMiniAppPage() {
                                 <div className="flex flex-col mt-2">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Balance</span>
                                     <span className="text-xs font-black text-white tracking-tight">
-                                        {(
-                                            historyExpenses.filter(e => e.isDeposit || e.type === 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0) -
-                                            historyExpenses.filter(e => !e.isDeposit && e.type !== 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0)
-                                        ).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB
+                                        {Number(historyAccount?.balance ?? dashboardAccount?.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB
                                     </span>
-                                    <span className="text-[8px] text-emerald-400 font-bold mt-0.5">Updated now</span>
+                                    <span className="text-[8px] text-emerald-400 font-bold mt-0.5">Live account balance · {historyAccount?.name || ''}</span>
                                 </div>
                             </div>
                         </div>
@@ -2226,7 +2267,7 @@ export default function TelegramMiniAppPage() {
                             <div className="grid grid-cols-3 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-white/10 pb-2">
                                 <span className="text-emerald-400">DEPOSIT (ETB)</span>
                                 <span className="text-blue-400">WITHDRAW (ETB)</span>
-                                <span className="text-right">BALANCE (ETB)</span>
+                                <span className="text-right">DETAIL</span>
                             </div>
 
                             {/* Transaction Rows */}
@@ -2277,15 +2318,10 @@ export default function TelegramMiniAppPage() {
                                                         <span className="text-xs font-bold text-slate-600">-</span>
                                                     )}
 
-                                                    {/* Balance Column */}
-                                                    <div className="flex items-center justify-end gap-1.5">
-                                                        <span className="text-xs font-black text-white">
-                                                            {Number(exp.runningBalance).toLocaleString(undefined, {
-                                                                minimumFractionDigits: 2,
-                                                                maximumFractionDigits: 2
-                                                            })}
-                                                        </span>
-                                                        <ArrowRight size={12} className="text-slate-400" />
+                                                    {/* Description is safer than a fabricated per-row balance when the ledger is paginated. */}
+                                                    <div className="flex min-w-0 items-center justify-end gap-1.5">
+                                                        <span className="max-w-full truncate text-right text-[9px] font-bold text-slate-400">{exp.description || exp.category || exp.accountName || 'Transaction'}</span>
+                                                        <ArrowRight size={12} className="shrink-0 text-slate-400" />
                                                     </div>
                                                 </div>
                                             );
@@ -2878,6 +2914,25 @@ export default function TelegramMiniAppPage() {
                                         />
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {isSpareParts && (
+                            <div className="flex flex-col gap-3 rounded-2xl border border-amber-400/25 bg-amber-500/5 p-3 animate-fade-in">
+                                <p className="text-[10px] font-bold text-amber-100">Qaybtan waxaa loogu talagalay qaybo iyo agab warshadda loogu soo iibiyo dayactirka; looma gelinayo stock-ga alaabta la iibiyo.</p>
+                                <input required value={sparePartItemName} onChange={e => setSparePartItemName(e.target.value)} placeholder="Magaca spare part-ka / qalabka la iibsanayo" className="w-full rounded-xl border border-white/10 bg-slate-950/70 p-3 text-xs font-bold text-white" />
+                                <input required value={sparePartVendorName} onChange={e => setSparePartVendorName(e.target.value)} placeholder="Magaca vendor / supplier-ka" className="w-full rounded-xl border border-white/10 bg-slate-950/70 p-3 text-xs font-bold text-white" />
+                                <div className="grid grid-cols-2 gap-2">
+                                    <label className="cursor-pointer rounded-xl border border-dashed border-amber-300/40 bg-black/10 p-3 text-center text-[10px] font-black text-amber-100">
+                                        <Camera size={16} className="mx-auto mb-1" /> {purchaseReceiptScanning ? 'AI ayaa akhrinaya…' : 'Sawir & akhri rasiidka'}
+                                        <input type="file" accept="image/*" capture="environment" className="hidden" disabled={purchaseReceiptScanning} onChange={e => scanSparePartsReceipt(e.target.files?.[0] || null)} />
+                                    </label>
+                                    <label className="cursor-pointer rounded-xl border border-dashed border-cyan-300/40 bg-black/10 p-3 text-center text-[10px] font-black text-cyan-100">
+                                        <Upload size={16} className="mx-auto mb-1" /> Soo geli & akhri
+                                        <input type="file" accept="image/*" className="hidden" disabled={purchaseReceiptScanning} onChange={e => scanSparePartsReceipt(e.target.files?.[0] || null)} />
+                                    </label>
+                                </div>
+                                {purchaseReceiptFile && <p className="truncate text-[10px] font-bold text-emerald-200">Rasiidka alaabta: {purchaseReceiptFile.name}</p>}
                             </div>
                         )}
 
@@ -3502,6 +3557,21 @@ export default function TelegramMiniAppPage() {
                                                 className="mt-1 px-2.5 py-1 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-white rounded-lg text-[9px] font-black uppercase inline-flex w-fit items-center justify-center gap-1 transition-all"
                                             >
                                                 <Download size={11} /> Rasiidka
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {selectedTransactionForDetails.supportingReceiptUrl && (
+                                <div className="bg-slate-950/80 border border-amber-500/30 rounded-2xl p-3 flex flex-col gap-2 backdrop-blur-xl">
+                                    <span className="text-[10px] font-black text-amber-100 uppercase tracking-wider">Rasiidkii alaabta / supplier-ka</span>
+                                    <div className="flex gap-2.5 items-center">
+                                        <img src={selectedTransactionForDetails.supportingReceiptUrl} alt="Supplier purchase receipt" className="w-14 h-14 object-cover rounded-lg border border-white/20 shadow-md" />
+                                        <div className="flex flex-col flex-1 gap-1">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase">Rasiidka iibka alaabta</span>
+                                            <a href={selectedTransactionForDetails.supportingReceiptUrl} target="_blank" rel="noreferrer" className="text-xs text-amber-300 font-bold underline line-clamp-1 flex items-center gap-1">
+                                                Fur rasiidkii hore <ExternalLink size={10} />
                                             </a>
                                         </div>
                                     </div>

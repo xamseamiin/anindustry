@@ -23,7 +23,7 @@ function normalizePhone(phone: string | null | undefined): string {
 }
 
 export async function verifyReceiptImageWithAI(
-    imagePath: string,
+    imagePath: string | Buffer,
     expectedAmount: number,
     expectedPhone?: string
 ): Promise<ReceiptVerificationResult> {
@@ -40,7 +40,7 @@ export async function verifyReceiptImageWithAI(
             };
         }
 
-        if (!fs.existsSync(imagePath)) {
+        if (typeof imagePath === 'string' && !fs.existsSync(imagePath)) {
             return {
                 isVerified: false,
                 isMatch: true,
@@ -58,7 +58,7 @@ export async function verifyReceiptImageWithAI(
             model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
         }
 
-        const fileBuffer = fs.readFileSync(imagePath);
+        const fileBuffer = Buffer.isBuffer(imagePath) ? imagePath : fs.readFileSync(imagePath);
         const imagePart = {
             inlineData: {
                 data: fileBuffer.toString('base64'),

@@ -138,6 +138,11 @@ function cleanNoteForTelegram(rawNote) {
         .replace(/\[PaymentPhone:\s*[^\]]*\]/g, '')
         .replace(/\[RecipientName:\s*[^\]]*\]/g, '')
         .replace(/\[ReceiptTelegramMessageId:\s*[^\]]*\]/g, '')
+        .replace(/\[SupplierReceiptUrl:\s*[^\]]*\]/g, '')
+        .replace(/\[PurchaseReceiptUrl:\s*[^\]]*\]/g, '')
+        .replace(/\[SupplierReceiptHash:\s*[^\]]*\]/g, '')
+        .replace(/\[PurchaseReceiptHash:\s*[^\]]*\]/g, '')
+        .replace(/\[ReceiptPromptMessageId:\s*[^\]]*\]/g, '')
         .replace(/\[TxId:\s*[^\]]*\]/g, '')
         .replace(/\[AI-Verified:\s*[^\]]*\]/g, '')
         .replace(/\[ExtractedAmount:\s*[^\]]*\]/g, '')
@@ -941,9 +946,8 @@ async function handleUpdate(update) {
                 text: "📸 Fadlan hadda u soo dir sawirka rasiidka (Photo)!",
                 show_alert: true
             });
-            await sendBotRequest('editMessageText', {
+            const receiptPrompt = await sendBotRequest('sendMessage', {
                 chat_id: chatId,
-                message_id: query.message.message_id,
                 text: `📸 <b>Diiwaangelinta Rasiidka (Raw Material)</b>\n\n` +
                       `<b>Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan si loogu lifaaqo diiwaanka.</b>`,
                 parse_mode: 'HTML',
@@ -953,6 +957,13 @@ async function handleUpdate(update) {
                     ]
                 }
             });
+            if (receiptPrompt?.ok) {
+                userStates[stateKey].messageId = receiptPrompt.result.message_id;
+                await prisma.materialPurchase.update({
+                    where: { id: purchaseId },
+                    data: { notes: `${String(receiptPurchase.notes || '').replace(/\[ReceiptPromptMessageId:\s*[^\]]+\]/g, '').trim()}\n[ReceiptPromptMessageId: ${receiptPrompt.result.message_id}]`.trim() }
+                });
+            }
         } else if (data.startsWith('rcpt_')) {
             const expenseId = data.substring(5);
             try { await assertLegacyReceiptAllowed(prisma, expenseId); } catch (err) {
@@ -1015,9 +1026,8 @@ async function handleUpdate(update) {
                 text: "📸 Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan!",
                 show_alert: true
             });
-            await sendBotRequest('editMessageText', {
+            const receiptPrompt = await sendBotRequest('sendMessage', {
                 chat_id: chatId,
-                message_id: query.message.message_id,
                 text: `📸 <b>Diiwaangelinta Rasiidka:</b>\n\n` +
                       `<b>Fadlan hadda sawirka rasiidka (Photo) toos ugu soo dir chat-kan si loogu lifaaqo diiwaanka.</b>`,
                 parse_mode: 'HTML',
@@ -1027,6 +1037,13 @@ async function handleUpdate(update) {
                     ]
                 }
             });
+            if (receiptPrompt?.ok) {
+                userStates[stateKey].messageId = receiptPrompt.result.message_id;
+                await prisma.receiptSession.updateMany({
+                    where: { expenseId, telegramChatId: String(chatId), telegramUserId: String(userId), status: 'AWAITING_UPLOAD' },
+                    data: { telegramMessageId: receiptPrompt.result.message_id }
+                });
+            }
         } else if (data.startsWith('cancel_rcpt_mp_')) {
             const purchaseId = data.substring(15);
             delete userStates[stateKey];
@@ -1219,6 +1236,20 @@ async function enforceGroupSecurity(message) {
     }
 
     return false;
+}
+
+function getOriginalPurchaseReceiptUrl(note) {
+    const match = String(note || '').match(/\[(?:SupplierReceiptUrl|PurchaseReceiptUrl):\s*([^\]]+)\]/);
+    if (!match) return '';
+    const value = match[1].trim();
+    if (/^https?:\/\//i.test(value)) return value;
+    const base = process.env.PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+    if (!base) return value;
+    try { return new URL(value, base).toString(); } catch { return value; }
+}
+
+function htmlAttribute(value) {
+    return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
         console.log(`Incoming message: "${text}" from ${user} (ID: ${userId}) in chat ${chatId} (${message.chat.type})`);
@@ -1703,6 +1734,14 @@ async function enforceGroupSecurity(message) {
                     }
                 }
 
+                const receiptSourceRecord = purchaseId
+                    ? await prisma.materialPurchase.findUnique({ where: { id: purchaseId }, select: { notes: true } })
+                    : await prisma.expense.findUnique({ where: { id: expenseId }, select: { note: true } });
+                const originalPurchaseReceiptUrl = getOriginalPurchaseReceiptUrl(receiptSourceRecord?.notes || receiptSourceRecord?.note || '');
+                if (originalPurchaseReceiptUrl) {
+                    confirmationText += `\n\n📎 <a href="${htmlAttribute(originalPurchaseReceiptUrl)}">Rasiidkii hore ee alaabta / supplier-ka</a>`;
+                }
+
                 // Send the new photo confirmation message
                 const absolutePath = receiptLocalPath;
                 if (receiptTelegramFileId) {
@@ -1734,31 +1773,55 @@ async function enforceGroupSecurity(message) {
                         }
                     }
 
-                    // Delete previous text message to avoid duplicate messages in group
                     const targetEntity = purchaseId ? 
                         await prisma.materialPurchase.findUnique({ where: { id: purchaseId } }) :
                         await prisma.expense.findUnique({ where: { id: expenseId } });
-                    
-                    if (targetEntity && targetEntity.telegramMessageId) {
+
+                    const savedChatId = purchaseId
+                        ? String((String(targetEntity?.notes || '').match(/\[TelegramChatId:\s*([^\]]+)\]/) || [])[1] || chatId)
+                        : String(targetEntity?.telegramChatId || chatId);
+                    const savedMessageId = purchaseId
+                        ? Number((String(targetEntity?.notes || '').match(/\[TelegramMessageId:\s*(\d+)\]/) || [])[1] || 0)
+                        : Number(targetEntity?.telegramMessageId || 0);
+
+                    // If the original request carried the supplier receipt, replace its photo
+                    // in-place with the payment proof and retain a link to the supplier receipt.
+                    let editedOriginal = false;
+                    if (originalPurchaseReceiptUrl && savedMessageId) {
+                        const edited = await sendBotRequest('editMessageMedia', {
+                            chat_id: savedChatId,
+                            message_id: savedMessageId,
+                            media: {
+                                type: 'photo',
+                                media: receiptTelegramFileId,
+                                caption: confirmationText,
+                                parse_mode: 'HTML'
+                            },
+                            reply_markup: { inline_keyboard: [] }
+                        });
+                        editedOriginal = Boolean(edited && edited.ok);
+                        if (editedOriginal) await saveTelegramMetadata(purchaseId || expenseId, !!purchaseId, savedChatId, savedMessageId);
+                    }
+
+                    if (!editedOriginal && targetEntity && savedMessageId) {
                         try {
-                            await sendBotRequest('deleteMessage', { chat_id: chatId, message_id: targetEntity.telegramMessageId });
+                            await sendBotRequest('deleteMessage', { chat_id: savedChatId, message_id: savedMessageId });
                         } catch (e) {
                             console.error('Error deleting old text message:', e.message);
                         }
                     }
 
-                    // Reuse Telegram's durable file_id, so the receipt image and final
-                    // confirmation always remain together even when Vercel cannot see
-                    // the VPS local uploads folder.
-                    const resJson = await sendBotRequest('sendPhoto', {
-                        chat_id: chatId,
-                        photo: receiptTelegramFileId,
-                        caption: confirmationText,
-                        parse_mode: 'HTML',
-                        reply_markup: { inline_keyboard: [] }
-                    });
-                    if (resJson && resJson.ok) {
-                        await saveTelegramMetadata(purchaseId || expenseId, !!purchaseId, chatId, resJson.result.message_id);
+                    if (!editedOriginal) {
+                        const resJson = await sendBotRequest('sendPhoto', {
+                            chat_id: chatId,
+                            photo: receiptTelegramFileId,
+                            caption: confirmationText,
+                            parse_mode: 'HTML',
+                            reply_markup: { inline_keyboard: [] }
+                        });
+                        if (resJson && resJson.ok) {
+                            await saveTelegramMetadata(purchaseId || expenseId, !!purchaseId, chatId, resJson.result.message_id);
+                        }
                     }
                 } else {
                     const response = await sendBotRequest('sendMessage', {
