@@ -1984,44 +1984,6 @@ export default function TelegramMiniAppPage() {
                             </button>
                         </div>
 
-                        <div className="rounded-2xl border border-violet-400/25 bg-violet-500/5 p-3.5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                                <Factory size={18} className="shrink-0 text-violet-300" />
-                                <div className="min-w-0">
-                                    <p className="text-[10px] font-black text-white">Daily production & commission</p>
-                                    <p className="text-[9px] font-bold text-slate-400">Geli wax-soo-saarka maanta iyo shaqaalihii joogay.</p>
-                                </div>
-                            </div>
-                            <button type="button" onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/production'; }} className="shrink-0 text-[9px] font-black text-violet-300">OPEN</button>
-                        </div>
-
-                        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/5 p-3.5 flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                                <p className="text-[10px] font-black text-white">Sales workspace</p>
-                                <p className="text-[9px] font-bold text-slate-400">Products, customers, receipt scan iyo payment status hal page.</p>
-                            </div>
-                            <button type="button" onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/sales'; }} className="shrink-0 text-[9px] font-black text-cyan-300">VIEW SALES</button>
-                        </div>
-
-                        <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/5 p-3.5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                                <Download size={18} className="shrink-0 text-emerald-300" />
-                                <div className="min-w-0">
-                                    <p className="text-[10px] font-black text-white">Download Staff App</p>
-                                    <p className="text-[9px] font-bold text-slate-400">Ku rakib Android-ka shaqaalaha oo ku gal account-kaaga.</p>
-                                </div>
-                            </div>
-                            <a
-                                href="https://www.anindustry.online/downloads/AN-Industry-Staff-v0.1.0-debug.apk?release=20260921-2"
-                                target="_blank"
-                                rel="noopener noreferrer external"
-                                onClick={() => triggerHaptic('light')}
-                                className="shrink-0 rounded-lg border border-emerald-300/30 bg-emerald-400/10 px-2.5 py-2 text-[9px] font-black text-emerald-300"
-                            >
-                                DOWNLOAD
-                            </a>
-                        </div>
-
                         <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 flex items-center justify-between gap-3 backdrop-blur-xl">
                             <div className="flex items-center gap-2 min-w-0">
                                 <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${advancedData?.reconciliation?.issueCount ? 'bg-rose-400 shadow-[0_0_8px_#fb7185]' : 'bg-emerald-400 shadow-[0_0_8px_#34d399]'}`} />
