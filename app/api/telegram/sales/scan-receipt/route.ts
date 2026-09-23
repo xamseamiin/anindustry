@@ -19,10 +19,19 @@ export async function POST(req: Request) {
     const receiptHash = crypto.createHash('sha256').update(buffer).digest('hex');
     const duplicate = await prisma.sale.findFirst({ where: { companyId, notes: { contains: `[ReceiptHash:${receiptHash}]` } }, select: { invoiceNumber: true } });
     if (duplicate) return NextResponse.json({ error: `Rasiidhkan hore ayaa loo diiwaangeliyay (${duplicate.invoiceNumber}).` }, { status: 409 });
-    const catalog = await prisma.factoryMaterial.findMany({ where: { companyId }, select: { id: true, name: true, sku: true, sellingPrice: true }, orderBy: { name: 'asc' }, take: 250 });
+    const [catalog, customerRows, corrections] = await Promise.all([
+      prisma.factoryMaterial.findMany({ where: { companyId }, select: { id: true, name: true, sku: true, sellingPrice: true }, orderBy: { name: 'asc' }, take: 250 }),
+      prisma.customer.findMany({ where: { companyId }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 1000 }),
+      prisma.salesReceiptCorrection.findMany({ where: { companyId }, select: { observedName: true, correctedCustomerName: true }, orderBy: { updatedAt: 'desc' }, take: 500 }).catch(error => {
+        // During rolling deploys, continue with the known customer list if the
+        // additive learning migration has not been applied yet.
+        console.warn('Sales receipt correction memory is not available yet.', error);
+        return [];
+      })
+    ]);
     // Read the uploaded bytes directly first. Receipt persistence is best-effort so a
     // missing Blob token cannot prevent the AI from recognizing the receipt.
-    const data = await parseSalesReceiptImageWithAI(buffer, catalog, file.type);
+    const data = await parseSalesReceiptImageWithAI(buffer, catalog, file.type, customerRows, corrections);
     let receiptUrl: string | null = null;
     let receiptWarning: string | null = null;
     try {

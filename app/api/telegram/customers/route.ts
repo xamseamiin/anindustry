@@ -29,10 +29,20 @@ export async function POST(req: Request) {
     const userId = process.env.TELEGRAM_USER_ID || 'telegram-mini-app';
     const name = String(body.name || '').trim();
     const phone = String(body.phone || '').trim();
-    if (!name || !phone) return NextResponse.json({ error: 'Magaca iyo lambarka customer-ka waa qasab.' }, { status: 400 });
-    const existing = await prisma.customer.findFirst({ where: { companyId, OR: [{ name: { equals: name, mode: 'insensitive' } }, { phone }, { phoneNumber: phone }] } });
-    if (existing) return NextResponse.json({ customer: existing, created: false, message: 'Customer-kan hore ayuu u jiray.' });
-    const customer = await prisma.customer.create({ data: { companyId, userId, name, phone, phoneNumber: phone, companyName: body.companyName || null, type: body.type || 'Individual', notes: body.notes || null } });
+    if (!name) return NextResponse.json({ error: 'Magaca customer-ka waa qasab.' }, { status: 400 });
+    const existing = await prisma.customer.findFirst({ where: { companyId, OR: [
+      { name: { equals: name, mode: 'insensitive' } },
+      ...(phone ? [{ phone }, { phoneNumber: phone }] : [])
+    ] } });
+    if (existing) {
+      const sameName = existing.name.trim().toLowerCase() === name.toLowerCase();
+      if (sameName && phone && !String(existing.phone || existing.phoneNumber || '').trim()) {
+        const updated = await prisma.customer.update({ where: { id: existing.id }, data: { phone, phoneNumber: phone, ...(body.companyName ? { companyName: body.companyName } : {}) } });
+        return NextResponse.json({ customer: updated, created: false, message: 'Customer-kii hore ayaa telefoonkiisa lagu cusboonaysiiyey.' });
+      }
+      return NextResponse.json({ customer: existing, created: false, message: 'Customer-kan hore ayuu u jiray.' });
+    }
+    const customer = await prisma.customer.create({ data: { companyId, userId, name, phone: phone || null, phoneNumber: phone || null, companyName: body.companyName || null, type: body.type || 'Individual', notes: body.notes || null } });
     return NextResponse.json({ customer, created: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Customer lama kaydin.' }, { status: 500 });

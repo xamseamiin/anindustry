@@ -5,6 +5,7 @@ import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram
 export const dynamic = 'force-dynamic';
 type PaymentAllocationInput = { incomingPaymentId: string; amount: number };
 type SaleItemInput = { productId: string; quantity: number; unitPrice: number; customerId?: string | null };
+type CustomerCorrectionInput = { observedName: string; customerId: string };
 
 function identityAllowed(initData: string) {
   const identity = verifyTelegramInitData(initData || '');
@@ -14,6 +15,9 @@ function identityAllowed(initData: string) {
 function money(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0;
+}
+function normalizeCustomerName(value: unknown) {
+  return String(value || '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9\u00c0-\u024f\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 export async function GET() {
@@ -68,6 +72,15 @@ export async function POST(req: Request) {
       return groups;
     }, new Map<string, { customerId: string | null; items: SaleItemInput[]; subtotal: number }>()).values()];
     const requestedPaidAmount = Math.max(0, Math.min(money(body.paidAmount), subtotal));
+    let recognitionMemoryAvailable = true;
+    if (Array.isArray(body.customerCorrections) && body.customerCorrections.length) {
+      try {
+        await prisma.salesReceiptCorrection.findFirst({ where: { companyId }, select: { id: true } });
+      } catch (error) {
+        recognitionMemoryAvailable = false;
+        console.warn('Customer spelling corrections will not be learned until the sales receipt correction migration is applied.', error);
+      }
+    }
     const result = await prisma.$transaction(async tx => {
       const materials = await tx.factoryMaterial.findMany({ where: { companyId, id: { in: items.map(item => item.productId) } }, select: { id: true, name: true, inStock: true, purchasePrice: true } });
       const materialMap = new Map(materials.map(material => [material.id, material]));
@@ -76,10 +89,15 @@ export async function POST(req: Request) {
         if (!material) throw new Error('Product-ka inventory-ga kama helin.');
         if (Number(material.inStock) < item.quantity) throw new Error(material.name + ' stock kuma filna.');
       }
-      const customerIds = [...new Set(itemGroups.map(group => group.customerId).filter(Boolean))] as string[];
+      const correctionCustomerIds = Array.isArray(body.customerCorrections)
+        ? body.customerCorrections.map((correction: any) => String(correction?.customerId || '').trim()).filter(Boolean)
+        : [];
+      const customerIds = [...new Set([...itemGroups.map(group => group.customerId).filter(Boolean), ...correctionCustomerIds])] as string[];
+      const customersById = new Map<string, { id: string; name: string; phone: string | null; phoneNumber: string | null }>();
       if (customerIds.length) {
-        const customerCount = await tx.customer.count({ where: { id: { in: customerIds }, companyId } });
-        if (customerCount !== customerIds.length) throw new Error('Customer-ka mid ka mid ah lama helin.');
+        const customerRows = await tx.customer.findMany({ where: { id: { in: customerIds }, companyId }, select: { id: true, name: true, phone: true, phoneNumber: true } });
+        if (customerRows.length !== customerIds.length) throw new Error('Customer-ka mid ka mid ah lama helin.');
+        customerRows.forEach(customer => customersById.set(customer.id, customer));
       }
       let paidAmount = requestedPaidAmount;
       let saleAccountId = body.accountId ? String(body.accountId) : null;
@@ -132,6 +150,29 @@ export async function POST(req: Request) {
         }
         groupAllocations.push(allocationsForGroup);
       }
+      for (let index = 0; index < itemGroups.length; index += 1) {
+        const group = itemGroups[index];
+        if (group.subtotal - groupPaymentAmounts[index] <= 0.01) continue;
+        const customer = group.customerId ? customersById.get(group.customerId) : null;
+        if (!customer) throw new Error('Iibka daynta waa in customer la diiwaangeliyey lagu xiraa.');
+        if (!String(customer.phone || customer.phoneNumber || '').trim()) throw new Error(`Lambarka customer-ka ${customer.name} waa khasab marka dayn/credit la gelinayo.`);
+      }
+
+      const corrections = Array.isArray(body.customerCorrections) ? body.customerCorrections as CustomerCorrectionInput[] : [];
+      let learnedCorrections = 0;
+      for (const correction of (recognitionMemoryAvailable ? corrections.slice(0, 50) : [])) {
+        const observedName = String(correction?.observedName || '').trim();
+        const customerId = String(correction?.customerId || '').trim();
+        const normalizedObservedName = normalizeCustomerName(observedName);
+        const correctedCustomer = customersById.get(customerId);
+        if (normalizedObservedName.length < 3 || !correctedCustomer || normalizedObservedName === normalizeCustomerName(correctedCustomer.name)) continue;
+        await tx.salesReceiptCorrection.upsert({
+          where: { companyId_normalizedObservedName: { companyId, normalizedObservedName } },
+          create: { companyId, observedName, normalizedObservedName, correctedCustomerName: correctedCustomer.name },
+          update: { observedName, correctedCustomerName: correctedCustomer.name, correctionCount: { increment: 1 } }
+        });
+        learnedCorrections += 1;
+      }
       const baseInvoice = 'AN-TG-' + Date.now().toString().slice(-8);
       const sales = [];
       for (let index = 0; index < itemGroups.length; index += 1) {
@@ -172,9 +213,9 @@ export async function POST(req: Request) {
           await tx.transaction.create({ data: { description: 'Iibka ' + sale.invoiceNumber, amount: groupPaid, type: 'INCOME', accountId: saleAccountId, companyId, userId, customerId: sale.customerId, transactionDate: new Date(), category: groupPaid >= sale.total ? 'Sales Income' : 'Sales Deposit / Dayn Qayb Bixin', note: 'Telegram Mini App · ' + sale.paymentStatus } });
         }
       }
-      return sales;
+      return { sales, learnedCorrections };
     });
-    return NextResponse.json({ success: true, sale: result[0], sales: result });
+    return NextResponse.json({ success: true, sale: result.sales[0], sales: result.sales, learnedCorrections: result.learnedCorrections, recognitionMemoryAvailable });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Sale lama kaydin.' }, { status: 500 });
   }

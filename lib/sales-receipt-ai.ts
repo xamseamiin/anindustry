@@ -9,12 +9,24 @@ export interface SalesReceiptCatalogItem {
     sellingPrice?: number | null;
 }
 
+export interface SalesReceiptCustomer {
+    id: string;
+    name: string;
+}
+
+export interface SalesReceiptNameCorrection {
+    observedName: string;
+    correctedCustomerName: string;
+}
+
 export interface SalesReceiptLineItem {
     productName: string | null;
     customerName?: string | null;
     customerPhone?: string | null;
     matchedProductId?: string | null;
     matchedProductName?: string | null;
+    matchedCustomerId?: string | null;
+    matchedCustomerName?: string | null;
     quantity: number | null;
     unitPrice: number | null;
     total: number | null;
@@ -27,6 +39,8 @@ export interface SalesReceiptAnalysisResult {
     customerPhone: string | null;
     customerType: 'WALK_IN' | 'NAMED';
     requiresCustomerRegistration: boolean;
+    matchedCustomerId: string | null;
+    matchedCustomerName: string | null;
     items: SalesReceiptLineItem[];
     productName: string | null;
     quantity: number | null;
@@ -60,6 +74,57 @@ function normalizeText(value: unknown): string {
         .replace(/[^a-z0-9\u00c0-\u024f\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function similarity(left: string, right: string): number {
+    if (!left || !right) return 0;
+    if (left === right) return 1;
+    const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+    for (let row = 1; row <= left.length; row += 1) {
+        let diagonal = previous[0];
+        previous[0] = row;
+        for (let column = 1; column <= right.length; column += 1) {
+            const above = previous[column];
+            previous[column] = Math.min(
+                previous[column] + 1,
+                previous[column - 1] + 1,
+                diagonal + (left[row - 1] === right[column - 1] ? 0 : 1)
+            );
+            diagonal = above;
+        }
+    }
+    const editSimilarity = 1 - previous[right.length] / Math.max(left.length, right.length);
+    const leftTokens = new Set(left.split(' ').filter(Boolean));
+    const rightTokens = new Set(right.split(' ').filter(Boolean));
+    const tokenSimilarity = [...leftTokens].filter(token => rightTokens.has(token)).length /
+        Math.max(leftTokens.size, rightTokens.size, 1);
+    return Math.max(editSimilarity, tokenSimilarity * 0.92);
+}
+
+function bestCustomerMatch(
+    name: string | null,
+    customers: SalesReceiptCustomer[] = [],
+    corrections: SalesReceiptNameCorrection[] = []
+) {
+    const wanted = normalizeText(name);
+    if (!wanted || !customers.length) return null;
+
+    const learned = corrections.find(correction => normalizeText(correction.observedName) === wanted);
+    if (learned) {
+        const target = normalizeText(learned.correctedCustomerName);
+        const exactLearned = customers.find(customer => normalizeText(customer.name) === target);
+        if (exactLearned) return exactLearned;
+    }
+
+    const ranked = customers
+        .map(customer => ({ customer, score: similarity(wanted, normalizeText(customer.name)) }))
+        .sort((a, b) => b.score - a.score);
+    const best = ranked[0];
+    const runnerUp = ranked[1];
+    // Handwriting can distort a few Latin characters (e.g. Somali names); only
+    // auto-link a close, unambiguous match. Everything else needs cashier review.
+    if (!best || best.score < 0.76 || (runnerUp && best.score - runnerUp.score < 0.08)) return null;
+    return best.customer;
 }
 
 function scoreProductMatch(scanName: string, product: SalesReceiptCatalogItem): number {
@@ -97,18 +162,21 @@ function bestProductMatch(scanName: string | null, catalog: SalesReceiptCatalogI
 
 export function normalizeSalesReceiptAnalysis(
     parsed: any,
-    catalog: SalesReceiptCatalogItem[] = []
+    catalog: SalesReceiptCatalogItem[] = [],
+    customers: SalesReceiptCustomer[] = [],
+    corrections: SalesReceiptNameCorrection[] = []
 ): Omit<SalesReceiptAnalysisResult, 'isSuccess' | 'message'> {
     const warnings: string[] = Array.isArray(parsed?.warnings) ? parsed.warnings.filter(Boolean).map(String) : [];
     const rawCustomerName = String(parsed?.customerName || parsed?.customer || parsed?.buyerName || '').trim();
     const normalizedCustomerName = normalizeText(rawCustomerName);
     const walkInCustomer = String(parsed?.customerType || '').toUpperCase() === 'WALK_IN'
         || !rawCustomerName
-        || /^(walk in(?: customer)?|walkin(?: customer)?|customer|client|macmiil|macaamiil|cash customer|unknown|n a|na)$/.test(normalizedCustomerName);
+        || /^(walk in(?: customer)?|walkin(?: customer)?|customer|client|macmiil|macaamiil|cash customer|unknown|n a|na|aan la aqoon|macmiil guud)$/.test(normalizedCustomerName);
     const customerName = walkInCustomer ? null : rawCustomerName;
     const customerPhone = parsed?.customerPhone || parsed?.phone || null;
-    const requiresCustomerRegistration = !walkInCustomer && !customerPhone;
-    if (requiresCustomerRegistration) warnings.push('Customer magac ayaa laga helay, laakiin telefoon/lambar lama helin; xaqiiji oo diiwaangeli customer-ka.');
+    const matchedCustomer = walkInCustomer ? null : bestCustomerMatch(customerName, customers, corrections);
+    const requiresCustomerRegistration = !walkInCustomer && !matchedCustomer;
+    if (requiresCustomerRegistration) warnings.push('Magaca macmiilka rasiidka ku qoran lama waafajin macaamiisha kaydsan; xaqiiji ama diiwaangeli. Lambarku iibka cash-ka khasab ma aha.');
     const rawItems = Array.isArray(parsed?.items) && parsed.items.length > 0
         ? parsed.items
         : [{
@@ -126,6 +194,8 @@ export function normalizeSalesReceiptAnalysis(
             const total = asNumber(item?.total) ?? asNumber(item?.lineTotal);
             const unitPrice = asNumber(item?.unitPrice) ?? (total && quantity ? total / quantity : null);
             const itemWarnings: string[] = [];
+            const lineCustomerName = String(item?.customerName || item?.buyerName || customerName || '').trim();
+            const matchedLineCustomer = lineCustomerName ? bestCustomerMatch(lineCustomerName, customers, corrections) : null;
 
             if (!productName) itemWarnings.push('Magaca product-ka lama akhrin.');
             if (!match && productName) itemWarnings.push(`Product "${productName}" inventory-ga lama hubo, dooro product sax ah.`);
@@ -135,17 +205,19 @@ export function normalizeSalesReceiptAnalysis(
 
             return {
                 productName,
-                customerName: item?.customerName || item?.buyerName || null,
+                customerName: lineCustomerName || null,
                 customerPhone: item?.customerPhone || item?.buyerPhone || null,
                 matchedProductId: match?.product.id || null,
                 matchedProductName: match?.product.name || null,
+                matchedCustomerId: matchedLineCustomer?.id || null,
+                matchedCustomerName: matchedLineCustomer?.name || null,
                 quantity,
                 unitPrice,
                 total: total ?? (unitPrice ? quantity * unitPrice : null),
                 confidence: match ? Math.round(match.score * 100) : Number(item?.confidence) || 0
             };
         })
-        .filter((item: SalesReceiptLineItem) => item.productName || item.total || item.unitPrice);
+        .filter((item: SalesReceiptLineItem) => item.productName || item.total || item.unitPrice || item.customerName);
 
     // Handwritten invoices often repeat the same product on several rows. Merge only
     // confidently matched rows with the same unit price so the sale form remains clean.
@@ -222,6 +294,8 @@ export function normalizeSalesReceiptAnalysis(
         customerPhone,
         customerType: walkInCustomer ? 'WALK_IN' : 'NAMED',
         requiresCustomerRegistration,
+        matchedCustomerId: matchedCustomer?.id || null,
+        matchedCustomerName: matchedCustomer?.name || null,
         items,
         productName: items[0]?.productName || parsed?.productName || null,
         quantity: items[0]?.quantity ?? asNumber(parsed?.quantity),
@@ -242,7 +316,9 @@ export function normalizeSalesReceiptAnalysis(
 export async function parseSalesReceiptImageWithAI(
     imageSource: string | Buffer,
     catalog: SalesReceiptCatalogItem[] = [],
-    mimeType = 'image/jpeg'
+    mimeType = 'image/jpeg',
+    customers: SalesReceiptCustomer[] = [],
+    corrections: SalesReceiptNameCorrection[] = []
 ): Promise<SalesReceiptAnalysisResult> {
     try {
         const apiKey = process.env.GOOGLE_API_KEY;
@@ -253,6 +329,8 @@ export async function parseSalesReceiptImageWithAI(
                 customerPhone: null,
                 customerType: 'WALK_IN',
                 requiresCustomerRegistration: false,
+                matchedCustomerId: null,
+                matchedCustomerName: null,
                 items: [],
                 productName: null,
                 quantity: null,
@@ -278,6 +356,8 @@ export async function parseSalesReceiptImageWithAI(
                 customerPhone: null,
                 customerType: 'WALK_IN',
                 requiresCustomerRegistration: false,
+                matchedCustomerId: null,
+                matchedCustomerName: null,
                 items: [],
                 productName: null,
                 quantity: null,
@@ -316,26 +396,34 @@ export async function parseSalesReceiptImageWithAI(
             ? `Known AN-Industries inventory/products. Match product lines to these names when possible, but do not invent quantities or prices:\n${catalog.map(p => `- ${p.name}${p.sku ? ` (${p.sku})` : ''}${p.sellingPrice ? ` default price ${p.sellingPrice} ETB` : ''}`).join('\n')}`
             : 'No product catalog was provided. Extract the product names exactly as written.';
 
-        const prompt = `Analyze this Sales Receipt / Invoice / Payment Voucher image (Rasiidka Iibka ama Bixinta). It may be printed or handwritten Somali/English text. Read carefully and extract the sale draft for AN Industries.
+        const customerCatalog = customers.length
+            ? `Known customer names from the company database. Use these as spelling/matching hints only; return the literal handwritten spelling in customerName and set matchedCustomerName only when the match is clear:\n${customers.map(customer => `- ${customer.name}`).join('\n')}`
+            : 'No customer-name list was provided. Preserve any customer name exactly as written.';
+
+        const prompt = `Analyze this Sales Receipt / Invoice / Payment Voucher image (Rasiidka Iibka ama Bixinta). It may be printed or handwritten Somali, Amharic, or English text. Read carefully and extract the sale draft for AN Industries. Be tolerant of ordinary handwriting and Somali Latin names: Abshir, Farax, Faarax, Maxamed, and similar names are personal names, not product names when context indicates a buyer.
 
 ${productCatalog}
 
+${customerCatalog}
+
 Extract key sales transaction fields accurately:
-1. customerName: Name of customer or buyer (Magaca Macmiilka). If it says only customer/client/macmiil or explicitly "walk-in customer", treat it as generic, return null and set customerType to "WALK_IN". A Walk-in sale is cash and fully paid at the receipt total. If a real person/company name is visible, set customerType to "NAMED" and preserve the exact name; do not guess missing names or phone numbers.
-2. customerPhone: Phone number of the customer if present.
-3. customerType: One of "WALK_IN" or "NAMED".
-4. items: Every product/material line sold. Multiple products are common. If the receipt is a combined list containing different buyers/customers, return customerName and customerPhone for each product line (only where the receipt clearly associates that line with a person); for a single-customer invoice these may be null. For each item return productName, quantity, unitPrice, total.
-4. totalAmount: Grand total price of the sale as a raw ETB number.
-5. paidAmount: Amount paid/deposited according to the receipt as a raw ETB number. If no payment is shown, use 0 only when the receipt clearly says credit/dayn/unpaid; otherwise use null.
-6. paymentMethod: One of "CASH", "CARD", "PARTIAL", "CREDIT". A printed heading such as "CASH SALES INVOICE" means CASH unless handwriting clearly says otherwise. If paidAmount >= totalAmount, use "CASH". If 0 < paidAmount < totalAmount, use "PARTIAL". If paidAmount == 0 and it is dayn/unpaid, use "CREDIT".
-7. accountName: Bank, Wallet, or Merchant account name mentioned where money was sent/deposited (e.g. "E-Birr Merchant", "CBE", "Zaad", "Cash", etc.).
-8. receiptNumber: Invoice or receipt reference number.
-9. date: Date of transaction in YYYY-MM-DD format if visible. Somali/Ethiopian receipts may use the Ethiopian calendar. Do not silently convert an ambiguous handwritten date; return null and add a warning unless the calendar and full date are clear.
-10. transactionType: usually "SALE"; use "CUSTOMER_PAYMENT" only when the image is a payment toward an old debt without new products; use "DEPOSIT" only when it is a company deposit not a customer sale.
-11. If customerType is WALK_IN and a sale total is visible, treat the sale as full paid in CASH. If customerType is NAMED but no phone is visible, set requiresCustomerRegistration to true.
-12. confidence: 0-100 estimate of extraction confidence.
-12. warnings: short Somali/English warnings for fields that need human review.
-13. rawText: the important text you were able to read from the image.
+1. customerName: Name of the customer or buyer (Magaca Macmiilka), often found after "To:" or in a handwritten Description column. Compare it against the known customer list, especially when the form uses a Description column for each buyer. For mixed-customer receipts, identify the buyer on each row and put their literal written name in that row's customerName. Do not mistake a product description for a person. Preserve the exact written name; do not replace it with the database spelling.
+2. matchedCustomerName: Canonical spelling from the customer list only if one is clearly the same person despite a handwriting/spelling variation; otherwise null. The cashier will verify this suggestion. Do not guess.
+3. If the receipt says only customer/client/macmiil or explicitly "walk-in customer", treat it as generic, return null and set customerType to "WALK_IN". A Walk-in sale is cash and fully paid at the receipt total. If a real person/company name is visible, set customerType to "NAMED" and do not invent a phone number.
+4. customerPhone: Phone number only if actually written on the receipt.
+5. customerType: One of "WALK_IN" or "NAMED".
+6. items: Every product/material line sold. Return every handwritten row. For each item return productName, quantity, unitPrice, total, customerName, matchedCustomerName, and customerPhone only when visible. When only a buyer name is written in a row's Description and the actual product is unclear, preserve the buyer name, leave productName null, and add a warning instead of inventing a product.
+7. totalAmount: Grand total price of the sale as a raw ETB number.
+8. paidAmount: Amount paid/deposited according to the receipt as a raw ETB number. If no payment is shown, use 0 only when the receipt clearly says credit/dayn/unpaid; otherwise use null.
+9. paymentMethod: One of "CASH", "CARD", "PARTIAL", "CREDIT". A printed heading such as "CASH SALES INVOICE" means CASH unless handwriting clearly says otherwise. If paidAmount >= totalAmount, use "CASH". If 0 < paidAmount < totalAmount, use "PARTIAL". If paidAmount == 0 and it is dayn/unpaid, use "CREDIT".
+10. accountName: Bank, Wallet, or Merchant account name mentioned where money was sent/deposited (e.g. "E-Birr Merchant", "CBE", "Zaad", "Cash", etc.).
+11. receiptNumber: Invoice or receipt reference number.
+12. date: Date of transaction in YYYY-MM-DD format if visible. Somali/Ethiopian receipts may use the Ethiopian calendar. Do not silently convert an ambiguous handwritten date; return null and add a warning unless the calendar and full date are clear.
+13. transactionType: usually "SALE"; use "CUSTOMER_PAYMENT" only when the image is a payment toward an old debt without new products; use "DEPOSIT" only when it is a company deposit not a customer sale.
+14. If customerType is WALK_IN and a sale total is visible, treat the sale as fully paid in CASH. A missing phone does not make a customer unknown or require registration when the buyer name matches the database.
+15. confidence: 0-100 estimate of extraction confidence.
+16. warnings: short Somali/English warnings for fields that need human review.
+17. rawText: the important text you were able to read from the image.
 
 Return ONLY a valid raw JSON object (strictly no markdown codeblocks or extra text):
 {
@@ -343,8 +431,9 @@ Return ONLY a valid raw JSON object (strictly no markdown codeblocks or extra te
   "customerPhone": "0912345678",
   "customerType": "NAMED",
   "requiresCustomerRegistration": false,
+  "matchedCustomerName": "Abdi Hassan",
   "items": [
-    { "customerName": "Abdi Hassan", "customerPhone": null, "productName": "Block 15cm", "quantity": 500, "unitPrice": 150, "total": 75000 },
+    { "customerName": "Abdi Hassan", "matchedCustomerName": "Abdi Hassan", "customerPhone": null, "productName": "Block 15cm", "quantity": 500, "unitPrice": 150, "total": 75000 },
     { "customerName": "Abdi Hassan", "customerPhone": null, "productName": "Cement", "quantity": 10, "unitPrice": 900, "total": 9000 }
   ],
   "totalAmount": 75000,
@@ -378,7 +467,7 @@ If any field cannot be found, use null for that field. All numerical fields MUST
             console.error('Failed to parse Gemini sales receipt output:', responseText);
         }
 
-        const normalized = normalizeSalesReceiptAnalysis(parsed, catalog);
+        const normalized = normalizeSalesReceiptAnalysis(parsed, catalog, customers, corrections);
 
         return {
             isSuccess: true,
@@ -395,6 +484,8 @@ If any field cannot be found, use null for that field. All numerical fields MUST
             customerPhone: null,
             customerType: 'WALK_IN',
             requiresCustomerRegistration: false,
+            matchedCustomerId: null,
+            matchedCustomerName: null,
             items: [],
             productName: null,
             quantity: null,

@@ -5,6 +5,12 @@ import { getSessionCompanyId } from '@/app/api/manufacturing/auth';
 
 export const dynamic = 'force-dynamic';
 
+function nairobiMidnight(dayOffset = 0) {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const part = (type: string) => Number(parts.find(value => value.type === type)?.value);
+    return new Date(Date.UTC(part('year'), part('month') - 1, part('day') + dayOffset, -3));
+}
+
 export async function GET(request: Request) {
     try {
         const companyId = await getSessionCompanyId();
@@ -23,11 +29,15 @@ export async function GET(request: Request) {
             where: { companyId }
         });
         
-        const lowStockCount = materials.filter(i => (i.inStock || 0) <= (i.minStock || 0)).length;
+        const products = await prisma.productCatalog.findMany({ where: { companyId }, select: { name: true } });
+        const productNames = new Set(products.map(product => product.name.trim().toLocaleLowerCase()));
+        const isFinishedGood = (item: typeof materials[number]) => item.category?.toLowerCase() === 'finished goods' || productNames.has(item.name.trim().toLocaleLowerCase());
+        const rawInventory = materials.filter(item => !isFinishedGood(item));
+        const lowStockCount = rawInventory.filter(i => (i.inStock || 0) <= (i.minStock || 0)).length;
         
         const rawMaterials = materials
-            .filter(i => i.category === 'Raw Materials')
-            .slice(0, 4)
+            .filter(i => !isFinishedGood(i))
+            .sort((a, b) => Number(a.inStock) - Number(b.inStock))
             .map(i => ({
                 name: i.name,
                 quantity: i.inStock,
@@ -37,8 +47,7 @@ export async function GET(request: Request) {
             }));
 
         const finishedGoods = materials
-            .filter(i => i.category === 'Finished Goods')
-            .slice(0, 4)
+            .filter(i => isFinishedGood(i))
             .map(i => ({
                 name: i.name,
                 quantity: i.inStock,
@@ -112,29 +121,60 @@ export async function GET(request: Request) {
 
         // 5. Daily & Weekly Output Calculation
         const now = new Date();
-        const todayStart = new Date(now.setHours(0, 0, 0, 0));
-        
-        const weekStart = new Date();
-        weekStart.setDate(weekStart.getDate() - 7);
-        weekStart.setHours(0, 0, 0, 0);
+        const todayStart = nairobiMidnight();
+        const tomorrowStart = nairobiMidnight(1);
+        const nairobiWeekday = new Date().toLocaleDateString('en-US', { timeZone: 'Africa/Nairobi', weekday: 'short' });
+        const weekdayNumber = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(nairobiWeekday);
+        const weekStart = nairobiMidnight(-((weekdayNumber + 6) % 7));
 
-        const productionMetrics = await prisma.productionOrder.findMany({
+        const [productionMetrics, customerSales] = await Promise.all([prisma.productionOrder.findMany({
             where: {
                 companyId,
-                createdAt: { gte: weekStart },
-                status: 'COMPLETED'
+                status: 'COMPLETED',
+                startDate: { gte: weekStart, lt: tomorrowStart }
             },
-            select: { quantity: true, createdAt: true }
-        });
+            select: { id: true, productName: true, quantity: true, startDate: true, orderNumber: true, status: true },
+            orderBy: { startDate: 'desc' }
+        }), prisma.sale.findMany({
+            where: { companyId, status: 'Completed', total: { gt: 0 } },
+            select: { total: true, paidAmount: true, createdAt: true, customer: { select: { id: true, name: true, phone: true, phoneNumber: true } }, items: { select: { quantity: true } } }
+        })]);
 
-        const dailyOutput = productionMetrics
-            .filter(o => o.createdAt >= todayStart)
+        const todayOutput = productionMetrics
+            .filter(o => o.startDate && o.startDate >= todayStart && o.startDate < tomorrowStart)
             .reduce((sum, o) => sum + o.quantity, 0);
-
+        const dailyOutput = todayOutput;
         const weeklyOutput = productionMetrics.reduce((sum, o) => sum + o.quantity, 0);
-        
-        // Count batches today
-        const batchesToday = productionMetrics.filter(o => o.createdAt >= todayStart).length;
+        const productionByDay = new Map<string, { quantity: number; batches: number }>();
+        for (const order of productionMetrics) {
+            if (!order.startDate) continue;
+            const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(order.startDate);
+            const current = productionByDay.get(day) || { quantity: 0, batches: 0 };
+            current.quantity += order.quantity;
+            current.batches += 1;
+            productionByDay.set(day, current);
+        }
+        const last7Days = Array.from({ length: 7 }, (_, index) => {
+            const dayStart = nairobiMidnight(index - 6);
+            const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(dayStart);
+            return { date: day, ...(productionByDay.get(day) || { quantity: 0, batches: 0 }) };
+        });
+        const soldToday = customerSales.filter(s => s.createdAt >= todayStart && s.createdAt < tomorrowStart).reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
+        const soldThisWeek = customerSales.filter(s => s.createdAt >= weekStart && s.createdAt < tomorrowStart).reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
+        const debtsByCustomer = new Map<string, { customerId: string; name: string; phone: string | null; debt: number; invoices: number }>();
+        let walkInDebt = 0;
+        for (const sale of customerSales) {
+            const debt = Math.max(0, Number(sale.total) - Number(sale.paidAmount));
+            if (debt <= 0.01) continue;
+            if (!sale.customer) { walkInDebt += debt; continue; }
+            const key = sale.customer.id;
+            const current = debtsByCustomer.get(key) || { customerId: key, name: sale.customer.name, phone: sale.customer.phone || sale.customer.phoneNumber, debt: 0, invoices: 0 };
+            current.debt += debt;
+            current.invoices += 1;
+            debtsByCustomer.set(key, current);
+        }
+        const customerDebtList = [...debtsByCustomer.values()].sort((a, b) => b.debt - a.debt).slice(0, 10);
+        const batchesToday = productionMetrics.filter(o => o.startDate && o.startDate >= todayStart && o.startDate < tomorrowStart).length;
 
         // Mocking lines for now as it's a fixed factory setup, but we could count unique "lines" if model exists
         const activeLines = 4; // Sample lines active
@@ -158,6 +198,15 @@ export async function GET(request: Request) {
             receivablesDebt,
             payablesDebt,
             dailyOutput,
+            soldToday,
+            soldThisWeek,
+            rawInventoryCount: rawInventory.length,
+            rawInventoryTotal: rawInventory.reduce((sum, item) => sum + Number(item.inStock || 0), 0),
+            finishedInventoryTotal: materials.filter(isFinishedGood).reduce((sum, item) => sum + Number(item.inStock || 0), 0),
+            last7Days,
+            customerDebtList,
+            walkInDebt,
+            lastProductionDate: productionMetrics[0]?.startDate || null,
             rawMaterials,
             finishedGoods,
             accounts

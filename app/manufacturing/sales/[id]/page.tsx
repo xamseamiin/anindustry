@@ -11,6 +11,7 @@ import {
     RefreshCcw, X, Wallet, Building2
 } from 'lucide-react';
 import Toast from '@/components/common/Toast';
+import SalePaymentCorrection from '@/components/manufacturing/SalePaymentCorrection';
 
 export default function SaleDetailPage() {
     const { id } = useParams();
@@ -126,6 +127,7 @@ export default function SaleDetailPage() {
                 </div>
             </div>
 
+            {sale.status === 'Completed' && <SalePaymentCorrection sale={sale} onSaved={setSale} />}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Main Invoice Column */}
                 <div className="lg:col-span-2 space-y-6">

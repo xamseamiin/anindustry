@@ -4,8 +4,61 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
+import { salePaymentCorrection } from '@/lib/sale-payment-correction';
 
 export const dynamic = 'force-dynamic';
+
+// Correct recorded payment/customer without moving physical stock a second time.
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { companyId: true, role: true } });
+    if (!user?.companyId || !['ADMIN', 'SUPER_ADMIN', 'MANAGER', 'MANUFACTURING_ADMIN'].includes(user.role)) {
+        return NextResponse.json({ error: 'Maamule ayaa saxaya lacagta iibka.' }, { status: 403 });
+    }
+    const companyId = user.companyId;
+    try {
+        const body = await req.json();
+        const reason = String(body.reason || '').trim();
+        if (reason.length < 5) throw new Error('Fadlan qor sababta sixitaanka.');
+        const sale = await prisma.$transaction(async tx => {
+            const current = await tx.sale.findFirst({ where: { companyId, OR: [{ id: params.id }, { invoiceNumber: params.id }] }, include: { paymentAllocations: true } });
+            if (!current || current.status !== 'Completed') throw new Error('Iib dhammaystiran lama helin.');
+            if (String(body.updatedAt) !== current.updatedAt.toISOString()) throw new Error('Iibkan waa la cusboonaysiiyey. Dib u fur ka hor sixitaanka.');
+            if (current.paymentAllocations.length) throw new Error('Iibkan wuxuu ku xiran yahay incoming payments; marka hore lacagahaas waa in la waafajiyaa.');
+            if (!current.accountId) throw new Error('Iibkan account lacag-bixineed kuma xirna.');
+            const closed = await tx.financialPeriod.findFirst({ where: { companyId, isClosed: true, startDate: { lte: current.createdAt }, endDate: { gte: current.createdAt } } });
+            if (closed) throw new Error('Muddada maaliyadeed ee iibkan waa xiran tahay.');
+            const change = salePaymentCorrection(current.total, current.paidAmount, body.paidAmount);
+            const customerId = body.customerId ? String(body.customerId) : null;
+            const customer = customerId ? await tx.customer.findFirst({ where: { id: customerId, companyId } }) : null;
+            if (customerId && !customer) throw new Error('Customer lama helin.');
+            if (change.debt > 0 && (!customer || !String(customer.phone || customer.phoneNumber || '').trim())) {
+                throw new Error('Daynta ku xir customer diiwaangashan oo leh telefoon.');
+            }
+            const transactions = await tx.transaction.findMany({ where: { companyId, type: 'INCOME', description: { in: [`Iibka ${current.invoiceNumber}`, `Iibka #${current.invoiceNumber}`] } } });
+            if (transactions.length !== 1 || transactions[0].accountId !== current.accountId || transactions[0].reversedAt || Math.abs(Number(transactions[0].amount) - current.paidAmount) > 0.001) {
+                throw new Error('Lacagta account-ka iyo iibku isma waafaqaan; reconciliation ayaa loo baahan yahay.');
+            }
+            await tx.account.update({ where: { id: current.accountId }, data: { balance: { increment: change.balanceChange } } });
+            await tx.transaction.update({ where: { id: transactions[0].id }, data: {
+                amount: change.paidAmount, customerId,
+                category: change.debt > 0 ? 'Sales Deposit / Dayn Qayb Bixin' : 'Sales Income',
+                note: `${transactions[0].note || ''}\nPayment correction: ${reason}. Paid ${current.paidAmount} -> ${change.paidAmount}; debt ${change.debt}.`
+            } });
+            const updated = await tx.sale.update({ where: { id: current.id }, data: {
+                customerId, paidAmount: change.paidAmount, paymentStatus: change.paymentStatus,
+                paymentMethod: change.paidAmount === 0 ? 'CREDIT' : current.paymentMethod === 'CREDIT' ? 'BANK_TRANSFER' : current.paymentMethod,
+                notes: `${current.notes || ''}\n[PaymentCorrection] ${reason}; paid ${current.paidAmount} -> ${change.paidAmount}.`
+            }, include: { items: true, customer: true, account: true, user: { select: { fullName: true } } } });
+            await tx.auditLog.create({ data: { companyId, userId: session.user.id, action: 'CORRECT_SALE_PAYMENT', entity: 'Sale', entityId: current.id, details: JSON.stringify({ reason, before: { customerId: current.customerId, paidAmount: current.paidAmount, paymentStatus: current.paymentStatus }, after: { customerId, ...change }, accountId: current.accountId, transactionBefore: transactions[0] }) } });
+            return updated;
+        }, { isolationLevel: 'Serializable', timeout: 20000 });
+        return NextResponse.json({ sale });
+    } catch (error: any) {
+        return NextResponse.json({ error: error.code === 'P2034' ? 'Xogta waa isbeddeshay; dib u fur oo isku day.' : error.message || 'Sixitaanku ma kaydsamin.' }, { status: 400 });
+    }
+}
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
     try {

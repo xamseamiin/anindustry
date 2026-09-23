@@ -148,6 +148,7 @@ model Company {
   projects                Project[]
   purchaseOrders          PurchaseOrder[]
   sales                   Sale[]
+  salesReceiptCorrections SalesReceiptCorrection[]
   shareholders            Shareholder[]
   vendors                 ShopVendor[]
   stockMovements          StockMovement[]
@@ -1156,6 +1157,24 @@ model SaleItem {
   sale         Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@map("sale_items")
+}
+
+// Human-confirmed OCR corrections make later handwritten customer-name matching
+// more reliable without training on unconfirmed AI guesses.
+model SalesReceiptCorrection {
+  id                     String   @id @default(uuid()) @map("_id")
+  companyId              String
+  observedName           String
+  normalizedObservedName String
+  correctedCustomerName  String
+  correctionCount        Int      @default(1)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  company                Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, normalizedObservedName])
+  @@index([companyId])
+  @@map("sales_receipt_corrections")
 }
 
 // A payment received in a real account before a cashier connects it to a sale.

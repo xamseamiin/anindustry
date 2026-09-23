@@ -1892,21 +1892,27 @@ export default function TelegramMiniAppPage() {
                         {/* E-Birr Merchant Account Card (Clickable to open Account Transactions Modal) */}
                         <div 
                             onClick={() => { triggerHaptic('medium'); setShowAccountModal(true); }}
-                            className="bg-gradient-to-br from-emerald-950/60 via-slate-950/90 to-cyan-950/60 border border-emerald-400/40 rounded-3xl p-6 shadow-[0_0_35px_rgba(16,185,129,0.25),inset_0_1px_1.5px_rgba(255,255,255,0.3)] flex justify-between items-center backdrop-blur-2xl relative overflow-hidden cursor-pointer hover:border-emerald-400/80 transition-all group"
+                            className="bg-slate-950/95 border border-slate-700 rounded-3xl p-6 shadow-[0_12px_35px_rgba(0,0,0,0.28),inset_0_1px_1.5px_rgba(255,255,255,0.12)] flex justify-between items-center backdrop-blur-2xl relative overflow-hidden cursor-pointer hover:border-slate-500 transition-all group"
                         >
                             <div className="flex flex-col gap-3 z-10">
                                 <div className="flex items-center gap-2">
                                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500/30 via-emerald-400/20 to-teal-500/30 border border-emerald-400/60 backdrop-blur-xl flex items-center justify-center text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.4),inset_0_1px_1px_rgba(255,255,255,0.4)]">
                                         <Wallet size={20} className="text-emerald-300" />
                                     </div>
-                                    <span className="text-sm font-black text-white tracking-wide">
-                                        {dashboardAccount ? dashboardAccount.name : 'E-Birr Merchant Account'}
-                                    </span>
+                                    <select
+                                        value={dashboardAccount?.id || ''}
+                                        onChange={(event) => { event.stopPropagation(); setSelectedAccountId(event.target.value); }}
+                                        onClick={(event) => event.stopPropagation()}
+                                        className="max-w-[170px] bg-transparent text-sm font-black text-white tracking-wide outline-none"
+                                        aria-label="Dooro account-ka dashboard-ka"
+                                    >
+                                        {(advancedData?.accounts?.length ? advancedData.accounts : accounts).map((account: any) => <option key={account.id} value={account.id} className="bg-slate-950 text-white">{account.name}</option>)}
+                                    </select>
                                     <ArrowRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform ml-1" />
                                 </div>
 
                                 <div className="flex flex-col mt-1">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Balance</span>
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Balance-ka account-kan</span>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight">
                                             {Number(dashboardAccount?.available ?? dashboardAccount?.balance ?? 0).toLocaleString()}
@@ -1945,46 +1951,36 @@ export default function TelegramMiniAppPage() {
                         </div>
 
                         {/* Live financial summary */}
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <button
                                 type="button"
                                 onClick={() => { triggerHaptic('medium'); window.location.href = '/telegram-mini-app/sales'; }}
-                                className="min-h-[92px] rounded-2xl border border-cyan-400/40 bg-cyan-950/80 p-3 text-left shadow-[0_4px_20px_rgba(6,182,212,0.25)] active:scale-95 transition-all"
+                                className="min-h-[92px] rounded-2xl border border-slate-600 bg-slate-900/80 p-3 text-left active:scale-95 transition-all"
                             >
-                                <ShoppingBag size={18} className="text-cyan-300 mb-1.5" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-cyan-200">Sales</p>
+                                <ShoppingBag size={18} className="text-slate-300 mb-1.5" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-300">Sales</p>
                                 <p className="text-[11px] font-black text-white leading-tight">New sale & receipt scan</p>
-                                <p className="text-[8px] font-extrabold text-cyan-300/90 mt-0.5">Open sales page</p>
+                                <p className="text-[8px] font-extrabold text-slate-400 mt-0.5">Open sales page</p>
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setActiveTab('TRANSACTIONS')}
-                                className="min-h-[92px] rounded-2xl border border-emerald-400/40 bg-emerald-950/80 p-3 text-left shadow-[0_4px_20px_rgba(16,185,129,0.25)] active:scale-95 transition-all"
+                                onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/production'; }}
+                                className="min-h-[92px] rounded-2xl border border-slate-600 bg-slate-900/80 p-3 text-left active:scale-95 transition-all"
                             >
-                                <Wallet size={18} className="text-emerald-300 mb-1.5" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-emerald-200">Available</p>
-                                <p className="text-sm font-black text-white leading-tight">{Number(spendableBalance).toLocaleString()}</p>
-                                <p className="text-[8px] font-extrabold text-emerald-300/90 mt-0.5">ETB</p>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setShowNotificationModal(true)}
-                                className="min-h-[92px] rounded-2xl border border-amber-400/40 bg-amber-950/80 p-3 text-left shadow-[0_4px_20px_rgba(245,158,11,0.25)] active:scale-95 transition-all"
-                            >
-                                <ClipboardList size={18} className="text-amber-300 mb-1.5" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-amber-200">Pending</p>
-                                <p className="text-sm font-black text-white leading-tight">{effectiveIsManager ? pendingApprovalRequests.length : myPendingRequests.length}</p>
-                                <p className="text-[8px] font-extrabold text-amber-300/90 mt-0.5">Approval</p>
+                                <Factory size={18} className="text-slate-300 mb-1.5" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-300">Production</p>
+                                <p className="text-[11px] font-black text-white leading-tight">Wax-soo-saar iyo commission</p>
+                                <p className="text-[8px] font-extrabold text-slate-400 mt-0.5">Open production</p>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('REPORTS')}
-                                className="min-h-[92px] rounded-2xl border border-cyan-400/40 bg-cyan-950/80 p-3 text-left shadow-[0_4px_20px_rgba(6,182,212,0.25)] active:scale-95 transition-all"
+                                className="min-h-[92px] rounded-2xl border border-slate-600 bg-slate-900/80 p-3 text-left active:scale-95 transition-all"
                             >
-                                <BarChart3 size={18} className="text-cyan-300 mb-1.5" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-cyan-200">This month</p>
-                                <p className="text-sm font-black text-white leading-tight">{paidThisMonth.toLocaleString()}</p>
-                                <p className="text-[8px] font-extrabold text-cyan-300/90 mt-0.5">ETB paid</p>
+                                <UserCheck size={18} className="text-slate-300 mb-1.5" />
+                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-300">Customer debt</p>
+                                <p className="text-[11px] font-black text-white leading-tight">Macaamiisha daynta leh</p>
+                                <p className="text-[8px] font-extrabold text-slate-400 mt-0.5">Open reports</p>
                             </button>
                         </div>
 

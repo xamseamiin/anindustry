@@ -52,6 +52,17 @@ const localTranslations = {
     openFinance: "Fur Xarunta Maaliyadda",
     accountsOverview: "Hantida Koontooyinka",
     bankAndCash: "Bangiyada iyo Kaashka",
+    weeklyOutput: "Wax-soo-saarka Toddobaadka",
+    rawUnits: "Wadarta alaabta qaydhin",
+    finishedUnits: "Wadarta badeecada diyaarsan",
+    soldToday: "Alaabtii maanta la iibiyey",
+    soldWeek: "Alaabtii toddobaadkan la iibiyey",
+    customerDebts: "Macaamiisha daynta leh",
+    noCustomerDebts: "Ma jiraan customer dayn ku leh",
+    lastSevenDays: "Wax-soo-saarka 7-dii maalmood",
+    noProduction: "Wax-soo-saar lama diiwaangelin",
+    lastProduction: "Wax-soo-saarkii ugu dambeeyey",
+    invoices: "qaansheeg",
   },
   en: {
     connecting: "Connecting Factory Hub...",
@@ -93,6 +104,17 @@ const localTranslations = {
     openFinance: "Open Financial Hub",
     accountsOverview: "Accounts Overview",
     bankAndCash: "Banks & Cash",
+    weeklyOutput: "Production This Week",
+    rawUnits: "Total raw stock",
+    finishedUnits: "Total finished stock",
+    soldToday: "Units sold today",
+    soldWeek: "Units sold this week",
+    customerDebts: "Customers who owe",
+    noCustomerDebts: "No customer debts recorded",
+    lastSevenDays: "Production over the last 7 days",
+    noProduction: "No production recorded",
+    lastProduction: "Last production",
+    invoices: "invoices",
   }
 };
 
@@ -169,12 +191,17 @@ export default function EnterpriseDashboard() {
         </div>
 
         {/* KPI Section with Glassmorphism */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-5">
           {[
             { title: tLocal.totalSales, value: (data?.totalSales || 0).toLocaleString(), sub: tLocal.lifetimeRevenue, icon: <TrendingUp size={20} />, color: 'emerald' },
             { title: tLocal.outstandingDebt, value: (data?.receivablesDebt || 0).toLocaleString(), sub: tLocal.customerBalance, icon: <Wallet size={20} />, color: 'blue' },
             { title: tLocal.payablesDebt, value: (data?.payablesDebt || 0).toLocaleString(), sub: tLocal.payablesBalance, icon: <AlertTriangle size={20} />, color: 'rose' },
-            { title: tLocal.dailyOutput, value: (data?.dailyOutput || 0).toLocaleString(), sub: tLocal.bottlesToday, icon: <Boxes size={20} />, color: 'amber' }
+            { title: tLocal.dailyOutput, value: (data?.dailyOutput || 0).toLocaleString(), sub: `${data?.batchesToday || 0} batch · ${tLocal.bottlesToday}`, icon: <Boxes size={20} />, color: 'amber' },
+            { title: tLocal.weeklyOutput, value: (data?.weeklyOutput || 0).toLocaleString(), sub: tLocal.lastSevenDays, icon: <Factory size={20} />, color: 'blue' },
+            { title: tLocal.soldToday, value: (data?.soldToday || 0).toLocaleString(), sub: tLocal.bottlesToday, icon: <ShoppingCart size={20} />, color: 'emerald' },
+            { title: tLocal.soldWeek, value: (data?.soldThisWeek || 0).toLocaleString(), sub: tLocal.lastSevenDays, icon: <TrendingDown size={20} />, color: 'rose' },
+            { title: tLocal.rawUnits, value: (data?.rawInventoryTotal || 0).toLocaleString(), sub: `${data?.rawInventoryCount || 0} ${tLocal.rawMaterials}`, icon: <Package size={20} />, color: 'amber' },
+            { title: tLocal.finishedUnits, value: (data?.finishedInventoryTotal || 0).toLocaleString(), sub: tLocal.finishedGoods, icon: <Box size={20} />, color: 'blue' }
           ].map((stat, idx) => (
             <div key={idx} className="bg-white/40 backdrop-blur-2xl p-5 md:p-6 rounded-3xl border border-white/40 shadow-xl group hover:scale-[1.02] transition-all duration-300">
               <div className="flex items-center gap-4 mb-4">
@@ -198,7 +225,7 @@ export default function EnterpriseDashboard() {
                     <div className="flex justify-between items-center mb-8">
                         <div>
                             <h4 className="text-xl font-black text-slate-900 tracking-tight">{tLocal.rawMaterials}</h4>
-                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{tLocal.liveStockRaw}</p>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{(data?.rawInventoryTotal || 0).toLocaleString()} · {tLocal.liveStockRaw}</p>
                         </div>
                         <div className="p-3 bg-emerald-500/10 text-emerald-600 rounded-xl">
                             <Package size={22} />
@@ -231,7 +258,7 @@ export default function EnterpriseDashboard() {
                     <div className="flex justify-between items-center mb-8">
                         <div>
                             <h4 className="text-xl font-black text-slate-900 tracking-tight">{tLocal.finishedGoods}</h4>
-                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{tLocal.liveStockFinished}</p>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{(data?.finishedInventoryTotal || 0).toLocaleString()} · {tLocal.liveStockFinished}</p>
                         </div>
                         <div className="p-3 bg-blue-500/10 text-blue-600 rounded-xl">
                             <Box size={22} />
@@ -313,6 +340,16 @@ export default function EnterpriseDashboard() {
 
         {/* Right Column: Quick Stats & Actions */}
         <div className="space-y-8">
+          <div className="bg-white/30 backdrop-blur-3xl p-5 md:p-7 rounded-3xl border border-white/50 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div><h4 className="text-xl font-black text-slate-900 tracking-tight">{tLocal.lastSevenDays}</h4><p className="text-[10px] text-slate-500 font-bold">{data?.lastProductionDate ? `${tLocal.lastProduction}: ${new Date(data.lastProductionDate).toLocaleDateString(language === 'en' ? 'en-GB' : 'so-SO', { timeZone: 'Africa/Nairobi' })}` : tLocal.noProduction}</p></div>
+              <Factory size={20} className="text-blue-600" />
+            </div>
+            <div className="space-y-3">
+              {(data?.last7Days || []).map((day: any) => <div key={day.date} className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-600 font-bold">{new Date(`${day.date}T12:00:00`).toLocaleDateString(language === 'en' ? 'en-GB' : 'so-SO', { timeZone: 'Africa/Nairobi', weekday: 'short', day: 'numeric', month: 'short' })}</span><span className="text-slate-900 font-black">{day.quantity.toLocaleString()} <span className="text-slate-400 text-xs">({day.batches})</span></span></div>)}
+            </div>
+          </div>
+
           <div className="bg-slate-900/90 backdrop-blur-2xl p-7 rounded-3xl border border-white/10 shadow-2xl text-white relative overflow-hidden">
             <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-blue-500/20 rounded-full blur-3xl" />
             <h4 className="text-xl font-black mb-6 tracking-tight relative z-10">{tLocal.opsCenter}</h4>
@@ -325,6 +362,17 @@ export default function EnterpriseDashboard() {
                 <div className="p-3 bg-blue-500/20 text-blue-500 rounded-xl group-hover:scale-110 transition-transform"><Truck size={24} /></div>
                 <span className="text-[10px] font-black uppercase tracking-widest">{tLocal.purchase}</span>
               </Link>
+            </div>
+          </div>
+
+          <div className="bg-white/30 backdrop-blur-3xl p-5 md:p-7 rounded-3xl border border-white/50 shadow-2xl">
+            <h4 className="text-xl font-black text-slate-900 mb-6 tracking-tight">{tLocal.customerDebts}</h4>
+            <div className="space-y-4">
+              {data?.customerDebtList?.length ? data.customerDebtList.map((customer: any) => <Link key={customer.customerId} href={`/manufacturing/customers/${customer.customerId}`} className="flex items-center justify-between gap-3 border-b border-slate-200/60 pb-3 hover:bg-white/40 rounded-lg px-2">
+                <span className="min-w-0"><span className="block truncate text-sm font-black text-slate-900">{customer.name}</span><span className="text-[10px] font-bold text-slate-500">{customer.phone || 'Telefoon ma leh'} · {customer.invoices} {tLocal.invoices}</span></span>
+                <span className="shrink-0 text-sm font-black text-rose-600">{customer.debt.toLocaleString()} ETB</span>
+              </Link>) : <p className="text-sm font-bold text-slate-500">{tLocal.noCustomerDebts}</p>}
+              {Number(data?.walkInDebt || 0) > 0 && <p className="text-xs font-bold text-amber-700">Walk-in debt: {Number(data.walkInDebt).toLocaleString()} ETB</p>}
             </div>
           </div>
 
