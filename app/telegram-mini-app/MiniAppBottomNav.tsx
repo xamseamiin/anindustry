@@ -10,7 +10,7 @@ export default function MiniAppBottomNav({ active }: Props) {
   const itemClass = (name: Props['active']) => `flex w-full flex-col items-center justify-center gap-0.5 rounded-full py-1.5 text-center transition-all ${active === name ? 'font-extrabold text-cyan-400' : 'text-slate-400 hover:text-white'}`;
   const iconClass = (name: Props['active']) => active === name ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : '';
 
-  return <nav aria-label="Mini App navigation" className="fixed bottom-4 left-2 right-2 z-50 mx-auto grid max-w-lg grid-cols-7 items-center rounded-full border border-white/20 bg-slate-950/90 px-1.5 py-1.5 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] backdrop-blur-2xl">
+  return <nav aria-label="Mini App navigation" className="fixed bottom-1 left-1 right-1 z-50 mx-auto grid max-w-lg grid-cols-7 items-center rounded-full border border-white/20 bg-slate-950/95 px-1.5 py-1.5 shadow-[0_0_30px_rgba(0,0,0,0.75),inset_0_1px_1px_rgba(255,255,255,0.3)] backdrop-blur-2xl">
     <button type="button" onClick={() => go('/telegram-mini-app')} className={itemClass('HOME')}><Home size={17} className={iconClass('HOME')} /><span className="text-[8px]">Home</span></button>
     <button type="button" onClick={() => go('/telegram-mini-app?tab=TRANSACTIONS')} className={itemClass('TRANSACTIONS')}><Layers size={17} className={iconClass('TRANSACTIONS')} /><span className="text-[8px]">Txns</span></button>
     <button type="button" onClick={() => go('/telegram-mini-app/sales')} className={itemClass('SALES')}><ShoppingBag size={17} className={iconClass('SALES')} /><span className="text-[8px]">Sales</span></button>

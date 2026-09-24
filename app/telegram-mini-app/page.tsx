@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Script from 'next/script';
+import DashboardMiniChart from './DashboardTrendChart';
 import { isSalaryCategory } from '@/lib/payroll-report';
 import { drawPayrollReport } from '@/lib/payroll-report-pdf';
 import { 
@@ -31,6 +32,17 @@ const safeParseJSON = <T,>(key: string, fallback: T): T => {
     } catch {
         return fallback;
     }
+};
+
+const MetricSparkline = ({ values, color }: { values: number[]; color: string }) => {
+    const safeValues = values.length ? values : [0, 0, 0, 0, 0, 0, 0];
+    const max = Math.max(1, ...safeValues);
+    const min = Math.min(...safeValues);
+    const range = Math.max(1, max - min);
+    const points = safeValues.map((value, index) => `${(index / Math.max(1, safeValues.length - 1)) * 100},${28 - ((value - min) / range) * 22}`).join(' ');
+    return <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-3 bottom-2 h-8 w-[calc(100%-1.5rem)] opacity-80" aria-hidden="true">
+        <polyline points={points} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>;
 };
 
 interface BatchItem {
@@ -143,6 +155,7 @@ const validatePhoneNumber = (phone: string): boolean => {
     const pattern = /^(\+251|\+252|09|07|06|05)\d{7,10}$/;
     return pattern.test(clean);
 };
+
 
 const CustomAlertModal = ({ isOpen, onClose, type = 'error', title, message }: any) => {
     if (!isOpen) return null;
@@ -386,6 +399,8 @@ export default function TelegramMiniAppPage() {
     const [historyCategoryBreakdown, setHistoryCategoryBreakdown] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [advancedData, setAdvancedData] = useState<any>(null);
+    const [dashboardData, setDashboardData] = useState<any>(null);
+    const [dashboardDataError, setDashboardDataError] = useState('');
     const [loadingAdvanced, setLoadingAdvanced] = useState(false);
     const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
     const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
@@ -477,6 +492,21 @@ export default function TelegramMiniAppPage() {
         }
     };
 
+    const fetchDashboardData = async () => {
+        try {
+            const query = new URLSearchParams({ _t: String(Date.now()) });
+            if (telegramInitData) query.set('initData', telegramInitData);
+            const res = await fetch(`/api/telegram/dashboard?${query.toString()}`, { cache: 'no-store' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Dashboard xogtiisa lama helin.');
+            setDashboardData(data);
+            setDashboardDataError('');
+        } catch (error) {
+            console.error('Dashboard data failed:', error);
+            setDashboardDataError('Database-ka lama xidhiidhin; jaantusyada iyo tirooyinku way cusboonaanayaan marka DB-gu shaqeeyo.');
+        }
+    };
+
     useEffect(() => {
         fetchHistory();
     }, []);
@@ -486,7 +516,8 @@ export default function TelegramMiniAppPage() {
             fetchHistory();
         }
         if (activeTab === 'REPORTS' || activeTab === 'DASHBOARD') fetchAdvancedData();
-    }, [activeTab, historyFilter, customStartDate, customEndDate, selectedAccountId]);
+        if (activeTab === 'DASHBOARD') fetchDashboardData();
+    }, [activeTab, historyFilter, customStartDate, customEndDate, selectedAccountId, telegramInitData]);
 
     useEffect(() => {
         if (activeTab !== 'REPORTS') return;
@@ -558,9 +589,9 @@ export default function TelegramMiniAppPage() {
     }, [profilePreferences, requesterId, telegramInitData]);
 
     useEffect(() => {
-        if (profilePreferences.defaultAccount && accounts.some(a => a.id === profilePreferences.defaultAccount)) {
-            setSelectedAccountId(profilePreferences.defaultAccount);
-        }
+        const merchant = accounts.find((account: any) => /e-?birr\s+merchant/i.test(account.name));
+        if (merchant) setSelectedAccountId(merchant.id);
+        else if (profilePreferences.defaultAccount && accounts.some(a => a.id === profilePreferences.defaultAccount)) setSelectedAccountId(profilePreferences.defaultAccount);
         const preferredCategory = categories.find(c => c.id === profilePreferences.defaultCategory);
         if (preferredCategory && !selectedCategoryKey) {
             setSelectedCategoryId(preferredCategory.id);
@@ -919,7 +950,8 @@ export default function TelegramMiniAppPage() {
                 setVendors(data.vendors || []);
                 setMaterials(data.materials || []);
                 if (data.accounts?.length > 0) {
-                    setSelectedAccountId(data.accounts[0].id);
+                    const merchant = data.accounts.find((account: any) => /e-?birr\s+merchant/i.test(account.name));
+                    setSelectedAccountId(merchant?.id || data.accounts[0].id);
                 }
             })
             .catch(err => console.error('Error loading config:', err))
@@ -1205,6 +1237,23 @@ export default function TelegramMiniAppPage() {
         const now = new Date();
         return !e.isDeposit && e.paymentStatus === 'PAID' && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
     }).reduce((sum, e) => sum + Number(e.settledAmount ?? e.amount), 0);
+    const incomeToday = historyExpenses.filter(entry => {
+        const date = new Date(entry.createdAt || entry.expenseDate || entry.transactionDate);
+        const now = new Date();
+        const isToday = date.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) === now.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' });
+        const isIncome = entry.isDeposit || entry.type === 'DEPOSIT' || entry.type === 'INCOME' || entry.type === 'TRANSFER_IN' || entry.type === 'DEBT_RECEIVED';
+        return isToday && isIncome;
+    }).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+    const weeklyIncomeTrend = Array.from({ length: 7 }, (_, index) => {
+        const day = new Date();
+        day.setDate(day.getDate() - (6 - index));
+        const key = day.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' });
+        return historyExpenses.filter(entry => {
+            const date = new Date(entry.createdAt || entry.expenseDate || entry.transactionDate);
+            const isIncome = entry.isDeposit || entry.type === 'DEPOSIT' || entry.type === 'INCOME' || entry.type === 'TRANSFER_IN' || entry.type === 'DEBT_RECEIVED';
+            return isIncome && date.toLocaleDateString('en-CA', { timeZone: 'Africa/Nairobi' }) === key;
+        }).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+    });
     const receiptMismatchCount = Number(advancedData?.workflow?.find((item: any) => item.status === 'RECEIPT_MISMATCH')?.count || 0);
     const accountTotalBalance = Number(dashboardAccount?.balance ?? 0);
     const lowBalanceThreshold = Math.max(5000, accountTotalBalance * 0.15);
@@ -1225,7 +1274,7 @@ export default function TelegramMiniAppPage() {
     }).slice(0, 8);
     const refreshDashboard = async () => {
         setDashboardRefreshing(true);
-        await Promise.all([fetchHistory(), fetchAdvancedData()]);
+        await Promise.all([fetchHistory(), fetchAdvancedData(), fetchDashboardData()]);
         setDashboardRefreshing(false);
     };
 
@@ -1841,17 +1890,17 @@ export default function TelegramMiniAppPage() {
             <div className="max-w-md mx-auto flex flex-col gap-4">
                 
                 {/* iOS 26 Header */}
-                <div className="flex justify-between items-center bg-slate-900/60 backdrop-blur-2xl border border-white/15 shadow-[0_0_25px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.2)] rounded-3xl p-4 px-5">
-                    <button type="button" onClick={() => triggerHaptic('light')} className="w-10 h-10 rounded-full bg-white/10 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] active:scale-95 transition-all">
-                        <ChevronLeft size={20} />
+                <div className="sticky top-1 z-40 flex justify-between items-center bg-slate-900/90 backdrop-blur-2xl border border-white/15 shadow-[0_8px_25px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.16)] rounded-2xl p-2.5 px-3">
+                    <button type="button" onClick={() => triggerHaptic('light')} className="w-9 h-9 rounded-full bg-white/10 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.35)] active:scale-95 transition-all">
+                        <ChevronLeft size={17} />
                     </button>
                     
                     <div className="flex flex-col items-center text-center">
                         <div className="flex items-center gap-1.5">
-                            <p className="text-[12px] font-black text-white tracking-wider uppercase">AN-INDUSTRY TERMINAL</p>
-                            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shadow-[0_0_8px_#60a5fa]" />
+                            <p className="text-[11px] font-black text-white tracking-wider uppercase">AN-INDUSTRY TERMINAL</p>
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shadow-[0_0_8px_#60a5fa]" />
                         </div>
-                        <h1 className="text-xs font-bold text-slate-400">Codsashada Kharashka</h1>
+                        <h1 className="text-[10px] font-bold text-slate-400">Codsashada Kharashka</h1>
                     </div>
 
                     <button 
@@ -1859,11 +1908,11 @@ export default function TelegramMiniAppPage() {
                         onClick={() => {
                             setShowNotificationModal(true);
                         }} 
-                        className="w-10 h-10 rounded-full bg-white/10 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white relative shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] active:scale-95 transition-all"
+                        className="w-9 h-9 rounded-full bg-white/10 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white relative shadow-[inset_0_1px_1px_rgba(255,255,255,0.35)] active:scale-95 transition-all"
                         title="Ogeysiisyada & System Notifications"
                     >
-                        <Bell size={18} />
-                        <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-[0_0_6px_#34d399]" />
+                        <Bell size={16} />
+                        <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-[0_0_6px_#34d399]" />
                     </button>
                 </div>
 
@@ -1950,56 +1999,79 @@ export default function TelegramMiniAppPage() {
                             </div>
                         </div>
 
-                        {/* Live financial summary */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <button
-                                type="button"
-                                onClick={() => { triggerHaptic('medium'); window.location.href = '/telegram-mini-app/sales'; }}
-                                className="min-h-[92px] rounded-2xl border border-slate-600 bg-slate-900/80 p-3 text-left active:scale-95 transition-all"
-                            >
-                                <ShoppingBag size={18} className="text-slate-300 mb-1.5" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-300">Sales</p>
-                                <p className="text-[11px] font-black text-white leading-tight">New sale & receipt scan</p>
-                                <p className="text-[8px] font-extrabold text-slate-400 mt-0.5">Open sales page</p>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/production'; }}
-                                className="min-h-[92px] rounded-2xl border border-slate-600 bg-slate-900/80 p-3 text-left active:scale-95 transition-all"
-                            >
-                                <Factory size={18} className="text-slate-300 mb-1.5" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-300">Production</p>
-                                <p className="text-[11px] font-black text-white leading-tight">Wax-soo-saar iyo commission</p>
-                                <p className="text-[8px] font-extrabold text-slate-400 mt-0.5">Open production</p>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab('REPORTS')}
-                                className="min-h-[92px] rounded-2xl border border-slate-600 bg-slate-900/80 p-3 text-left active:scale-95 transition-all"
-                            >
-                                <UserCheck size={18} className="text-slate-300 mb-1.5" />
-                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-300">Customer debt</p>
-                                <p className="text-[11px] font-black text-white leading-tight">Macaamiisha daynta leh</p>
-                                <p className="text-[8px] font-extrabold text-slate-400 mt-0.5">Open reports</p>
-                            </button>
+                        {/* Live operating dashboard: all values are loaded from company records. */}
+                        {dashboardDataError && <div role="status" className="rounded-xl border border-amber-500/35 bg-amber-950/30 px-3 py-2 text-[9px] font-semibold text-amber-100">{dashboardDataError}</div>}
+                        <div className="grid grid-cols-2 gap-2">
+                            {[
+                                { label: 'Income today', value: historyExpenses.length ? incomeToday.toLocaleString() : '—', suffix: 'ETB received today', values: weeklyIncomeTrend, stroke: '#34d399', icon: <ArrowDownLeft size={17} className="text-emerald-300" /> },
+                                { label: 'Sales · today', value: dashboardData ? Number(dashboardData.summary?.soldTodayQuantity || 0).toLocaleString() : '—', suffix: 'units · 7 day trend', values: (dashboardData?.salesLast7Days || []).map((item: any) => Number(item.quantity || 0)), stroke: '#22d3ee', icon: <ShoppingBag size={17} className="text-cyan-300" /> },
+                                { label: 'Production · today', value: dashboardData ? Number(dashboardData.summary?.productionToday || 0).toLocaleString() : '—', suffix: 'units · 7 day trend', values: (dashboardData?.productionLast7Days || []).map((item: any) => Number(item.quantity || 0)), stroke: '#a5b4fc', icon: <Factory size={17} className="text-indigo-300" /> },
+                                { label: 'Customer debt', value: dashboardData ? Number(dashboardData.summary?.customerDebt || 0).toLocaleString() : '—', suffix: 'ETB · 7 day trend', values: (dashboardData?.debtLast7Days || []).map((item: any) => Number(item.amount || 0)), stroke: '#fbbf24', icon: <UserCheck size={17} className="text-amber-300" /> }
+                            ].map((metric) => (
+                                <div key={metric.label} className="relative min-h-[118px] overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                                    <div className="flex items-center justify-between gap-1">{metric.icon}<span className="text-[8px] font-black uppercase tracking-wide text-slate-300">{metric.label}</span></div>
+                                    <p className="mt-2 truncate text-xl font-black leading-none text-white">{metric.value}</p>
+                                    <p className="mt-1 text-[9px] font-bold text-slate-500">{metric.suffix}</p>
+                                    <MetricSparkline values={metric.values} color={metric.stroke} />
+                                </div>
+                            ))}
                         </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 flex items-center justify-between gap-3 backdrop-blur-xl">
-                            <div className="flex items-center gap-2 min-w-0">
-                                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${advancedData?.reconciliation?.issueCount ? 'bg-rose-400 shadow-[0_0_8px_#fb7185]' : 'bg-emerald-400 shadow-[0_0_8px_#34d399]'}`} />
-                                <div className="min-w-0">
-                                    <p className="text-[10px] font-black text-white">Financial system {advancedData?.reconciliation?.issueCount ? 'needs review' : 'healthy'}</p>
-                                    <p className="text-[8px] font-bold text-slate-500 truncate">API & database live · reconciliation monitored</p>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            {[
+                                { title: 'Raw materials', icon: <Package size={17} className="text-cyan-300" />, rows: dashboardData?.rawMaterials, empty: 'Raw material stock lama helin.' },
+                                { title: 'Finished goods', icon: <Layers size={17} className="text-emerald-300" />, rows: dashboardData?.finishedGoods, empty: 'Finished goods stock lama helin.' }
+                            ].map(section => (
+                                <section key={section.title} className="rounded-2xl border border-slate-700 bg-slate-900/75 p-3">
+                                    <h3 className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-slate-100">{section.icon}{section.title}<span className="ml-auto text-slate-400">{section.rows?.length || 0} items</span></h3>
+                                    {!dashboardData ? <p className="text-[9px] text-slate-500">{dashboardDataError ? 'Stock data lama soo qaadin.' : 'Loading…'}</p> : !section.rows?.length ? <p className="text-[9px] text-slate-400">{section.empty}</p> : section.rows.slice(0, 4).map((item: any) => (
+                                        <div key={item.id} className="flex items-center gap-2 border-t border-slate-800 py-1.5 first:border-0">
+                                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.low ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                                            <span className="min-w-0 flex-1 truncate text-[10px] font-semibold text-slate-200">{item.name}</span>
+                                            <span className={`whitespace-nowrap text-[10px] font-bold ${item.low ? 'text-amber-300' : 'text-slate-300'}`}>{item.quantity.toLocaleString()} {item.unit}</span>
+                                        </div>
+                                    ))}
+                                </section>
+                            ))}
+                            <section className="rounded-2xl border border-slate-700/60 bg-slate-900/75 p-4 sm:col-span-2">
+                                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold tracking-wide text-slate-100"><Factory size={17} className="text-indigo-300" />Production</h3>
+                                <div className="flex justify-between py-1 text-[10px] text-slate-300"><span>Today</span><b className="text-white">{dashboardData ? Number(dashboardData.summary?.productionToday || 0).toLocaleString() : '—'} units</b></div>
+                                <div className="flex justify-between border-b border-slate-800 py-1 text-[10px] text-slate-300"><span>This week</span><b className="text-white">{dashboardData ? Number(dashboardData.summary?.productionWeek || 0).toLocaleString() : '—'} units</b></div>
+                                <DashboardMiniChart data={dashboardData?.productionLast7Days || []} color="indigo" unit="units" />
+                                {dashboardData?.recentProduction?.[0] ? <div className="mt-2 truncate border-t border-slate-800 pt-2 text-[9px] text-slate-400"><span>Last batch: </span><b className="text-slate-200">{dashboardData.recentProduction[0].productName} · {Number(dashboardData.recentProduction[0].quantity).toLocaleString()}</b></div> : <p className="pt-2 text-[9px] text-slate-500">Production batch lama helin.</p>}
+                            </section>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3">
+                            <section className="rounded-2xl border border-slate-700/60 bg-slate-900/75 p-4">
+                                <h3 className="mb-3 flex items-center gap-2 text-xs font-bold tracking-wide text-slate-100"><BarChart3 size={17} className="text-cyan-300" />Sales</h3>
+                                <div className="flex justify-between py-1 text-[10px] text-slate-300"><span>Today</span><b className="text-white">{dashboardData ? `${Number(dashboardData.summary?.soldTodayQuantity || 0).toLocaleString()} units · ${Number(dashboardData.summary?.soldTodayValue || 0).toLocaleString()} ETB` : '—'}</b></div>
+                                <div className="flex justify-between border-t border-slate-800 py-1.5 text-[10px] text-slate-300"><span>This month</span><b className="text-white">{dashboardData ? `${Number(dashboardData.summary?.soldMonthQuantity || 0).toLocaleString()} units · ${Number(dashboardData.summary?.soldMonthValue || 0).toLocaleString()} ETB` : '—'}</b></div>
+                                <DashboardMiniChart data={dashboardData?.salesLast7Days || []} color="cyan" unit="units sold" />
+                                <button type="button" onClick={() => { triggerHaptic('medium'); window.location.href = '/telegram-mini-app/sales'; }} className="mt-2 w-full rounded-lg border border-cyan-500/30 bg-cyan-950/40 py-2 text-[9px] font-black text-cyan-200">NEW SALE →</button>
+                            </section>
+                            <section className="rounded-2xl border border-slate-700 bg-slate-900/75 p-3">
+                                <h3 className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-slate-100"><UserCheck size={17} className="text-amber-300" />Customer debt <button type="button" onClick={() => setActiveTab('REPORTS')} className="ml-auto text-[8px] text-cyan-300">VIEW ALL →</button></h3>
+                                {!dashboardData?.customerDebtList?.length ? <p className="text-[9px] text-slate-400">{dashboardDataError ? 'Xogta daynta lama soo qaadin.' : 'Dayn macaamiil oo furan lama helin.'}</p> : dashboardData.customerDebtList.slice(0, 4).map((customer: any, index: number) => (
+                                    <div key={`${customer.name}-${index}`} className="flex justify-between gap-2 border-t border-slate-800 py-1.5 first:border-0 text-[9px]"><span className="min-w-0 truncate text-slate-300">{customer.name}</span><b className="whitespace-nowrap text-amber-200">{Number(customer.amount).toLocaleString()} ETB</b></div>
+                                ))}
+                            </section>
+                        </div>
+
+                        <section className="rounded-2xl border border-slate-700 bg-slate-900/75 p-3">
+                            <h3 className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-slate-100"><Calendar size={16} className="text-slate-300" />Recent activity <button type="button" onClick={() => setActiveTab('TRANSACTIONS')} className="ml-auto text-[8px] text-cyan-300">VIEW ALL →</button></h3>
+                            {!dashboardData?.activity?.length ? <p className="text-[9px] text-slate-400">{dashboardDataError ? 'Iibkii u dambeeyey lama soo qaadin.' : 'Sales activity lama helin.'}</p> : dashboardData.activity.slice(0, 4).map((entry: any) => (
+                                <div key={entry.id} className="flex items-center gap-2 border-t border-slate-800 py-1.5 first:border-0">
+                                    <ShoppingBag size={13} className="shrink-0 text-slate-400" />
+                                    <div className="min-w-0 flex-1"><p className="truncate text-[9px] font-bold text-slate-200">{entry.items.join(', ')}</p><p className="truncate text-[8px] text-slate-500">{entry.customer} · {new Date(entry.date).toLocaleDateString()}</p></div>
+                                    <b className="whitespace-nowrap text-[9px] text-slate-200">{Number(entry.amount).toLocaleString()} ETB</b>
                                 </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-[8px] font-bold text-slate-500 whitespace-nowrap">
-                                    {lastSyncedAt ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'syncing'}
-                                </span>
-                                <button type="button" onClick={refreshDashboard} disabled={dashboardRefreshing} className="text-[9px] font-black text-cyan-300 whitespace-nowrap disabled:opacity-50">
-                                    {dashboardRefreshing ? 'SYNCING' : 'REFRESH'}
-                                </button>
-                            </div>
+                            ))}
+                        </section>
+
+                        <div className="flex items-center justify-between px-1 text-[8px] text-slate-500">
+                            <span>{lastSyncedAt ? `Xogta la cusboonaysiiyay ${lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Xogta tooska ah ee database-ka'}</span>
+                            <button type="button" onClick={refreshDashboard} disabled={dashboardRefreshing} className="font-black text-cyan-300 disabled:opacity-50">{dashboardRefreshing ? 'SYNCING…' : 'REFRESH'}</button>
                         </div>
 
                         {(isLowBalance || receiptMismatchCount > 0) && (
@@ -3216,15 +3288,16 @@ export default function TelegramMiniAppPage() {
                             <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
                                 <Wallet size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> {isDeposit ? 'Koontada Lagu Shubayo' : 'Koontada Lagaga Bixinayo'}
                             </label>
-                            <select required value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)}
-                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                            <select required value={selectedAccountId} disabled={!isDeposit} onChange={(e) => setSelectedAccountId(e.target.value)}
+                                className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none disabled:cursor-not-allowed disabled:opacity-80"
                             >
-                                {accounts.map(acc => (
+                                {(isDeposit ? accounts : accounts.filter((account: any) => /e-?birr\s+merchant/i.test(account.name))).map(acc => (
                                     <option key={acc.id} value={acc.id} className="bg-slate-950">
                                         {acc.name} ({acc.balance.toLocaleString()} {acc.currency})
                                     </option>
                                 ))}
                             </select>
+                            {!isDeposit && <p className="text-[9px] font-bold text-emerald-300">Kharashyada si ku-meel-gaar ah E-Birr Merchant oo keliya ayaa laga bixin karaa.</p>}
                         </div>
 
                         {/* Batch Action Buttons */}
@@ -3291,7 +3364,7 @@ export default function TelegramMiniAppPage() {
                                 </>
                             ) : (
                                 <>
-                                    Guri Codsiga
+                                    Gudbi Codsiga
                                     <ArrowRight size={12} />
                                 </>
                             )}

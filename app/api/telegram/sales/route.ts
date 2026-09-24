@@ -19,11 +19,34 @@ function money(value: unknown) {
 function normalizeCustomerName(value: unknown) {
   return String(value || '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9\u00c0-\u024f\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
+const nairobiStart = (offset = 0) => {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const part = (type: string) => Number(parts.find(value => value.type === type)?.value);
+  return new Date(Date.UTC(part('year'), part('month') - 1, part('day') + offset, -3));
+};
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
+    const params = new URL(request.url).searchParams;
+    if (params.get('history') === '1') {
+      if (!identityAllowed(request.headers.get('x-telegram-init-data') || '')) return NextResponse.json({ error: 'Fadlan Telegram-ka ka fur ama login samee.' }, { status: 403 });
+      const page = Math.max(1, Math.min(100000, Number(params.get('page')) || 1));
+      const search = (params.get('search') || '').trim().slice(0, 100);
+      const where = { companyId, ...(search ? { OR: [{ invoiceNumber: { contains: search, mode: 'insensitive' as const } }, { customer: { name: { contains: search, mode: 'insensitive' as const } } }, { items: { some: { productName: { contains: search, mode: 'insensitive' as const } } } }] } : {}) };
+      const todayStart = nairobiStart();
+      const tomorrowStart = nairobiStart(1);
+      const monthStart = new Date(Date.UTC(todayStart.getUTCFullYear(), todayStart.getUTCMonth(), 1, -3));
+      const [rows, total, statsRows] = await Promise.all([
+        prisma.sale.findMany({ where, skip: (Math.floor(page) - 1) * 25, take: 25, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, invoiceNumber: true, createdAt: true, total: true, paidAmount: true, currency: true, status: true, paymentStatus: true, customer: { select: { name: true } }, account: { select: { name: true } }, items: { select: { productName: true, quantity: true, unitPrice: true, total: true } } } }),
+        prisma.sale.count({ where }),
+        prisma.sale.findMany({ where: { companyId, status: 'Completed', createdAt: { gte: monthStart, lt: tomorrowStart } }, select: { total: true, createdAt: true, items: { select: { quantity: true } } } })
+      ]);
+      const quantity = (items: any[]) => items.reduce((sum, sale) => sum + sale.items.reduce((line: number, item: any) => line + Number(item.quantity || 0), 0), 0);
+      const todayRows = statsRows.filter(row => row.createdAt >= todayStart && row.createdAt < tomorrowStart);
+      return NextResponse.json({ rows, total, page: Math.floor(page), pageSize: 25, stats: { totalSales: statsRows.length, totalQuantity: quantity(statsRows), todaySales: todayRows.length, todayQuantity: quantity(todayRows), monthValue: statsRows.reduce((sum, row) => sum + Number(row.total || 0), 0), todayValue: todayRows.reduce((sum, row) => sum + Number(row.total || 0), 0) } }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     const [products, customers, accounts] = await Promise.all([
       prisma.factoryMaterial.findMany({ where: { companyId, inStock: { gt: 0 } }, select: { id: true, name: true, sku: true, inStock: true, sellingPrice: true, unit: true }, orderBy: { name: 'asc' }, take: 250 }),
       prisma.customer.findMany({ where: { companyId }, select: { id: true, name: true, phone: true, phoneNumber: true }, orderBy: { name: 'asc' }, take: 250 }),

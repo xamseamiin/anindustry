@@ -11,11 +11,34 @@ function identityAllowed(initData: string) {
 }
 
 const dayOnly = (value: string) => new Date(`${value}T12:00:00.000Z`);
+const nairobiStart = (offset = 0) => {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const part = (type: string) => Number(parts.find(value => value.type === type)?.value);
+  return new Date(Date.UTC(part('year'), part('month') - 1, part('day') + offset, -3));
+};
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
+    const params = new URL(request.url).searchParams;
+    if (params.get('history') === '1') {
+      if (!identityAllowed(request.headers.get('x-telegram-init-data') || '')) return NextResponse.json({ error: 'Fadlan Telegram-ka ka fur ama login samee.' }, { status: 403 });
+      const page = Math.floor(Math.max(1, Math.min(100000, Number(params.get('page')) || 1)));
+      const search = (params.get('search') || '').trim().slice(0, 100);
+      const where = { companyId, ...(search ? { OR: [{ productName: { contains: search, mode: 'insensitive' as const } }, { orderNumber: { contains: search, mode: 'insensitive' as const } }] } : {}) };
+      const todayStart = nairobiStart();
+      const tomorrowStart = nairobiStart(1);
+      const monthStart = new Date(Date.UTC(todayStart.getUTCFullYear(), todayStart.getUTCMonth(), 1, -3));
+      const [rows, total, totals, todayTotals, monthTotals] = await Promise.all([
+        prisma.productionOrder.findMany({ where, skip: (page - 1) * 25, take: 25, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, orderNumber: true, productName: true, quantity: true, status: true, startDate: true, createdAt: true, product: { select: { unit: true } }, workOrders: { select: { productionRate: true, assignedTo: { select: { fullName: true } } } } } }),
+        prisma.productionOrder.count({ where }),
+        prisma.productionOrder.aggregate({ where: { companyId, status: 'COMPLETED' }, _count: { _all: true }, _sum: { quantity: true } }),
+        prisma.productionOrder.aggregate({ where: { companyId, status: 'COMPLETED', startDate: { gte: todayStart, lt: tomorrowStart } }, _count: { _all: true }, _sum: { quantity: true } }),
+        prisma.productionOrder.aggregate({ where: { companyId, status: 'COMPLETED', startDate: { gte: monthStart, lt: tomorrowStart } }, _count: { _all: true }, _sum: { quantity: true } })
+      ]);
+      return NextResponse.json({ rows, total, page, pageSize: 25, stats: { totalBatches: totals._count._all, totalQuantity: totals._sum.quantity || 0, todayBatches: todayTotals._count._all, todayQuantity: todayTotals._sum.quantity || 0, monthBatches: monthTotals._count._all, monthQuantity: monthTotals._sum.quantity || 0 } }, { headers: { 'Cache-Control': 'no-store' } });
+    }
 
     const [products, employees, recent] = await Promise.all([
       prisma.productCatalog.findMany({

@@ -240,6 +240,7 @@ export async function POST(request: Request) {
         const result = await prisma.$transaction(async (tx) => {
             const account = await tx.account.findUnique({ where: { id: accountId } });
             if (!account) throw new Error('Koontada la doortay lama helin.');
+            if (!/e-?birr\s+merchant/i.test(account.name)) throw new Error('Kharashyada hadda E-Birr Merchant oo keliya ayaa laga bixin karaa.');
             const availableBalance = Number(account.balance) - Number(account.reservedBalance);
 
             if (accountId && !finalNote.includes('[AccountId:')) {
