@@ -186,6 +186,12 @@ export function normalizeSalesReceiptAnalysis(
             total: parsed?.lineTotal ?? parsed?.total ?? parsed?.totalAmount ?? null
         }];
 
+    const explicitLineCustomerNames = rawItems
+        .map((item: any) => String(item?.customerName || item?.buyerName || '').trim())
+        .filter(Boolean);
+    const uniqueLineCustomers = new Set(explicitLineCustomerNames.map(normalizeText));
+    const mixedCustomerReceipt = uniqueLineCustomers.size > 1;
+
     const extractedItems: SalesReceiptLineItem[] = rawItems
         .map((item: any) => {
             const productName = item?.productName || item?.name || item?.item || null;
@@ -194,7 +200,11 @@ export function normalizeSalesReceiptAnalysis(
             const total = asNumber(item?.total) ?? asNumber(item?.lineTotal);
             const unitPrice = asNumber(item?.unitPrice) ?? (total && quantity ? total / quantity : null);
             const itemWarnings: string[] = [];
-            const lineCustomerName = String(item?.customerName || item?.buyerName || customerName || '').trim();
+            // A receipt-level customer is only a safe fallback when the invoice belongs
+            // to one buyer. Mixed-customer notebook receipts must keep each row's buyer
+            // independent; otherwise one header name silently gets copied to every row.
+            const explicitLineCustomerName = String(item?.customerName || item?.buyerName || '').trim();
+            const lineCustomerName = explicitLineCustomerName || (!mixedCustomerReceipt ? String(customerName || '').trim() : '');
             const matchedLineCustomer = lineCustomerName ? bestCustomerMatch(lineCustomerName, customers, corrections) : null;
 
             if (!productName) itemWarnings.push('Magaca product-ka lama akhrin.');
@@ -243,6 +253,10 @@ export function normalizeSalesReceiptAnalysis(
         });
     }
     const items = [...mergedItems.values()];
+
+    if (mixedCustomerReceipt && items.some(item => !item.customerName)) {
+        warnings.push('Rasiidku wuxuu leeyahay macaamiil kala duwan; saf aan customer-kiisa la hubin waa in gacanta lagu xaqiijiyaa.');
+    }
 
     const itemTotal = items.reduce((sum, item) => sum + (Number(item.total) || ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))), 0);
     const totalAmount = asNumber(parsed?.totalAmount) ?? asNumber(parsed?.grandTotal) ?? (itemTotal > 0 ? itemTotal : null);
@@ -407,12 +421,12 @@ ${productCatalog}
 ${customerCatalog}
 
 Extract key sales transaction fields accurately:
-1. customerName: Name of the customer or buyer (Magaca Macmiilka), often found after "To:" or in a handwritten Description column. Compare it against the known customer list, especially when the form uses a Description column for each buyer. For mixed-customer receipts, identify the buyer on each row and put their literal written name in that row's customerName. Do not mistake a product description for a person. Preserve the exact written name; do not replace it with the database spelling.
+1. customerName: This receipt-level field is ONLY for an invoice where every product belongs to one buyer, usually the name after "To:". If the paper is a notebook/list containing sales for different buyers, return receipt-level customerName as null and customerType as "WALK_IN"; never copy the first buyer into this field. Preserve exact handwriting.
 2. matchedCustomerName: Canonical spelling from the customer list only if one is clearly the same person despite a handwriting/spelling variation; otherwise null. The cashier will verify this suggestion. Do not guess.
 3. If the receipt says only customer/client/macmiil or explicitly "walk-in customer", treat it as generic, return null and set customerType to "WALK_IN". A Walk-in sale is cash and fully paid at the receipt total. If a real person/company name is visible, set customerType to "NAMED" and do not invent a phone number.
 4. customerPhone: Phone number only if actually written on the receipt.
 5. customerType: One of "WALK_IN" or "NAMED".
-6. items: Every product/material line sold. Return every handwritten row. For each item return productName, quantity, unitPrice, total, customerName, matchedCustomerName, and customerPhone only when visible. When only a buyer name is written in a row's Description and the actual product is unclear, preserve the buyer name, leave productName null, and add a warning instead of inventing a product.
+6. items: Every product/material line sold. Return every handwritten row. EACH ROW MUST carry its own customerName when the paper contains different buyers—even when the same product repeats. Read the buyer beside that exact quantity/price/total; do not inherit the receipt-level customer or the preceding row's customer. For each item return productName, quantity, unitPrice, total, customerName, matchedCustomerName, and customerPhone only when visible. When only a buyer name is written in a row's Description and the actual product is unclear, preserve the buyer name, leave productName null, and add a warning instead of inventing a product.
 7. totalAmount: Grand total price of the sale as a raw ETB number.
 8. paidAmount: Amount paid/deposited according to the receipt as a raw ETB number. If no payment is shown, use 0 only when the receipt clearly says credit/dayn/unpaid; otherwise use null.
 9. paymentMethod: One of "CASH", "CARD", "PARTIAL", "CREDIT". A printed heading such as "CASH SALES INVOICE" means CASH unless handwriting clearly says otherwise. If paidAmount >= totalAmount, use "CASH". If 0 < paidAmount < totalAmount, use "PARTIAL". If paidAmount == 0 and it is dayn/unpaid, use "CREDIT".
