@@ -4032,7 +4032,7 @@ export default function TelegramMiniAppPage() {
                 />
 
                 {/* iOS 26 Glass Floating Bottom Dock Navigation */}
-                <div className="fixed bottom-4 left-2 right-2 z-40 mx-auto flex max-w-lg items-center justify-around rounded-full border border-white/20 bg-slate-950/85 px-1.5 py-1.5 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] backdrop-blur-2xl">
+                <div className="fixed bottom-4 left-2 right-2 z-40 mx-auto grid max-w-lg grid-cols-7 items-center rounded-full border border-white/20 bg-slate-950/85 px-1.5 py-1.5 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] backdrop-blur-2xl">
                     {/* 1. Dashboard */}
                     {profileData?.permissions?.viewDashboard && <button
                         type="button"
@@ -4075,7 +4075,7 @@ export default function TelegramMiniAppPage() {
                     {profileData?.permissions?.addExpense && <button
                         type="button"
                         onClick={() => { triggerHaptic('medium'); setActiveTab('NEW'); }}
-                        className="w-11 h-11 mx-auto rounded-full bg-gradient-to-tr from-emerald-600 via-emerald-400 to-teal-300 text-slate-950 flex items-center justify-center shadow-[0_0_25px_rgba(16,185,129,0.8),inset_0_2px_4px_rgba(255,255,255,0.9)] border-2 border-emerald-200 active:scale-95 transition-all -translate-y-3 relative overflow-hidden group"
+                        className="relative mx-auto flex h-11 w-11 -translate-y-3 items-center justify-center overflow-hidden rounded-full border-2 border-emerald-200 bg-gradient-to-tr from-emerald-600 via-emerald-400 to-teal-300 text-slate-950 shadow-[0_0_25px_rgba(16,185,129,0.8),inset_0_2px_4px_rgba(255,255,255,0.9)] transition-all active:scale-95 group"
                         title="Diiwaangeli Kharash/Mushahar"
                     >
                         <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-transparent to-black/20 rounded-full pointer-events-none" />
