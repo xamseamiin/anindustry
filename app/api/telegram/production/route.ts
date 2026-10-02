@@ -5,6 +5,11 @@ import { requireTelegramPermission } from '@/lib/telegram-access';
 export const dynamic = 'force-dynamic';
 
 const dayOnly = (value: string) => new Date(`${value}T12:00:00.000Z`);
+const canRunNegative = (material: { name: string; category?: string | null }) => {
+  const category = String(material.category || '').trim().toLowerCase();
+  const name = String(material.name || '').trim().toLowerCase();
+  return category.includes('packag') || /(^|\s)(bac|bag|sack|baakad|packaging)(\s|$)/i.test(name);
+};
 const nairobiStart = (offset = 0) => {
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   const part = (type: string) => Number(parts.find(value => value.type === type)?.value);
@@ -112,7 +117,9 @@ export async function POST(req: Request) {
         const required = item.quantity * quantity;
         const material = await tx.factoryMaterial.findFirst({ where: { companyId, name: item.materialName } });
         if (!material) throw new Error(`${item.materialName} inventory-ga lagama helin.`);
-        if (Number(material.inStock) < required) throw new Error(`${item.materialName} kuma filna wax-soo-saarkan.`);
+        if (Number(material.inStock) < required && !canRunNegative(material)) {
+          throw new Error(`${item.materialName} kuma filna wax-soo-saarkan.`);
+        }
       }
 
       const order = await tx.productionOrder.create({ data: {
