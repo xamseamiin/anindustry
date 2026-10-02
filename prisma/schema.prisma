@@ -155,6 +155,7 @@ model Company {
   transactions            Transaction[]
   incomingPayments        IncomingPayment[]
   staffDevices            StaffDevice[]
+  telegramAppUsers        TelegramAppUser[]
   users                   User[]
   workOrders              WorkOrder[]
   workshopJobs            WorkshopJob[]
@@ -163,6 +164,35 @@ model Company {
   approvalRequests ApprovalRequest[]
 
   @@map("companies")
+}
+
+model TelegramAppUser {
+  id               String   @id @default(uuid()) @map("_id")
+  companyId        String
+  telegramId       String
+  username         String?
+  displayName      String
+  isActive         Boolean  @default(true)
+  isAdmin          Boolean  @default(false)
+  viewDashboard    Boolean  @default(true)
+  viewTransactions Boolean  @default(false)
+  addExpense       Boolean  @default(true)
+  viewSales        Boolean  @default(false)
+  addSales         Boolean  @default(false)
+  viewProduction   Boolean  @default(false)
+  addProduction    Boolean  @default(false)
+  viewReports      Boolean  @default(false)
+  viewProfile      Boolean  @default(true)
+  manageUsers      Boolean  @default(false)
+  manageExpenses   Boolean  @default(false)
+  lastSeenAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, telegramId])
+  @@index([companyId, isActive])
+  @@map("telegram_app_users")
 }
 
 model Shareholder {

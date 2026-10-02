@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
+import { requireTelegramPermission, resolveTelegramAccess } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    const initData = url.searchParams.get('initData') || request.headers.get('x-telegram-init-data') || '';
+    const access = await resolveTelegramAccess(initData);
+    if (!access || !access.permissions.isActive || (!access.permissions.viewDashboard && !access.permissions.viewReports)) {
+      return NextResponse.json({ error: 'Xogtan fasax uma lihid.' }, { status: 403 });
+    }
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
     const accounts = await prisma.account.findMany({
@@ -33,8 +39,8 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const identity = verifyTelegramInitData(body.initData || '') || (process.env.APP_ENV === 'local' ? { id: process.env.TELEGRAM_USER_ID || 'local-admin' } : null);
-    if (!identity || (process.env.APP_ENV !== 'local' && !isTelegramFinancialAdmin(identity as any))) return NextResponse.json({ error: 'Admin access is required.' }, { status: 403 });
+    const access = await requireTelegramPermission(body.initData || '', 'viewProfile');
+    if (!access) return NextResponse.json({ error: 'Profile-ka fasax uma lihid.' }, { status: 403 });
     if (body.action === 'SAVE_NOTIFICATION_PREFERENCES') return NextResponse.json({ success: true, preference: body.preferences || {} });
     if (body.action === 'HEARTBEAT') return NextResponse.json({ success: true, heartbeat: { service: body.service || 'mini-app', status: body.status || 'online', lastSeenAt: new Date() } });
     return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Script from 'next/script';
 import { ArrowLeft, Camera, CheckCircle2, Loader2, Plus, Receipt, Trash2, UserPlus, Search, Upload } from 'lucide-react';
 import MiniAppBottomNav from '../MiniAppBottomNav';
 import ActivityHistory from '../ActivityHistory';
@@ -64,8 +65,23 @@ export default function TelegramSalesPage() {
   const [newCustomerCompany, setNewCustomerCompany] = useState('');
   const [customerRegistrationSourceName, setCustomerRegistrationSourceName] = useState('');
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [accessPermissions, setAccessPermissions] = useState<Record<string, boolean> | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  const loadAccess = async () => {
+    const initData = getTelegramInitData();
+    if (!initData) return;
+    try {
+      const response = await fetch('/api/telegram/access', { cache: 'no-store', headers: { 'x-telegram-init-data': initData } });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(data.error);
+      const permissions = data.current?.permissions || null;
+      setAccessPermissions(permissions);
+      if (permissions?.addSales && !permissions?.viewSales) setShowAdd(true);
+    } catch (error: any) { setMessage(error.message || 'Access-ka lama hubin.'); }
+  };
+  useEffect(() => { const timer = window.setTimeout(() => void loadAccess(), 250); return () => window.clearTimeout(timer); }, []);
 
   const total = useMemo(() => items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0), [items]);
   const selectedPaymentTotal = useMemo(() => paymentAllocations.reduce((sum, allocation) => sum + allocation.amount, 0), [paymentAllocations]);
@@ -75,7 +91,7 @@ export default function TelegramSalesPage() {
     || (paymentAllocations.length > 0 && selectedPaymentTotal + 0.001 < total);
 
   const loadSalesData = async () => {
-    try { const response = await fetch('/api/telegram/sales', { cache: 'no-store' }); const data = await readJson(response); if (!response.ok) throw new Error(data.error || 'Sales data lama soo qaadin.'); setProducts(data.products || []); setCustomers(data.customers || []); setAccounts(data.accounts || []); setIncomingPayments(data.incomingPayments || []); if (!accountId && data.accounts?.[0]) setAccountId(data.accounts[0].id); } catch (error: any) { setMessage(error.message); } finally { setLoading(false); }
+    try { const response = await fetch('/api/telegram/sales', { cache: 'no-store', headers: { 'x-telegram-init-data': getTelegramInitData() } }); const data = await readJson(response); if (!response.ok) throw new Error(data.error || 'Sales data lama soo qaadin.'); setProducts(data.products || []); setCustomers(data.customers || []); setAccounts(data.accounts || []); setIncomingPayments(data.incomingPayments || []); if (!accountId && data.accounts?.[0]) setAccountId(data.accounts[0].id); } catch (error: any) { setMessage(error.message); } finally { setLoading(false); }
   };
   useEffect(() => { if (showAdd) void loadSalesData(); }, [showAdd]);
 
@@ -111,8 +127,9 @@ export default function TelegramSalesPage() {
   const scanReceipt = async (file: File) => {
     setScanning(true); setMessage('Rasiidka AI ayaa akhrinaya...');
     const form = new FormData(); form.append('receiptFile', file);
+    const initData = getTelegramInitData();
     try {
-      const response = await fetch('/api/telegram/sales/scan-receipt', { method: 'POST', body: form });
+      const response = await fetch('/api/telegram/sales/scan-receipt', { method: 'POST', headers: { 'x-telegram-init-data': initData }, body: form });
       const data = await readJson(response);
       if (!response.ok) throw new Error(data.error);
       const scan = data.data || {};
@@ -196,11 +213,11 @@ export default function TelegramSalesPage() {
     ]; const response = await fetch('/api/telegram/sales', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: getTelegramInitData(), customerId: customerId || null, accountId: accountId || null, paymentMethod, paidAmount: paymentAllocations.length ? selectedPaymentTotal : (paidAmount.trim() === '' ? defaultPaid : Number(paidAmount)), paymentAllocations, items: saleItems, customerCorrections, receiptUrl, receiptHash }) }); const data = await readJson(response); if (!response.ok) throw new Error(data.error); const savedSales = data.sales || [data.sale]; setMessage(savedSales.length > 1 ? `Iibka waa la kaydiyey ${savedSales.length} customer: ${savedSales.map((sale: any) => sale.invoiceNumber).join(', ')}` : 'Sale waa la kaydiyey: ' + data.sale.invoiceNumber); setItems([blankSaleItem()]); setPaidAmount(''); setPaymentAllocations([]); setReceiptUrl(''); setReceiptHash(''); setRecognizedCustomerName(''); setCustomerCorrectionConfirmed(false); setShowAdd(false); await loadSalesData(); } catch (error: any) { setMessage(error.message || 'Sale lama kaydin.'); } finally { setSaving(false); }
   };
 
-  return <main className="min-h-screen bg-[#020617] text-slate-100 px-4 py-4 pb-28 font-sans"><div className="mx-auto max-w-md space-y-4">
+  return <main className="min-h-screen bg-[#020617] text-slate-100 px-4 py-4 pb-28 font-sans"><Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" onReady={() => void loadAccess()} /><div className="mx-auto max-w-md space-y-4">
     <header className="flex items-center justify-between rounded-3xl border border-white/15 bg-slate-900/70 p-4 shadow-[0_0_25px_rgba(0,0,0,.35)]"><button onClick={() => window.location.href = '/telegram-mini-app'} className="rounded-full border border-white/20 bg-white/10 p-2"><ArrowLeft size={19} /></button><div className="text-center"><p className="text-xs font-black tracking-wider">AN-INDUSTRY TERMINAL</p><p className="text-[11px] font-bold text-slate-400">Sales & Receipt Scan</p></div><Receipt className="text-cyan-300" size={22} /></header>
     {message && <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-3 text-xs font-bold text-cyan-100">{message}</div>}
-    <div className="flex items-center justify-between gap-3"><div><h1 className="text-xl font-bold">{showAdd ? 'Add Sale' : 'Sales history'}</h1><p className="mt-1 text-xs text-slate-400">{showAdd ? 'Geli iibka ama akhri rasiidka.' : 'Dhammaan iibkii la diiwaangeliyey.'}</p></div><button disabled={saving || scanning} onClick={() => setShowAdd(value => !value)} className="flex shrink-0 items-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2.5 text-xs font-bold text-cyan-200 disabled:opacity-50">{showAdd ? <ArrowLeft size={15} /> : <Plus size={15} />}{showAdd ? 'History' : 'Add Sale'}</button></div>
-    {!showAdd && <ActivityHistory kind="sales" />}
+    <div className="flex items-center justify-between gap-3"><div><h1 className="text-xl font-bold">{showAdd ? 'Add Sale' : 'Sales history'}</h1><p className="mt-1 text-xs text-slate-400">{showAdd ? 'Geli iibka ama akhri rasiidka.' : 'Dhammaan iibkii la diiwaangeliyey.'}</p></div>{((showAdd && accessPermissions?.viewSales) || (!showAdd && accessPermissions?.addSales)) && <button disabled={saving || scanning} onClick={() => setShowAdd(value => !value)} className="flex shrink-0 items-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2.5 text-xs font-bold text-cyan-200 disabled:opacity-50">{showAdd ? <ArrowLeft size={15} /> : <Plus size={15} />}{showAdd ? 'History' : 'Add Sale'}</button>}</div>
+    {!showAdd && accessPermissions?.viewSales && <ActivityHistory kind="sales" />}
     <div hidden={!showAdd}>
     <section className="rounded-3xl border border-cyan-400/30 bg-slate-900/70 p-4 space-y-3"><div className="flex items-center justify-between"><h2 className="text-lg font-black">New Sale</h2><span className="text-xs font-black text-cyan-300">{total.toLocaleString()} ETB</span></div>
       <div className="block text-[10px] font-black uppercase text-slate-400"><div className="flex items-center justify-between"><span>Default customer · hal customer keliya</span><button type="button" title="New customer" onClick={() => setShowCustomerForm(true)} className="flex h-6 w-6 items-center justify-center rounded-full border border-cyan-300/50 bg-cyan-500/10 text-cyan-200"><UserPlus size={13} /></button></div><select value={customerId} onChange={e => { setCustomerId(e.target.value); if (recognizedCustomerName) setCustomerCorrectionConfirmed(true); }} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm"><option value="">No default / Walk-in</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>)}</select><p className="mt-1 text-[9px] normal-case text-slate-500">Haddii rasiidku leeyahay macaamiil kala duwan, customer-ka saxda ah ka hubi saf kasta.</p></div>
@@ -227,5 +244,5 @@ export default function TelegramSalesPage() {
     <p className="text-center text-[10px] font-bold text-slate-500">AI scan wuxuu buuxiyaa xogta, laakiin hubi product-ka iyo amount-ka ka hor kaydinta.</p>
     </div>
     {showCustomerForm && <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 p-3 backdrop-blur-sm"><div className="w-full max-w-md space-y-3 rounded-3xl border border-cyan-400/30 bg-slate-900 p-5 shadow-2xl"><div className="flex items-center justify-between"><h2 className="text-base font-black text-white">New Customer</h2><button type="button" onClick={() => setShowCustomerForm(false)} className="text-xs font-black text-slate-400">CLOSE</button></div><input value={newCustomerPhone} onChange={e => setNewCustomerPhone(e.target.value)} required={phoneRequiredForCredit} placeholder={phoneRequiredForCredit ? 'Phone / E-Birr number (required for credit)' : 'Phone / E-Birr number (optional)'} className="w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" /><button type="button" onClick={lookupEbirrName} disabled={lookupLoading || !newCustomerPhone.trim()} className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-3 text-xs font-black text-cyan-200 disabled:opacity-50">{lookupLoading ? <Loader2 className="animate-spin" size={14} /> : <Search size={14} />} Lookup E-Birr name</button><input value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} placeholder="Customer name" className="w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" /><input value={newCustomerCompany} onChange={e => setNewCustomerCompany(e.target.value)} placeholder="Company (optional)" className="w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" /><button type="button" onClick={createCustomer} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 p-3 text-xs font-black text-slate-950"><Plus size={15} /> Save Customer</button><p className="text-[10px] font-bold text-slate-500">Telefoonku waa optional cash iibka, laakiin dayn/credit marka la sameeyo waa khasab. E-Birr lookup wuxuu shaqaynayaa marka API-ga la habeeyo.</p></div></div>}
-  </div><MiniAppBottomNav active="SALES" /></main>;
+  </div><MiniAppBottomNav active="SALES" permissions={accessPermissions} /></main>;
 }

@@ -1,17 +1,12 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
+import { requireTelegramPermission } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
 type PaymentAllocationInput = { incomingPaymentId: string; amount: number };
 type SaleItemInput = { productId: string; quantity: number; unitPrice: number; customerId?: string | null };
 type CustomerCorrectionInput = { observedName: string; customerId: string };
 
-function identityAllowed(initData: string) {
-  const identity = verifyTelegramInitData(initData || '');
-  if (process.env.APP_ENV === 'local') return identity || { id: process.env.TELEGRAM_USER_ID || 'local-admin' };
-  return identity && isTelegramFinancialAdmin(identity as any) ? identity : null;
-}
 function money(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0;
@@ -31,7 +26,7 @@ export async function GET(request: Request) {
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
     const params = new URL(request.url).searchParams;
     if (params.get('history') === '1') {
-      if (!identityAllowed(request.headers.get('x-telegram-init-data') || '')) return NextResponse.json({ error: 'Fadlan Telegram-ka ka fur ama login samee.' }, { status: 403 });
+      if (!await requireTelegramPermission(request.headers.get('x-telegram-init-data') || '', 'viewSales')) return NextResponse.json({ error: 'Sales history fasax uma lihid.' }, { status: 403 });
       const page = Math.max(1, Math.min(100000, Number(params.get('page')) || 1));
       const search = (params.get('search') || '').trim().slice(0, 100);
       const where = { companyId, ...(search ? { OR: [{ invoiceNumber: { contains: search, mode: 'insensitive' as const } }, { customer: { name: { contains: search, mode: 'insensitive' as const } } }, { items: { some: { productName: { contains: search, mode: 'insensitive' as const } } } }] } : {}) };
@@ -47,6 +42,7 @@ export async function GET(request: Request) {
       const todayRows = statsRows.filter(row => row.createdAt >= todayStart && row.createdAt < tomorrowStart);
       return NextResponse.json({ rows, total, page: Math.floor(page), pageSize: 25, stats: { totalSales: statsRows.length, totalQuantity: quantity(statsRows), todaySales: todayRows.length, todayQuantity: quantity(todayRows), monthValue: statsRows.reduce((sum, row) => sum + Number(row.total || 0), 0), todayValue: todayRows.reduce((sum, row) => sum + Number(row.total || 0), 0) } }, { headers: { 'Cache-Control': 'no-store' } });
     }
+    if (!await requireTelegramPermission(request.headers.get('x-telegram-init-data') || '', 'addSales')) return NextResponse.json({ error: 'Add Sale fasax uma lihid.' }, { status: 403 });
     const [products, customers, accounts] = await Promise.all([
       prisma.factoryMaterial.findMany({ where: { companyId, inStock: { gt: 0 } }, select: { id: true, name: true, sku: true, inStock: true, sellingPrice: true, unit: true }, orderBy: { name: 'asc' }, take: 250 }),
       prisma.customer.findMany({ where: { companyId }, select: { id: true, name: true, phone: true, phoneNumber: true }, orderBy: { name: 'asc' }, take: 250 }),
@@ -76,10 +72,10 @@ export async function GET(request: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const identity = identityAllowed(String(body.initData || ''));
-    if (!identity) return NextResponse.json({ error: 'Telegram admin access is required.' }, { status: 403 });
+    const access = await requireTelegramPermission(String(body.initData || ''), 'addSales');
+    if (!access) return NextResponse.json({ error: 'Add Sale fasax uma lihid.' }, { status: 403 });
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
-    const userId = process.env.TELEGRAM_USER_ID || String((identity as any).id);
+    const userId = process.env.TELEGRAM_USER_ID || String(access.identity.id);
     const items: SaleItemInput[] = Array.isArray(body.items) ? body.items.map((item: any): SaleItemInput => ({ productId: String(item.productId || ''), quantity: Number(item.quantity), unitPrice: money(item.unitPrice), customerId: item.customerId ? String(item.customerId) : null })) : [];
     const allocationInputs: PaymentAllocationInput[] = Array.isArray(body.paymentAllocations) ? body.paymentAllocations.map((payment: any) => ({ incomingPaymentId: String(payment.incomingPaymentId || ''), amount: money(payment.amount) })) : [];
     if (!companyId || !items.length || items.some(item => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0 || item.unitPrice <= 0)) return NextResponse.json({ error: 'Product, quantity iyo price waa qasab.' }, { status: 400 });

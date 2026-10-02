@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import revisionService from '@/lib/expense-revisions';
 import { syncExpenseRevision } from '@/lib/expense-revision-telegram';
-import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
+import { requireTelegramPermission } from '@/lib/telegram-access';
+import { verifyTelegramInitData } from '@/lib/telegram-admin';
 import { EXPENSE_STATES, releaseExpenseReservation, reserveExpenseFunds, transitionExpense } from '@/lib/financial-workflow';
 
 export const dynamic = 'force-dynamic';
@@ -224,10 +225,9 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Expense ID and action are required' }, { status: 400 });
         }
 
-        const verifiedManager = verifyTelegramInitData(initData || '');
-        if (!verifiedManager || !isTelegramFinancialAdmin(verifiedManager)) {
-            return NextResponse.json({ error: 'Approve/Reject waxaa loo oggol yahay Hamse Moalin iyo Abdihakim Mumin oo keliya.' }, { status: 403 });
-        }
+        const access = await requireTelegramPermission(initData || '', 'manageExpenses');
+        if (!access) return NextResponse.json({ error: 'Approve/Reject fasax uma lihid.' }, { status: 403 });
+        const verifiedManager = access.identity;
 
         const expense = await prisma.expense.findUnique({
             where: { id },

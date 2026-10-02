@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
-import { isTelegramFinancialAdmin } from '@/lib/telegram-admin';
+import { resolveTelegramAccess } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,9 +39,11 @@ export async function GET(request: Request) {
         if (!companyId) return NextResponse.json({ error: 'Company is not configured' }, { status: 400 });
 
         const params = new URL(request.url).searchParams;
-        const telegramId = params.get('telegramId') || '';
-        const username = params.get('username') || '';
-        const name = (params.get('name') || '').replace(/\s*\(@[^)]+\)\s*$/, '').trim();
+        const access = await resolveTelegramAccess(params.get('initData') || request.headers.get('x-telegram-init-data') || '');
+        if (!access || !access.permissions.isActive) return NextResponse.json({ error: 'Telegram access-ka lama xaqiijin.' }, { status: 403 });
+        const telegramId = access.telegramId;
+        const username = access.identity.username || '';
+        const name = [access.identity.first_name, access.identity.last_name].filter(Boolean).join(' ').trim();
         const firstName = name.split(/\s+/)[0] || '';
 
         const users = await prisma.user.findMany({
@@ -74,14 +76,8 @@ export async function GET(request: Request) {
             .filter(e => e.createdAt >= monthStart)
             .reduce((sum, e) => sum + Number(e.amount), 0);
 
-        const nameParts = name.split(/\s+/);
-        const isFinancialAdmin = isTelegramFinancialAdmin({
-            id: telegramId,
-            username,
-            first_name: nameParts[0],
-            last_name: nameParts.slice(1).join(' ')
-        });
-        const role = isFinancialAdmin ? 'ADMIN' : 'MEMBER';
+        const role = access.permissions.isAdmin ? 'ADMIN' : 'MEMBER';
+        const legacyPermissions = permissionsForRole(role);
         return NextResponse.json({
             success: true,
             profile: {
@@ -95,7 +91,7 @@ export async function GET(request: Request) {
                 lastLogin: user?.lastLogin || null,
                 lastActiveAt: user?.lastActiveAt || null,
                 lastDevice: user?.lastDevice || null,
-                permissions: permissionsForRole(role),
+                permissions: { ...legacyPermissions, ...access.permissions },
                 trustedDevices: user?.trustedDevices.map(d => ({
                     id: d.id,
                     userAgent: d.userAgent || 'Unknown device',

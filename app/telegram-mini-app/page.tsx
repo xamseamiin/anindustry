@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Script from 'next/script';
 import DashboardMiniChart from './DashboardTrendChart';
+import AccessControlPanel from './AccessControlPanel';
 import { isSalaryCategory } from '@/lib/payroll-report';
 import { drawPayrollReport } from '@/lib/payroll-report-pdf';
 import { 
@@ -460,6 +461,7 @@ export default function TelegramMiniAppPage() {
                 if (customEndDate) url += `&endDate=${encodeURIComponent(customEndDate)}`;
             }
             if (selectedAccountId) url += `&accountId=${encodeURIComponent(selectedAccountId)}`;
+            if (telegramInitData) url += `&initData=${encodeURIComponent(telegramInitData)}`;
             const res = await fetch(url);
             const data = await res.json();
             if (data.success && Array.isArray(data.expenses)) {
@@ -481,7 +483,9 @@ export default function TelegramMiniAppPage() {
     const fetchAdvancedData = async () => {
         setLoadingAdvanced(true);
         try {
-            const res = await fetch(`/api/telegram/advanced?_t=${Date.now()}`);
+            const query = new URLSearchParams({ _t: String(Date.now()) });
+            if (telegramInitData) query.set('initData', telegramInitData);
+            const res = await fetch(`/api/telegram/advanced?${query.toString()}`);
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Advanced financial data failed to load.');
             setAdvancedData(data);
@@ -528,7 +532,9 @@ export default function TelegramMiniAppPage() {
     useEffect(() => {
         const pollForNewRequests = async () => {
             try {
-                const res = await fetch(`/api/telegram/history?filter=all&_t=${Date.now()}`);
+                const query = new URLSearchParams({ filter: 'all', _t: String(Date.now()) });
+                if (telegramInitData) query.set('initData', telegramInitData);
+                const res = await fetch(`/api/telegram/history?${query.toString()}`);
                 const data = await res.json();
                 const newestId = data.success && Array.isArray(data.expenses) ? data.expenses[0]?.id : null;
                 if (data.success && Array.isArray(data.expenses)) {
@@ -603,11 +609,24 @@ export default function TelegramMiniAppPage() {
     useEffect(() => {
         if (!requesterId) return;
         setProfilePreferences(safeParseJSON(`mini_profile_preferences_${requesterId}`, profilePreferences));
-        fetch(`/api/telegram/profile?telegramId=${encodeURIComponent(requesterId)}&name=${encodeURIComponent(requesterName)}&username=${encodeURIComponent(requesterUsername)}`)
+        const profileQuery = new URLSearchParams({ initData: telegramInitData });
+        fetch(`/api/telegram/profile?${profileQuery.toString()}`, { cache: 'no-store' })
             .then(res => res.json())
             .then(data => { if (data.success) setProfileData(data.profile); })
             .catch(error => console.error('Profile loading failed:', error));
-    }, [requesterId, requesterName, requesterUsername]);
+    }, [requesterId, telegramInitData]);
+
+    useEffect(() => {
+        const permissions = profileData?.permissions;
+        if (!permissions) return;
+        const allowed = activeTab === 'DASHBOARD' ? permissions.viewDashboard
+            : activeTab === 'TRANSACTIONS' ? permissions.viewTransactions
+            : activeTab === 'NEW' ? permissions.addExpense
+            : activeTab === 'REPORTS' ? permissions.viewReports
+            : activeTab === 'PROFILE' ? permissions.viewProfile
+            : true;
+        if (!allowed) setActiveTab(permissions.viewDashboard ? 'DASHBOARD' : permissions.viewProfile ? 'PROFILE' : 'NEW');
+    }, [profileData, activeTab]);
 
     const handleOpenEdit = (exp: any) => {
         triggerHaptic('light');
@@ -885,6 +904,7 @@ export default function TelegramMiniAppPage() {
                         formData.append(key, item[key]);
                     }
                 });
+                if (telegramInitData) formData.set('initData', telegramInitData);
 
                 const res = await fetch('/api/telegram/submit', {
                     method: 'POST',
@@ -1355,6 +1375,7 @@ export default function TelegramMiniAppPage() {
             }
             try {
                 const depositData = new FormData();
+                if (telegramInitData) depositData.append('initData', telegramInitData);
                 depositData.append('accountId', selectedAccountId);
                 depositData.append('amount', amount);
                 depositData.append('sourceName', depositSourceName.trim());
@@ -1441,6 +1462,7 @@ export default function TelegramMiniAppPage() {
             for (let i = 0; i < validBatchItems.length; i++) {
                 const item = validBatchItems[i];
                 const formData = new FormData();
+                if (telegramInitData) formData.append('initData', telegramInitData);
                 formData.append('accountId', selectedAccountId);
                 formData.append('type', item.categoryKey.startsWith('EXPENSE_') ? 'EXPENSE' : item.categoryKey);
                 if (item.categoryKey.startsWith('EXPENSE_')) {
@@ -1596,6 +1618,7 @@ export default function TelegramMiniAppPage() {
 
         try {
             const formData = new FormData();
+            if (telegramInitData) formData.append('initData', telegramInitData);
             formData.append('accountId', selectedAccountId);
             formData.append('note', note);
             formData.append('chatId', chatId);
@@ -2729,6 +2752,8 @@ export default function TelegramMiniAppPage() {
                             </div>
                             <p className="text-[11px] text-slate-300">Approval limit: <strong className="text-white">{profileData?.permissions?.approvalLimit == null ? 'Unlimited' : `${Number(profileData.permissions.approvalLimit).toLocaleString()} ETB`}</strong></p>
                         </div>
+
+                        <AccessControlPanel initData={telegramInitData} />
 
                         <div className="bg-slate-950/80 border border-white/10 rounded-3xl p-5 space-y-3">
                             <h3 className="text-xs font-black text-white flex items-center gap-2"><SlidersHorizontal size={15} className="text-cyan-400" /> Notification Preferences</h3>
@@ -4007,9 +4032,9 @@ export default function TelegramMiniAppPage() {
                 />
 
                 {/* iOS 26 Glass Floating Bottom Dock Navigation */}
-                <div className="fixed bottom-4 left-2 right-2 z-40 max-w-lg mx-auto bg-slate-950/85 backdrop-blur-2xl border border-white/20 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] rounded-full px-1.5 py-1.5 grid grid-cols-7 items-center">
+                <div className="fixed bottom-4 left-2 right-2 z-40 mx-auto flex max-w-lg items-center justify-around rounded-full border border-white/20 bg-slate-950/85 px-1.5 py-1.5 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] backdrop-blur-2xl">
                     {/* 1. Dashboard */}
-                    <button
+                    {profileData?.permissions?.viewDashboard && <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('DASHBOARD'); }}
                         className={`flex flex-col items-center justify-center text-center gap-0.5 py-1.5 rounded-full transition-all w-full ${
@@ -4020,10 +4045,10 @@ export default function TelegramMiniAppPage() {
                     >
                         <Home size={18} className={activeTab === 'DASHBOARD' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
                         <span className="text-[8px]">Home</span>
-                    </button>
+                    </button>}
 
                     {/* 2. Transactions */}
-                    <button
+                    {profileData?.permissions?.viewTransactions && <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('TRANSACTIONS'); fetchHistory(); }}
                         className={`flex flex-col items-center justify-center text-center gap-0.5 py-1.5 rounded-full transition-all w-full ${
@@ -4034,20 +4059,20 @@ export default function TelegramMiniAppPage() {
                     >
                         <Layers size={18} className={activeTab === 'TRANSACTIONS' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
                         <span className="text-[8px]">Txns</span>
-                    </button>
+                    </button>}
 
                     {/* 3. Sales */}
-                    <button
+                    {(profileData?.permissions?.viewSales || profileData?.permissions?.addSales) && <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/sales'; }}
                         className="flex w-full flex-col items-center justify-center gap-0.5 rounded-full py-1.5 text-center text-slate-400 transition-all hover:text-white"
                     >
                         <ShoppingBag size={17} />
                         <span className="text-[8px]">Sales</span>
-                    </button>
+                    </button>}
 
                     {/* 4. Center Floating (+) 3D Emerald Watery Button */}
-                    <button
+                    {profileData?.permissions?.addExpense && <button
                         type="button"
                         onClick={() => { triggerHaptic('medium'); setActiveTab('NEW'); }}
                         className="w-11 h-11 mx-auto rounded-full bg-gradient-to-tr from-emerald-600 via-emerald-400 to-teal-300 text-slate-950 flex items-center justify-center shadow-[0_0_25px_rgba(16,185,129,0.8),inset_0_2px_4px_rgba(255,255,255,0.9)] border-2 border-emerald-200 active:scale-95 transition-all -translate-y-3 relative overflow-hidden group"
@@ -4055,20 +4080,20 @@ export default function TelegramMiniAppPage() {
                     >
                         <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-transparent to-black/20 rounded-full pointer-events-none" />
                         <PlusCircle size={24} className="text-slate-950 stroke-[2.5] z-10 drop-shadow-[0_1px_2px_rgba(255,255,255,0.8)]" />
-                    </button>
+                    </button>}
 
                     {/* 5. Production */}
-                    <button
+                    {(profileData?.permissions?.viewProduction || profileData?.permissions?.addProduction) && <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/production'; }}
                         className="flex w-full flex-col items-center justify-center gap-0.5 rounded-full py-1.5 text-center text-slate-400 transition-all hover:text-white"
                     >
                         <Factory size={17} />
                         <span className="text-[8px]">Prod.</span>
-                    </button>
+                    </button>}
 
                     {/* 6. Reports */}
-                    <button
+                    {profileData?.permissions?.viewReports && <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('REPORTS'); fetchHistory(); }}
                         className={`flex flex-col items-center justify-center text-center gap-0.5 py-1.5 rounded-full transition-all w-full ${
@@ -4079,10 +4104,10 @@ export default function TelegramMiniAppPage() {
                     >
                         <BarChart3 size={18} className={activeTab === 'REPORTS' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
                         <span className="text-[8px]">Reports</span>
-                    </button>
+                    </button>}
 
                     {/* 7. Profile */}
-                    <button
+                    {profileData?.permissions?.viewProfile && <button
                         type="button"
                         onClick={() => { triggerHaptic('light'); setActiveTab('PROFILE'); }}
                         className={`flex flex-col items-center justify-center text-center gap-0.5 py-1.5 rounded-full transition-all w-full ${
@@ -4093,7 +4118,7 @@ export default function TelegramMiniAppPage() {
                     >
                         <User size={18} className={activeTab === 'PROFILE' ? 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]' : ''} />
                         <span className="text-[8px]">Profile</span>
-                    </button>
+                    </button>}
                 </div>
             </div>
         </div>

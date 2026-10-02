@@ -1,6 +1,7 @@
 // app/api/telegram/history/route.ts
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { requireTelegramPermission } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,9 @@ export async function GET(request: Request) {
         }
 
         const { searchParams } = new URL(request.url);
+        const initData = searchParams.get('initData') || request.headers.get('x-telegram-init-data') || '';
+        const access = await requireTelegramPermission(initData, 'viewTransactions');
+        if (!access) return NextResponse.json({ error: 'Transactions-ka fasax uma lihid.' }, { status: 403 });
         const filter = searchParams.get('filter') || 'all'; // 'all', 'today', 'week', 'month', 'custom'
         const startDateParam = searchParams.get('startDate');
         const endDateParam = searchParams.get('endDate');

@@ -1,14 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
+import { requireTelegramPermission } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
-
-function identityAllowed(initData: string) {
-  const identity = verifyTelegramInitData(initData || '');
-  if (process.env.APP_ENV === 'local') return identity || { id: process.env.TELEGRAM_USER_ID || 'local-admin' };
-  return identity && isTelegramFinancialAdmin(identity as any) ? identity : null;
-}
 
 const dayOnly = (value: string) => new Date(`${value}T12:00:00.000Z`);
 const nairobiStart = (offset = 0) => {
@@ -23,7 +17,7 @@ export async function GET(request: Request) {
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
     const params = new URL(request.url).searchParams;
     if (params.get('history') === '1') {
-      if (!identityAllowed(request.headers.get('x-telegram-init-data') || '')) return NextResponse.json({ error: 'Fadlan Telegram-ka ka fur ama login samee.' }, { status: 403 });
+      if (!await requireTelegramPermission(request.headers.get('x-telegram-init-data') || '', 'viewProduction')) return NextResponse.json({ error: 'Production history fasax uma lihid.' }, { status: 403 });
       const page = Math.floor(Math.max(1, Math.min(100000, Number(params.get('page')) || 1)));
       const search = (params.get('search') || '').trim().slice(0, 100);
       const where = { companyId, ...(search ? { OR: [{ productName: { contains: search, mode: 'insensitive' as const } }, { orderNumber: { contains: search, mode: 'insensitive' as const } }] } : {}) };
@@ -39,6 +33,7 @@ export async function GET(request: Request) {
       ]);
       return NextResponse.json({ rows, total, page, pageSize: 25, stats: { totalBatches: totals._count._all, totalQuantity: totals._sum.quantity || 0, todayBatches: todayTotals._count._all, todayQuantity: todayTotals._sum.quantity || 0, monthBatches: monthTotals._count._all, monthQuantity: monthTotals._sum.quantity || 0 } }, { headers: { 'Cache-Control': 'no-store' } });
     }
+    if (!await requireTelegramPermission(request.headers.get('x-telegram-init-data') || '', 'addProduction')) return NextResponse.json({ error: 'Add Production fasax uma lihid.' }, { status: 403 });
 
     const [products, employees, recent] = await Promise.all([
       prisma.productCatalog.findMany({
@@ -80,10 +75,10 @@ export async function GET(request: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const identity = identityAllowed(String(body.initData || ''));
-    if (!identity) return NextResponse.json({ error: 'Telegram admin access is required.' }, { status: 403 });
+    const access = await requireTelegramPermission(String(body.initData || ''), 'addProduction');
+    if (!access) return NextResponse.json({ error: 'Add Production fasax uma lihid.' }, { status: 403 });
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
-    const userId = process.env.TELEGRAM_USER_ID || String((identity as any).id);
+    const userId = process.env.TELEGRAM_USER_ID || String(access.identity.id);
     const productId = String(body.productId || '');
     const quantity = Number(body.quantity);
     const productionDate = String(body.productionDate || new Date().toISOString().slice(0, 10));

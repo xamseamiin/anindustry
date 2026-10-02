@@ -3,11 +3,14 @@ import prisma from '@/lib/prisma';
 import crypto from 'crypto';
 import { parseSalesReceiptImageWithAI } from '@/lib/sales-receipt-ai';
 import { storeReceiptImage } from '@/lib/receipt-storage';
+import { requireTelegramPermission } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    const access = await requireTelegramPermission(req.headers.get('x-telegram-init-data') || '', 'addSales');
+    if (!access) return NextResponse.json({ error: 'Rasiidka sales-ka akhrintiisa fasax uma lihid.' }, { status: 403 });
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
     const formData = await req.formData();

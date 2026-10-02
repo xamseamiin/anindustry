@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { requireTelegramPermission } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
-const ADMIN_IDS = new Set(['1836408854', '8230473166']);
 
 async function callTelegram(token: string, method: string, body: FormData) {
     const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', body });
@@ -17,6 +17,8 @@ export async function POST(request: Request) {
         const companyId = process.env.TELEGRAM_COMPANY_ID;
         const token = process.env.TELEGRAM_BOT_TOKEN;
         const form = await request.formData();
+        const access = await requireTelegramPermission(String(form.get('initData') || ''), 'addExpense');
+        if (!access) return NextResponse.json({ error: 'Deposit diiwaangelintiisa fasax uma lihid.' }, { status: 403 });
         const amount = Number(form.get('amount'));
         const accountId = String(form.get('accountId') || '');
         const sourceName = String(form.get('sourceName') || '').trim();
@@ -27,7 +29,6 @@ export async function POST(request: Request) {
         const receipt = form.get('receipt') as File | null;
         const chatId = String(form.get('chatId') || process.env.TELEGRAM_CHAT_ID || '');
         if (!companyId) return NextResponse.json({ error: 'Company configuration is missing.' }, { status: 500 });
-        if (!ADMIN_IDS.has(requesterId)) return NextResponse.json({ error: 'Deposit-ka waxaa diiwaangelin kara maamulka oo keliya.' }, { status: 403 });
         if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ error: 'Geli lacag sax ah.' }, { status: 400 });
         if (!sourceName || !transferId) return NextResponse.json({ error: 'Magaca lacagta laga helay iyo Transfer ID waa qasab.' }, { status: 400 });
         if (!receipt || !receipt.type.startsWith('image/')) return NextResponse.json({ error: 'Sawirka rasiidka waa qasab.' }, { status: 400 });

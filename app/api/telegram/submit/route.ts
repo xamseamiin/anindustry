@@ -3,6 +3,7 @@ import prisma from '@/lib/db';
 import { verifyReceiptImageWithAI } from '@/lib/receipt-ai';
 import { EXPENSE_STATES, makeIdempotencyKey } from '@/lib/financial-workflow';
 import { readReceiptImage, storeReceiptImage } from '@/lib/receipt-storage';
+import { requireTelegramPermission } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
 const MATERIAL_SUBCATEGORIES = ['Spare Parts', 'Raw Materials', 'Packaging', 'Tools & Equipment', 'Other Materials'];
@@ -87,6 +88,8 @@ export async function POST(request: Request) {
         }
 
         const formData = await request.formData();
+        const access = await requireTelegramPermission(String(formData.get('initData') || ''), 'addExpense');
+        if (!access) return NextResponse.json({ error: 'Dalab kharash samayntiisa fasax uma lihid.' }, { status: 403 });
         const type = formData.get('type') as string; // 'SALARY', 'EXPENSE', 'RAW_MATERIAL'
         const accountId = formData.get('accountId') as string;
         const amountInput = formData.get('amount') as string;

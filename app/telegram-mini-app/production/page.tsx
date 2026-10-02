@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Script from 'next/script';
 import { ArrowLeft, CheckCircle2, Factory, Loader2, Users, Plus } from 'lucide-react';
 import MiniAppBottomNav from '../MiniAppBottomNav';
 import ActivityHistory from '../ActivityHistory';
@@ -26,10 +27,25 @@ export default function TelegramProductionPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [accessPermissions, setAccessPermissions] = useState<Record<string, boolean> | null>(null);
+
+  const loadAccess = async () => {
+    const initData = String((window as any).Telegram?.WebApp?.initData || '');
+    if (!initData) return;
+    try {
+      const response = await fetch('/api/telegram/access', { cache: 'no-store', headers: { 'x-telegram-init-data': initData } });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(data.error);
+      const permissions = data.current?.permissions || null;
+      setAccessPermissions(permissions);
+      if (permissions?.addProduction && !permissions?.viewProduction) setShowAdd(true);
+    } catch (error: any) { setMessage(error.message || 'Access-ka lama hubin.'); }
+  };
+  useEffect(() => { const timer = window.setTimeout(() => void loadAccess(), 250); return () => window.clearTimeout(timer); }, []);
 
   useEffect(() => {
     if (!showAdd) return;
-    fetch('/api/telegram/production').then(async r => { const data = await readJson(r); if (!r.ok) throw new Error(data.error); setProducts(data.products || []); setEmployees(data.employees || []); }).catch(e => setMessage(e.message || 'Xogta lama soo qaadin.')).finally(() => setLoading(false));
+    fetch('/api/telegram/production', { headers: { 'x-telegram-init-data': (window as any).Telegram?.WebApp?.initData || '' } }).then(async r => { const data = await readJson(r); if (!r.ok) throw new Error(data.error); setProducts(data.products || []); setEmployees(data.employees || []); }).catch(e => setMessage(e.message || 'Xogta lama soo qaadin.')).finally(() => setLoading(false));
   }, [showAdd]);
 
   const product = products.find(p => p.id === productId);
@@ -51,11 +67,11 @@ export default function TelegramProductionPage() {
     } catch (error: any) { setMessage(error.message || 'Production-ka lama kaydin.'); } finally { setSaving(false); }
   };
 
-  return <main className="min-h-screen bg-[#020617] px-4 py-4 pb-28 text-slate-100"><div className="mx-auto max-w-md space-y-4">
+  return <main className="min-h-screen bg-[#020617] px-4 py-4 pb-28 text-slate-100"><Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" onReady={() => void loadAccess()} /><div className="mx-auto max-w-md space-y-4">
     <header className="flex items-center justify-between rounded-3xl border border-white/15 bg-slate-900/75 p-4"><button onClick={() => window.location.href = '/telegram-mini-app'} className="rounded-full border border-white/20 bg-white/10 p-2"><ArrowLeft size={19} /></button><div className="text-center"><p className="text-xs font-black tracking-wider">AN-INDUSTRY TERMINAL</p><p className="text-[11px] font-bold text-slate-400">Daily Production & Commission</p></div><Factory className="text-violet-300" size={22} /></header>
     {message && <div className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-3 text-xs font-bold text-violet-100">{message}</div>}
-    <div className="flex items-center justify-between gap-3"><div><h1 className="text-xl font-bold">{showAdd ? 'Add Production' : 'Production history'}</h1><p className="mt-1 text-xs text-slate-400">{showAdd ? 'Wax-soo-saarka iyo shaqaalaha.' : 'Dhammaan wax-soo-saarkii la diiwaangeliyey.'}</p></div><button disabled={saving} onClick={() => setShowAdd(value => !value)} className="flex shrink-0 items-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2.5 text-xs font-bold text-cyan-200 disabled:opacity-50">{showAdd ? <ArrowLeft size={15} /> : <Plus size={15} />}{showAdd ? 'History' : 'Add Production'}</button></div>
-    {!showAdd && <ActivityHistory kind="production" />}
+    <div className="flex items-center justify-between gap-3"><div><h1 className="text-xl font-bold">{showAdd ? 'Add Production' : 'Production history'}</h1><p className="mt-1 text-xs text-slate-400">{showAdd ? 'Wax-soo-saarka iyo shaqaalaha.' : 'Dhammaan wax-soo-saarkii la diiwaangeliyey.'}</p></div>{((showAdd && accessPermissions?.viewProduction) || (!showAdd && accessPermissions?.addProduction)) && <button disabled={saving} onClick={() => setShowAdd(value => !value)} className="flex shrink-0 items-center gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2.5 text-xs font-bold text-cyan-200 disabled:opacity-50">{showAdd ? <ArrowLeft size={15} /> : <Plus size={15} />}{showAdd ? 'History' : 'Add Production'}</button>}</div>
+    {!showAdd && accessPermissions?.viewProduction && <ActivityHistory kind="production" />}
     <section hidden={!showAdd} className="space-y-4 rounded-3xl border border-violet-400/30 bg-slate-900/75 p-4">
       <div className="flex items-center justify-between"><h1 className="text-lg font-black">Production-ka Maanta</h1><span className="text-[10px] font-black text-violet-300">{productionDate}</span></div>
       <label className="block text-[10px] font-black uppercase text-slate-400">Taariikh<input type="date" value={productionDate} onChange={e => setProductionDate(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm" /></label>
@@ -68,5 +84,5 @@ export default function TelegramProductionPage() {
       <button onClick={save} disabled={saving || loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 p-3.5 text-xs font-black text-slate-950 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />} Kaydi Production-ka</button>
       <p className="text-center text-[9px] font-bold leading-relaxed text-slate-500">Kaydintu waxay kordhinaysaa finished stock, waxay jaraysaa BOM raw materials, waxay diiwaangelinaysaa attendance-ka, commission-kana waxay gelinaysaa production cost. Account lacag lagama jaro ilaa commission-ka dhab ahaan la bixiyo.</p>
     </section>
-  </div><MiniAppBottomNav active="PRODUCTION" /></main>;
+  </div><MiniAppBottomNav active="PRODUCTION" permissions={accessPermissions} /></main>;
 }

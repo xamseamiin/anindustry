@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import prisma from '@/lib/db';
-import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
+import { requireTelegramPermission } from '@/lib/telegram-access';
 import { isSalaryCategory, payrollDetails, groupPayroll } from '@/lib/payroll-report';
 
 export const dynamic = 'force-dynamic';
@@ -31,10 +31,10 @@ async function buildReport(request: Request, body?: any) {
   const input = body || Object.fromEntries(url.searchParams.entries());
   const companyId = process.env.TELEGRAM_COMPANY_ID || '';
   if (!companyId) throw new Error('Company is not configured.');
-  const identity = verifyTelegramInitData(input.initData || '');
-  const isLocal = process.env.APP_ENV === 'local' && process.env.NODE_ENV !== 'production';
-  if (!identity && !isLocal) throw new Error('Fadlan report-ka ka fur Telegram si magaca diyaariyaha loo xaqiijiyo.');
-  const isAdmin = isLocal || (!!identity && isTelegramFinancialAdmin(identity));
+  const access = await requireTelegramPermission(input.initData || '', 'viewReports');
+  if (!access) throw new Error('Report-kan fasax uma lihid.');
+  const identity = access.identity;
+  const isAdmin = true;
   const reportType = String(input.reportType || 'MONTHLY').toUpperCase();
   const { from, to } = periodBounds(reportType, input.startDate, input.endDate);
   const employeeIds = (Array.isArray(input.employeeIds) ? input.employeeIds : String(input.employeeIds || '').split(',')).map(String).filter(Boolean);

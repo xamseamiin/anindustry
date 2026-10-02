@@ -1,14 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
+import { requireTelegramPermission } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
-
-function allowed(initData: string) {
-  const identity = verifyTelegramInitData(initData || '');
-  if (process.env.APP_ENV === 'local') return identity || { id: process.env.TELEGRAM_USER_ID || 'local-admin' };
-  return identity && isTelegramFinancialAdmin(identity as any) ? identity : null;
-}
 
 export async function GET() {
   try {
@@ -24,7 +18,8 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    if (!allowed(String(body.initData || ''))) return NextResponse.json({ error: 'Telegram admin access is required.' }, { status: 403 });
+    const access = await requireTelegramPermission(String(body.initData || ''), 'addSales');
+    if (!access) return NextResponse.json({ error: 'Customer samayntiisa fasax uma lihid.' }, { status: 403 });
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     const userId = process.env.TELEGRAM_USER_ID || 'telegram-mini-app';
     const name = String(body.name || '').trim();

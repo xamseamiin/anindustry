@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { isTelegramFinancialAdmin, verifyTelegramInitData } from '@/lib/telegram-admin';
+import { requireTelegramPermission } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,10 +16,8 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const initData = url.searchParams.get('initData') || '';
-    const identity = verifyTelegramInitData(initData) || (process.env.APP_ENV === 'local' ? { id: process.env.TELEGRAM_USER_ID || 'local-admin' } : null);
-    if (!identity || (process.env.APP_ENV !== 'local' && !isTelegramFinancialAdmin(identity as any))) {
-      return NextResponse.json({ error: 'Admin access is required.' }, { status: 403 });
-    }
+    const access = await requireTelegramPermission(initData, 'viewDashboard');
+    if (!access) return NextResponse.json({ error: 'Dashboard-kan fasax uma lihid.' }, { status: 403 });
 
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
