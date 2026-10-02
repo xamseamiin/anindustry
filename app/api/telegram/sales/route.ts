@@ -44,7 +44,7 @@ export async function GET(request: Request) {
     }
     if (!await requireTelegramPermission(request.headers.get('x-telegram-init-data') || '', 'addSales')) return NextResponse.json({ error: 'Add Sale fasax uma lihid.' }, { status: 403 });
     const [products, customers, accounts] = await Promise.all([
-      prisma.factoryMaterial.findMany({ where: { companyId, inStock: { gt: 0 } }, select: { id: true, name: true, sku: true, inStock: true, sellingPrice: true, unit: true }, orderBy: { name: 'asc' }, take: 250 }),
+      prisma.factoryMaterial.findMany({ where: { companyId }, select: { id: true, name: true, sku: true, inStock: true, sellingPrice: true, unit: true }, orderBy: { name: 'asc' }, take: 250 }),
       prisma.customer.findMany({ where: { companyId }, select: { id: true, name: true, phone: true, phoneNumber: true }, orderBy: { name: 'asc' }, take: 250 }),
       prisma.account.findMany({ where: { companyId, isActive: true }, select: { id: true, name: true, balance: true, currency: true }, orderBy: { name: 'asc' } })
     ]);
@@ -120,6 +120,9 @@ export async function POST(req: Request) {
       }
       let paidAmount = requestedPaidAmount;
       let saleAccountId = body.accountId ? String(body.accountId) : null;
+      if (!saleAccountId) throw new Error('Dooro account-ka lacagta lagu shubay.');
+      const selectedAccount = await tx.account.findFirst({ where: { id: saleAccountId, companyId, isActive: true }, select: { id: true } });
+      if (!selectedAccount) throw new Error('Account-ka la doortay lama helin ama ma active aha.');
       let resolvedAllocations: Array<{ incomingPaymentId: string; amount: number; accountId: string; originalAmount: number; originalAllocated: number }> = [];
       if (allocationInputs.length) {
         const incomingPayments = await tx.incomingPayment.findMany({ where: { companyId, id: { in: allocationInputs.map(payment => payment.incomingPaymentId) }, status: { in: ['UNMATCHED', 'PARTIALLY_ALLOCATED'] } }, select: { id: true, accountId: true, amount: true, allocatedAmount: true } });
@@ -136,9 +139,6 @@ export async function POST(req: Request) {
         if (paidAmount > subtotal + 0.001) throw new Error('Lacagta la meeleynayo kama badnaan karto total-ka sale-ka.');
         const accountIds = [...new Set(resolvedAllocations.map(payment => payment.accountId))];
         saleAccountId = accountIds.length === 1 ? accountIds[0] : null;
-      } else if (paidAmount > 0 && saleAccountId) {
-        const account = await tx.account.findFirst({ where: { id: saleAccountId, companyId, isActive: true }, select: { id: true } });
-        if (!account) throw new Error('Account-ka lama helin.');
       }
       const saleNotes = `${String(body.note || 'Telegram Mini App sale')}\n${body.receiptHash ? `[ReceiptHash:${String(body.receiptHash)}]` : ''}`.trim();
       let remainingPaid = paidAmount;
