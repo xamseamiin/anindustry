@@ -11,7 +11,7 @@ import {
     FileText, User, Tag, Truck, Settings, ShoppingBag, 
     Award, ArrowRight, Layers, Factory, Package,
     Hash, Banknote, Calendar, ClipboardList, Wrench, Phone,
-    Mic, MicOff, PlusCircle, Trash2, Pencil, AlertTriangle, ChevronLeft, Bell,
+    Mic, MicOff, PlusCircle, UserPlus, Plus, Trash2, Pencil, AlertTriangle, ChevronLeft, Bell,
     Home, ArrowUpRight, ArrowDownLeft, Search, Filter, Share2, ExternalLink, Download, Upload, UserCheck, ShieldCheck, BarChart3, PieChart,
     Eye, EyeOff, Lock, Smartphone, SlidersHorizontal, LogOut, Camera, FileSpreadsheet
 } from 'lucide-react';
@@ -276,10 +276,65 @@ export default function TelegramMiniAppPage() {
         normalizedRequesterName.includes('abdehakim mumin');
     const effectiveIsManager = profileData?.permissions?.approve ?? isManager;
 
-    // Tab 1: Salary Fields
+    // Tab 1: Salary Fields & New Employee Modal State
     const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
     const [isNewEmployee, setIsNewEmployee] = useState(false);
     const [newEmployeeName, setNewEmployeeName] = useState('');
+    const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
+    const [newEmpFullName, setNewEmpFullName] = useState('');
+    const [newEmpPhone, setNewEmpPhone] = useState('');
+    const [newEmpRole, setNewEmpRole] = useState('Worker');
+    const [newEmpSalary, setNewEmpSalary] = useState('');
+    const [addingEmployee, setAddingEmployee] = useState(false);
+
+    const handleAddNewEmployee = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newEmpFullName.trim()) return;
+        setAddingEmployee(true);
+        try {
+            const res = await fetch('/api/telegram/employees', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fullName: newEmpFullName,
+                    phone: newEmpPhone,
+                    role: newEmpRole,
+                    monthlySalary: newEmpSalary
+                })
+            });
+            const data = await res.json();
+            if (data.success && data.employee) {
+                triggerHaptic('success');
+                setEmployees(prev => [data.employee, ...prev]);
+                setSelectedEmployeeId(data.employee.id);
+                if (data.employee.fullName) setRecipientName(data.employee.fullName);
+                if (data.employee.phone) setPaymentPhone(data.employee.phone);
+                setShowAddEmployeeModal(false);
+                setNewEmpFullName('');
+                setNewEmpPhone('');
+                setNewEmpSalary('');
+                setAlertModal({
+                    isOpen: true,
+                    type: 'success',
+                    title: 'Shaqaale Cusub Waaladiiwaangeliyay',
+                    message: `${data.employee.fullName} waa lagu kordhiyay shaqaalaha oo si otomaatig ah ayaa loo doortay.`
+                });
+            } else {
+                triggerHaptic('error');
+                setAlertModal({
+                    isOpen: true,
+                    type: 'error',
+                    title: 'Khadad',
+                    message: data.error || 'Waa la awoodi waayay in shaqaalaha lagu kordhiyo.'
+                });
+            }
+        } catch (err) {
+            console.error('Error adding employee:', err);
+            triggerHaptic('error');
+        } finally {
+            setAddingEmployee(false);
+        }
+    };
 
     // Tab 2: Expense Fields (dynamic based on selected key)
     const [selectedCategoryId, setSelectedCategoryId] = useState('');
@@ -2964,19 +3019,41 @@ export default function TelegramMiniAppPage() {
                         {/* --- TAB 1: SALARY --- */}
                         {isSalary && (
                             <div className="flex flex-col gap-2 animate-fade-in">
-                                <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
-                                    <User size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Dooro Shaqaalaha
-                                </label>
-                                <select required value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                                    className="w-full p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
-                                >
-                                    <option value="" className="bg-slate-950">Dooro Shaqaale...</option>
-                                    {employees.map(e => (
-                                        <option key={e.id} value={e.id} className="bg-slate-950">
-                                            {e.fullName} ({e.role})
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-black text-[var(--tg-theme-hint-color,#94a3b8)] uppercase tracking-wider flex items-center gap-1.5">
+                                        <User size={11} className="text-[var(--tg-theme-button-color,#3b82f6)]" /> Dooro Shaqaalaha
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => { triggerHaptic('light'); setShowAddEmployeeModal(true); }}
+                                        className="px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/30 text-emerald-300 rounded-lg text-[10px] font-black flex items-center gap-1 active:scale-95 transition-all shadow-sm"
+                                        title="Diiwaangeli Shaqaale Cusub"
+                                    >
+                                        <UserPlus size={12} />
+                                        <span>+ Shaqaale Cusub</span>
+                                    </button>
+                                </div>
+                                <div className="flex gap-2">
+                                    <select required value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                                        className="flex-1 p-3 bg-[var(--tg-theme-bg-color,rgba(0,0,0,0.2))] text-[var(--tg-theme-text-color,#ffffff)] border border-white/10 rounded-xl text-sm font-bold outline-none"
+                                    >
+                                        <option value="" className="bg-slate-950">Dooro Shaqaale...</option>
+                                        {employees.map(e => (
+                                            <option key={e.id} value={e.id} className="bg-slate-950">
+                                                {e.fullName} ({e.role})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={() => { triggerHaptic('light'); setShowAddEmployeeModal(true); }}
+                                        className="px-3 py-3 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/30 text-emerald-300 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap active:scale-95 transition-all shadow-sm"
+                                        title="Diiwaangeli Shaqaale Cusub"
+                                    >
+                                        <Plus size={15} />
+                                        <span>Cusub</span>
+                                    </button>
+                                </div>
                                 {selectedEmployee && (
                                     <div className="p-3 bg-white/[0.01] border border-white/5 rounded-xl flex flex-col gap-2 mt-1.5 shadow-inner text-xs">
                                         <div className="flex justify-between font-bold">
@@ -4022,14 +4099,98 @@ export default function TelegramMiniAppPage() {
                 </div>
             )}
 
-                {/* Custom Glassmorphism Alert Modal */}
-                <CustomAlertModal 
-                    isOpen={alertModal.isOpen} 
-                    onClose={() => setAlertModal(prev => ({ ...prev, isOpen: false }))} 
-                    type={alertModal.type} 
-                    title={alertModal.title} 
-                    message={alertModal.message} 
-                />
+                {/* Add New Employee Modal */}
+                {showAddEmployeeModal && (
+                    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+                        <div className="w-full max-w-md bg-slate-900 border border-emerald-500/30 rounded-3xl p-5 shadow-2xl flex flex-col gap-4">
+                            <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                                <div className="flex items-center gap-2 text-emerald-400">
+                                    <UserPlus size={18} />
+                                    <h3 className="text-sm font-black text-white uppercase tracking-wider">Diiwaangeli Shaqaale Cusub</h3>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAddEmployeeModal(false)}
+                                    className="p-1.5 rounded-full bg-white/10 text-slate-400 hover:text-white transition-all active:scale-95"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleAddNewEmployee} className="flex flex-col gap-3">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Magaca Buuxa (Full Name) *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={newEmpFullName}
+                                        onChange={(e) => setNewEmpFullName(e.target.value)}
+                                        placeholder="tusaale: Maxamed Cali Xasan"
+                                        className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl text-xs font-bold outline-none focus:border-emerald-400"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Telefoonka (Phone)</label>
+                                        <input
+                                            type="tel"
+                                            value={newEmpPhone}
+                                            onChange={(e) => setNewEmpPhone(e.target.value)}
+                                            placeholder="09... / 07..."
+                                            className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl text-xs font-bold outline-none focus:border-emerald-400"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Derajada (Role)</label>
+                                        <select
+                                            value={newEmpRole}
+                                            onChange={(e) => setNewEmpRole(e.target.value)}
+                                            className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl text-xs font-bold outline-none focus:border-emerald-400"
+                                        >
+                                            <option value="Worker" className="bg-slate-950">Worker (Shaqaale)</option>
+                                            <option value="Operator" className="bg-slate-950">Operator</option>
+                                            <option value="Technician" className="bg-slate-950">Technician</option>
+                                            <option value="Driver" className="bg-slate-950">Driver (Waliye)</option>
+                                            <option value="Manager" className="bg-slate-950">Manager</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Mushaarka Bishii (Monthly Salary ETB)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        value={newEmpSalary}
+                                        onChange={(e) => setNewEmpSalary(e.target.value)}
+                                        placeholder="Geli lacagta ETB..."
+                                        className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl text-xs font-bold outline-none focus:border-emerald-400"
+                                    />
+                                </div>
+
+                                <div className="flex gap-2 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAddEmployeeModal(false)}
+                                        className="flex-1 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs active:scale-95 transition-all"
+                                    >
+                                        Kansal
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={addingEmployee}
+                                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-emerald-600/30"
+                                    >
+                                        {addingEmployee ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+                                        <span>Keydi Shaqaalaha</span>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
 
                 {/* iOS 26 Glass Floating Bottom Dock Navigation */}
                 <div className="fixed bottom-4 left-2 right-2 z-40 mx-auto grid max-w-lg grid-cols-7 items-center rounded-full border border-white/20 bg-slate-950/85 px-1.5 py-1.5 shadow-[0_0_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.3)] backdrop-blur-2xl">
