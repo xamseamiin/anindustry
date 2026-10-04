@@ -258,3 +258,154 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
         return NextResponse.json({ error: 'Failed to delete sale' }, { status: 500 });
     }
 }
+
+// PUT /api/manufacturing/sales/[id] - Update existing sale
+export async function PUT(req: Request, { params }: { params: { id: string } }) {
+    try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { companyId: true } });
+        if (!user?.companyId) return NextResponse.json({ error: 'No company found' }, { status: 400 });
+
+        const { id } = params;
+        const body = await req.json();
+        const { customerId, items, date, accountId, paymentMethod = 'CASH', paidAmount, discount = 0 } = body;
+
+        const sale = await prisma.sale.findFirst({
+            where: { companyId: user.companyId, OR: [{ id }, { invoiceNumber: id }] },
+            include: { items: true }
+        });
+
+        if (!sale) return NextResponse.json({ error: 'Sale not found' }, { status: 404 });
+
+        const closedPeriod = await prisma.financialPeriod.findFirst({
+            where: {
+                companyId: user.companyId,
+                isClosed: true,
+                startDate: { lte: sale.createdAt },
+                endDate: { gte: sale.createdAt }
+            }
+        });
+
+        if (closedPeriod) {
+            return NextResponse.json({ error: `Muddada maaliyadeed ee iibkan ku jiro waa xiran tahay.` }, { status: 403 });
+        }
+
+        const saleDate = date ? new Date(date) : sale.createdAt;
+        const normalizedItems = (items || []).map((item: any) => ({
+            productId: String(item.productId || ''),
+            productName: String(item.productName || '').trim(),
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unitPrice),
+            total: Number(item.quantity) * Number(item.unitPrice)
+        }));
+
+        const subtotal = normalizedItems.reduce((sum: number, item: any) => sum + item.total, 0);
+        const total = Math.max(0, subtotal - Number(discount || 0));
+        const normalizedPaidAmount = Math.min(total, Math.max(0, Number(paidAmount || 0)));
+        const paymentStatus = normalizedPaidAmount >= total ? 'Paid' : normalizedPaidAmount > 0 ? 'Partial' : 'Credit';
+
+        const result = await prisma.$transaction(async (tx) => {
+            // Restore previous stock
+            for (const item of sale.items) {
+                await tx.factoryMaterial.update({
+                    where: { id: item.productId },
+                    data: { inStock: { increment: item.quantity } }
+                });
+            }
+
+            // Restore previous account balance / transaction
+            const oldTx = await tx.transaction.findFirst({
+                where: {
+                    companyId: user.companyId,
+                    type: 'INCOME',
+                    description: { in: [`Iibka ${sale.invoiceNumber}`, `Iibka #${sale.invoiceNumber}`] }
+                }
+            });
+
+            if (oldTx && oldTx.accountId) {
+                await tx.account.update({
+                    where: { id: oldTx.accountId },
+                    data: { balance: { decrement: Number(oldTx.amount) } }
+                });
+                await tx.transaction.delete({ where: { id: oldTx.id } });
+            }
+
+            // Delete old items
+            await tx.saleItem.deleteMany({ where: { saleId: sale.id } });
+
+            // Decrement new stock
+            for (const item of normalizedItems) {
+                await tx.factoryMaterial.update({
+                    where: { id: item.productId },
+                    data: { inStock: { decrement: item.quantity } }
+                });
+            }
+
+            // Update Sale record
+            const updatedSale = await tx.sale.update({
+                where: { id: sale.id },
+                data: {
+                    customerId: customerId || null,
+                    accountId: paymentMethod === 'CREDIT' ? null : accountId,
+                    paymentMethod,
+                    subtotal,
+                    total,
+                    paidAmount: paymentMethod === 'CASH' || paymentMethod === 'CARD' ? total : normalizedPaidAmount,
+                    paymentStatus,
+                    status: 'Completed',
+                    createdAt: saleDate,
+                    items: {
+                        create: normalizedItems.map(item => ({
+                            productId: item.productId,
+                            productName: item.productName,
+                            quantity: item.quantity,
+                            unitPrice: item.unitPrice,
+                            total: item.total
+                        }))
+                    }
+                },
+                include: { items: true, customer: true, account: true }
+            });
+
+            // Create new transaction if paid
+            if (accountId && normalizedPaidAmount > 0 && paymentMethod !== 'CREDIT') {
+                await tx.account.update({
+                    where: { id: accountId },
+                    data: { balance: { increment: normalizedPaidAmount } }
+                });
+                await tx.transaction.create({
+                    data: {
+                        description: `Iibka ${sale.invoiceNumber}`,
+                        amount: normalizedPaidAmount,
+                        type: 'INCOME',
+                        accountId,
+                        companyId: user.companyId,
+                        userId: session.user.id,
+                        customerId: customerId || null,
+                        transactionDate: saleDate,
+                        category: paymentStatus === 'Partial' ? 'Sales Deposit / Dayn Qayb Bixin' : 'Sales Income',
+                        note: `Sale updated through ${paymentMethod}`
+                    }
+                });
+            }
+
+            return updatedSale;
+        });
+
+        await logAudit({
+            action: 'UPDATE_SALE',
+            entity: 'Sale',
+            entityId: sale.id,
+            details: `Updated sale ${sale.invoiceNumber} total ${result.total} ETB`,
+            userId: session.user.id,
+            companyId: user.companyId,
+            userAgent: req.headers.get('user-agent') || undefined
+        });
+
+        return NextResponse.json({ success: true, sale: result });
+    } catch (error: any) {
+        console.error('Error updating sale:', error);
+        return NextResponse.json({ error: error.message || 'Failed to update sale' }, { status: 500 });
+    }
+}

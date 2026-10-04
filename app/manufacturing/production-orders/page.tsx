@@ -1,3 +1,4 @@
+// app/manufacturing/production-orders/page.tsx - AN-Industory Production Terminal (Glassmorphism Live + Edit & Delete)
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -5,7 +6,8 @@ import Link from 'next/link';
 import {
     Plus, Search, Factory, Filter, Calendar, FileText, Loader2,
     CheckCircle2, Clock, AlertTriangle, ArrowRight, ArrowLeft,
-    TrendingUp, Boxes, Zap, RefreshCcw, MoreVertical, ArrowUpRight
+    TrendingUp, Boxes, Zap, RefreshCcw, MoreVertical, ArrowUpRight,
+    Pencil, Trash2, X
 } from 'lucide-react';
 import Toast from '@/components/common/Toast';
 
@@ -14,6 +16,26 @@ export default function ProductionOrdersPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+    // Edit Modal State
+    const [editingOrder, setEditingOrder] = useState<any | null>(null);
+    const [editProductName, setEditProductName] = useState('');
+    const [editQuantity, setEditQuantity] = useState<number>(1000);
+    const [editStatus, setEditStatus] = useState('COMPLETED');
+    const [editPriority, setEditPriority] = useState('MEDIUM');
+    const [editStartDate, setEditStartDate] = useState('');
+    const [editDueDate, setEditDueDate] = useState('');
+    const [editNotes, setEditNotes] = useState('');
+    const [savingEdit, setSavingEdit] = useState(false);
+
+    // Delete Modal State
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
 
     const fetchOrders = async () => {
         setLoading(true);
@@ -38,7 +60,73 @@ export default function ProductionOrdersPage() {
     const stats = {
         total: orders.length,
         completed: orders.filter(o => o.status === 'COMPLETED').length,
-        pending: orders.filter(o => o.status === 'PENDING' || o.status === 'IN_PROGRESS').length
+        pending: orders.filter(o => o.status === 'PENDING' || o.status === 'IN_PROGRESS' || o.status === 'PLANNED').length
+    };
+
+    const handleDeleteOrder = async (id: string) => {
+        setIsDeleting(true);
+        try {
+            const res = await fetch(`/api/manufacturing/production-orders/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (res.ok) {
+                showNotification(data.message || 'Production run deleted successfully.', 'success');
+                setDeletingId(null);
+                fetchOrders();
+            } else {
+                showNotification(data.message || 'Ma awoodin in production run-ka la tirtiro.', 'error');
+            }
+        } catch (e) {
+            console.error('Delete order error:', e);
+            showNotification('Cilad ayaa dhacday marka production run-ka la tirtirayay.', 'error');
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const openEditModal = (order: any) => {
+        setEditingOrder(order);
+        setEditProductName(order.productName || '');
+        setEditQuantity(order.quantity || 1000);
+        setEditStatus(order.status || 'COMPLETED');
+        setEditPriority(order.priority || 'MEDIUM');
+        setEditStartDate(order.startDate ? new Date(order.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+        setEditDueDate(order.dueDate ? new Date(order.dueDate).toISOString().split('T')[0] : '');
+        setEditNotes(order.notes || '');
+    };
+
+    const handleSaveEdit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingOrder) return;
+        setSavingEdit(true);
+
+        try {
+            const res = await fetch(`/api/manufacturing/production-orders/${editingOrder.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    productName: editProductName,
+                    quantity: editQuantity,
+                    status: editStatus,
+                    priority: editPriority,
+                    startDate: editStartDate,
+                    dueDate: editDueDate || null,
+                    notes: editNotes
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showNotification(data.message || 'Production order updated successfully.', 'success');
+                setEditingOrder(null);
+                fetchOrders();
+            } else {
+                showNotification(data.message || 'Cusboonaysiintu ma kaydsamin.', 'error');
+            }
+        } catch (e) {
+            console.error('Update production order error:', e);
+            showNotification('Cilad ayaa dhacday marka order-ka la cusboonaysiinayay.', 'error');
+        } finally {
+            setSavingEdit(false);
+        }
     };
 
     return (
@@ -140,7 +228,7 @@ export default function ProductionOrdersPage() {
                                     <th className="p-6">Final SKU</th>
                                     <th className="p-6 text-center">Batch Volume</th>
                                     <th className="p-6">Operational Status</th>
-                                    <th className="p-6 text-right pr-10">Action</th>
+                                    <th className="p-6 text-right pr-10">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50/50">
@@ -178,10 +266,28 @@ export default function ProductionOrdersPage() {
                                             </span>
                                         </td>
                                         <td className="p-6 text-right pr-10">
-                                            <Link href={`/manufacturing/production-orders/${order.id}`} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-900 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all group-hover:translate-x-1">
-                                                Analysis
-                                                <ArrowUpRight size={14} />
-                                            </Link>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <Link href={`/manufacturing/production-orders/${order.id}`} className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 text-slate-900 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-900 hover:text-white transition-all">
+                                                    Analysis
+                                                    <ArrowUpRight size={13} />
+                                                </Link>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openEditModal(order)}
+                                                    className="p-2.5 bg-blue-500/10 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm active:scale-95"
+                                                    title="Wax ka beddel production-ka"
+                                                >
+                                                    <Pencil size={15} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDeletingId(order.id)}
+                                                    className="p-2.5 bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-sm active:scale-95"
+                                                    title="Tirtir production-ka"
+                                                >
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -194,6 +300,154 @@ export default function ProductionOrdersPage() {
                     Real-time Production Ledger • AN-Industory Manufacturing
                 </div>
             </div>
+
+            {/* EDIT PRODUCTION ORDER MODAL */}
+            {editingOrder && (
+                <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-slate-900 border border-blue-500/30 text-white rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-5">
+                        <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400">
+                                    <Pencil size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-black uppercase tracking-wider text-white">Wax ka beddel Production #{editingOrder.orderNumber}</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold">Beddel alaabta, tirada, status-ka ama taariikhda</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setEditingOrder(null)} className="p-2 rounded-xl bg-white/10 text-slate-400 hover:text-white">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveEdit} className="space-y-4 text-xs font-bold">
+                            <div>
+                                <label className="block text-[10px] uppercase font-black text-slate-400 mb-1">Magaca Alaabta (Product Name) *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={editProductName}
+                                    onChange={(e) => setEditProductName(e.target.value)}
+                                    className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl outline-none focus:border-blue-400"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] uppercase font-black text-slate-400 mb-1">Tirada (Batch Volume) *</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        required
+                                        value={editQuantity}
+                                        onChange={(e) => setEditQuantity(parseInt(e.target.value) || 0)}
+                                        className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl outline-none focus:border-blue-400"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase font-black text-slate-400 mb-1">Status-ka Run-ka</label>
+                                    <select
+                                        value={editStatus}
+                                        onChange={(e) => setEditStatus(e.target.value)}
+                                        className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl outline-none focus:border-blue-400"
+                                    >
+                                        <option value="COMPLETED" className="bg-slate-950">COMPLETED (Dhammaystiran)</option>
+                                        <option value="IN_PROGRESS" className="bg-slate-950">IN_PROGRESS (Socda)</option>
+                                        <option value="PLANNED" className="bg-slate-950">PLANNED (Qorshaysan)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] uppercase font-black text-slate-400 mb-1">Taariikhda Billaabashada (Start Date) *</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={editStartDate}
+                                        onChange={(e) => setEditStartDate(e.target.value)}
+                                        className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl outline-none focus:border-blue-400"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase font-black text-slate-400 mb-1">Priority (Ahmiyadda)</label>
+                                    <select
+                                        value={editPriority}
+                                        onChange={(e) => setEditPriority(e.target.value)}
+                                        className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl outline-none focus:border-blue-400"
+                                    >
+                                        <option value="LOW" className="bg-slate-950">LOW</option>
+                                        <option value="MEDIUM" className="bg-slate-950">MEDIUM</option>
+                                        <option value="HIGH" className="bg-slate-950">HIGH</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] uppercase font-black text-slate-400 mb-1">Faahfaahin / Notes</label>
+                                <textarea
+                                    value={editNotes}
+                                    onChange={(e) => setEditNotes(e.target.value)}
+                                    rows={2}
+                                    placeholder="Faahfaahin dheeraad ah..."
+                                    className="w-full p-3 bg-slate-950 text-white border border-white/15 rounded-xl outline-none focus:border-blue-400"
+                                />
+                            </div>
+
+                            <div className="flex gap-3 pt-3 border-t border-white/10">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingOrder(null)}
+                                    className="flex-1 py-3.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs active:scale-95 transition-all"
+                                >
+                                    Kansal
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingEdit}
+                                    className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-600/30"
+                                >
+                                    {savingEdit ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                                    <span>Kaydi Isbeddelada</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* DELETE PRODUCTION CONFIRMATION MODAL */}
+            {deletingId && (
+                <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-slate-900 border border-rose-500/30 text-white rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-center">
+                        <div className="p-4 rounded-full bg-rose-500/20 text-rose-400 w-fit mx-auto border border-rose-500/30">
+                            <AlertTriangle size={32} />
+                        </div>
+                        <h3 className="text-base font-black uppercase tracking-wider text-white">Ma ziido run baa in aad tirtirto Production Run-kan?</h3>
+                        <p className="text-xs text-slate-300 font-medium leading-relaxed">
+                            Markaad tirtirto amarkan warshadda, meesha uu ku jiro log-gu waa la safaynayaa.
+                        </p>
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setDeletingId(null)}
+                                className="flex-1 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs active:scale-95 transition-all"
+                            >
+                                Jooji
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => handleDeleteOrder(deletingId)}
+                                className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-rose-600/30"
+                            >
+                                {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                <span>Oo Tirtir</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         </div>
