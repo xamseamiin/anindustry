@@ -151,28 +151,27 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
               <p className="break-words text-sm font-bold text-slate-100">{kind === 'sales' ? row.customer?.name || 'Walk-in customer' : row.productName}</p>
               <p className="mt-1 text-[11px] text-slate-400">{row.invoiceNumber || row.orderNumber}</p>
             </div>
-            <div className="flex flex-col items-end gap-1">
-              <span className="shrink-0 text-right text-sm font-semibold text-cyan-200">{kind === 'sales' ? `${money(row.total)} ${row.currency}` : `${money(row.quantity)} ${row.product?.unit || 'pcs'}`}</span>
-              {/* Action Buttons: Edit & Delete */}
-              <div className="flex items-center gap-1.5 pt-1">
-                <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-1.5 text-cyan-300 hover:bg-cyan-500/20" title="Edit">
-                  <Pencil size={13} />
-                </button>
-                <button type="button" onClick={(e) => { e.stopPropagation(); setDeletingRow(row); }} className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-1.5 text-rose-300 hover:bg-rose-500/20" title="Delete">
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            </div>
+            <span className="shrink-0 text-right text-sm font-semibold text-cyan-200">{kind === 'sales' ? `${money(row.total)} ${row.currency}` : `${money(row.quantity)} ${row.product?.unit || 'pcs'}`}</span>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 text-[10px]">
             <span className="text-slate-400">{new Date(row.startDate || row.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short', year: 'numeric' })}</span>
             <span className="rounded-md bg-white/5 px-2 py-1 text-slate-300">{row.paymentStatus || row.status}</span>
-            <span className="text-slate-500 group-open:hidden">View details ↓</span>
+            <span className="text-cyan-400 font-bold group-open:hidden">View details & actions ↓</span>
           </div>
         </summary>
 
-        <div className="mt-3 space-y-2 border-t border-slate-700/60 pt-3 text-xs text-slate-300">
+        <div className="mt-3 space-y-3 border-t border-slate-700/60 pt-3 text-xs text-slate-300">
           {kind === 'sales' ? <>{row.items?.map((item: any, index: number) => <div key={index} className="flex justify-between gap-3"><span>{item.productName} · {item.quantity} × {money(item.unitPrice)}</span><span>{money(item.total)}</span></div>)}<p className="pt-2 text-emerald-300">Paid: {money(row.paidAmount)} {row.currency}</p><p>Balance: {money(Math.max(0, row.total - row.paidAmount))} {row.currency}</p><p className="text-slate-400">Account: {row.account?.name || '—'} · {row.status}</p></> : <><p>Status: {row.status}</p><p className="text-slate-400">Shaqaalaha / commission rates</p>{row.workOrders?.length ? row.workOrders.map((worker: any, index: number) => <div key={index} className="flex justify-between gap-3"><span>{worker.assignedTo?.fullName || 'Unassigned'}</span><span>{worker.productionRate}%</span></div>) : <p>Shaqaale laguma darin.</p>}</>}
+
+          {/* Action Buttons: Edit & Delete placed inside details */}
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+            <button type="button" onClick={() => openEdit(row)} className="flex items-center gap-1.5 rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3.5 py-2 text-xs font-bold text-cyan-200 active:scale-95" title="Edit">
+              <Pencil size={14} /> Edit {kind === 'sales' ? 'Sale' : 'Order'}
+            </button>
+            <button type="button" onClick={() => setDeletingRow(row)} className="flex items-center gap-1.5 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3.5 py-2 text-xs font-bold text-rose-200 active:scale-95" title="Delete">
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
         </div>
       </details>)}
 
