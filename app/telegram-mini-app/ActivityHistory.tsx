@@ -163,13 +163,25 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
         <div className="mt-3 space-y-3 border-t border-slate-700/60 pt-3 text-xs text-slate-300">
           {kind === 'sales' ? <>{row.items?.map((item: any, index: number) => <div key={index} className="flex justify-between gap-3"><span>{item.productName} · {item.quantity} × {money(item.unitPrice)}</span><span>{money(item.total)}</span></div>)}<p className="pt-2 text-emerald-300">Paid: {money(row.paidAmount)} {row.currency}</p><p>Balance: {money(Math.max(0, row.total - row.paidAmount))} {row.currency}</p><p className="text-slate-400">Account: {row.account?.name || '—'} · {row.status}</p></> : <><p>Status: {row.status}</p><p className="text-slate-400">Shaqaalaha / commission rates</p>{row.workOrders?.length ? row.workOrders.map((worker: any, index: number) => <div key={index} className="flex justify-between gap-3"><span>{worker.assignedTo?.fullName || 'Unassigned'}</span><span>{worker.productionRate}%</span></div>) : <p>Shaqaale laguma darin.</p>}</>}
 
-          {/* Action Buttons: Edit & Delete placed inside details */}
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-            <button type="button" onClick={() => openEdit(row)} className="flex items-center gap-1.5 rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3.5 py-2 text-xs font-bold text-cyan-200 active:scale-95" title="Edit">
-              <Pencil size={14} /> Edit {kind === 'sales' ? 'Sale' : 'Order'}
+          {/* Ultra-Modern Action Buttons: Edit & Delete */}
+          <div className="flex items-center justify-end gap-2.5 pt-3 mt-1 border-t border-slate-800/80">
+            <button
+              type="button"
+              onClick={() => openEdit(row)}
+              className="group/btn relative inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-cyan-400/30 bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-indigo-500/15 px-4 py-1.5 text-[11px] font-black uppercase tracking-wider text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.12)] backdrop-blur-md transition-all duration-300 hover:border-cyan-400/60 hover:bg-cyan-500/25 hover:shadow-[0_0_20px_rgba(6,182,212,0.25)] active:scale-95"
+              title="Edit"
+            >
+              <Pencil size={12} className="text-cyan-300 transition-transform duration-300 group-hover/btn:-rotate-12" />
+              <span>Edit</span>
             </button>
-            <button type="button" onClick={() => setDeletingRow(row)} className="flex items-center gap-1.5 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3.5 py-2 text-xs font-bold text-rose-200 active:scale-95" title="Delete">
-              <Trash2 size={14} /> Delete
+            <button
+              type="button"
+              onClick={() => setDeletingRow(row)}
+              className="group/btn relative inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-rose-500/30 bg-gradient-to-r from-rose-500/15 via-pink-500/10 to-red-500/15 px-4 py-1.5 text-[11px] font-black uppercase tracking-wider text-rose-300 shadow-[0_0_15px_rgba(244,63,94,0.12)] backdrop-blur-md transition-all duration-300 hover:border-rose-400/60 hover:bg-rose-500/25 hover:shadow-[0_0_20px_rgba(244,63,94,0.25)] active:scale-95"
+              title="Delete"
+            >
+              <Trash2 size={12} className="text-rose-300 transition-transform duration-300 group-hover/btn:scale-110" />
+              <span>Delete</span>
             </button>
           </div>
         </div>
@@ -178,26 +190,31 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
       {total > 25 && <div className="flex items-center justify-between pt-2 text-xs"><button disabled={page <= 1} onClick={() => setPage(value => value - 1)} className="flex items-center gap-1 rounded-xl border border-slate-700 p-3 disabled:opacity-30"><ChevronLeft size={14} />Previous</button><span className="text-slate-400">{page} / {pages}</span><button disabled={page >= pages} onClick={() => setPage(value => value + 1)} className="flex items-center gap-1 rounded-xl border border-slate-700 p-3 disabled:opacity-30">Next<ChevronRight size={14} /></button></div>}
     </>}
 
-    {/* EDIT MODAL */}
-    {editingRow && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md space-y-4 rounded-3xl border border-cyan-400/30 bg-slate-900 p-5 shadow-2xl">
+    {/* ULTRA-MODERN EDIT MODAL */}
+    {editingRow && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+      <div className="w-full max-w-md space-y-4 rounded-3xl border border-cyan-500/30 bg-slate-900/95 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-black text-white flex items-center gap-2"><Pencil size={16} className="text-cyan-300" /> Edit {kind === 'sales' ? 'Sale' : 'Production Order'}</h3>
-          <button onClick={() => setEditingRow(null)} className="rounded-full bg-white/10 p-1 text-slate-400"><X size={16} /></button>
+          <h3 className="text-base font-black text-white flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-400/30">
+              <Pencil size={14} />
+            </span>
+            Edit {kind === 'sales' ? 'Sale' : 'Production Order'}
+          </h3>
+          <button onClick={() => setEditingRow(null)} className="rounded-full bg-white/10 p-1.5 text-slate-400 hover:text-white transition-colors"><X size={16} /></button>
         </div>
-        <p className="text-xs text-slate-400">{editingRow.invoiceNumber || editingRow.orderNumber} · {editingRow.customer?.name || editingRow.productName}</p>
+        <p className="text-xs font-semibold text-slate-400">{editingRow.invoiceNumber || editingRow.orderNumber} · <span className="text-cyan-300">{editingRow.customer?.name || editingRow.productName}</span></p>
 
-        <div className="space-y-3">
+        <div className="space-y-3.5 pt-1">
           <label className="block text-xs font-bold text-slate-300">Taariikh / Date
-            <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" />
+            <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white focus:border-cyan-400/60 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 transition-all" />
           </label>
 
           {kind === 'sales' ? <>
             <label className="block text-xs font-bold text-slate-300">Paid Amount (ETB)
-              <input type="number" min="0" value={editPaidAmount} onChange={e => setEditPaidAmount(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" />
+              <input type="number" min="0" value={editPaidAmount} onChange={e => setEditPaidAmount(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white focus:border-cyan-400/60 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 transition-all" />
             </label>
             <label className="block text-xs font-bold text-slate-300">Payment Method
-              <select value={editPaymentMethod} onChange={e => setEditPaymentMethod(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white">
+              <select value={editPaymentMethod} onChange={e => setEditPaymentMethod(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white focus:border-cyan-400/60 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 transition-all">
                 <option value="CASH">Cash</option>
                 <option value="BANK_TRANSFER">Bank Transfer / E-Birr</option>
                 <option value="CREDIT">Credit / Dayn</option>
@@ -206,10 +223,10 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
             </label>
           </> : <>
             <label className="block text-xs font-bold text-slate-300">Tirada (Quantity)
-              <input type="number" min="1" value={editQuantity} onChange={e => setEditQuantity(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white" />
+              <input type="number" min="1" value={editQuantity} onChange={e => setEditQuantity(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white focus:border-cyan-400/60 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 transition-all" />
             </label>
             <label className="block text-xs font-bold text-slate-300">Status
-              <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white">
+              <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white focus:border-cyan-400/60 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 transition-all">
                 <option value="COMPLETED">Completed</option>
                 <option value="IN_PROGRESS">In Progress</option>
                 <option value="PENDING">Pending</option>
@@ -218,28 +235,28 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
           </>}
         </div>
 
-        <div className="flex gap-2 pt-2">
-          <button type="button" onClick={() => setEditingRow(null)} className="w-1/2 rounded-xl border border-white/10 bg-slate-800 p-3 text-xs font-bold text-slate-300">Cancel</button>
-          <button type="button" onClick={handleUpdate} disabled={actionLoading} className="flex w-1/2 items-center justify-center gap-1.5 rounded-xl bg-cyan-500 p-3 text-xs font-black text-slate-950 disabled:opacity-50">
+        <div className="flex gap-2.5 pt-3">
+          <button type="button" onClick={() => setEditingRow(null)} className="w-1/2 rounded-2xl border border-white/10 bg-slate-800/80 p-3.5 text-xs font-bold text-slate-300 hover:bg-slate-800 transition-colors">Cancel</button>
+          <button type="button" onClick={handleUpdate} disabled={actionLoading} className="flex w-1/2 items-center justify-center gap-1.5 rounded-2xl bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 p-3.5 text-xs font-black uppercase tracking-wider text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.35)] active:scale-95 transition-all disabled:opacity-50">
             {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save Changes
           </button>
         </div>
       </div>
     </div>}
 
-    {/* DELETE CONFIRMATION MODAL */}
-    {deletingRow && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md space-y-4 rounded-3xl border border-rose-400/30 bg-slate-900 p-5 shadow-2xl text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-500/10 text-rose-300">
+    {/* ULTRA-MODERN DELETE MODAL */}
+    {deletingRow && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+      <div className="w-full max-w-md space-y-4 rounded-3xl border border-rose-500/30 bg-slate-900/95 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-500/15 text-rose-300 border border-rose-400/30 shadow-[0_0_20px_rgba(244,63,94,0.25)]">
           <Trash2 size={24} />
         </div>
         <h3 className="text-base font-black text-white">Tirtir {kind === 'sales' ? 'Iibkan' : 'Order-kan'}?</h3>
-        <p className="text-xs text-slate-300">
-          Ma hubtaa inaad tirtirto {deletingRow.invoiceNumber || deletingRow.orderNumber}? Stock-ga iyo balance-ka akownada si otomaatig ah ayaa dib loogu soo celin doonaa.
+        <p className="text-xs font-medium text-slate-300 leading-relaxed">
+          Ma hubtaa inaad tirtirto <span className="font-bold text-white">{deletingRow.invoiceNumber || deletingRow.orderNumber}</span>? Stock-ga iyo balance-ka akownada si otomaatig ah ayaa dib loogu soo celin doonaa.
         </p>
-        <div className="flex gap-2 pt-2">
-          <button type="button" onClick={() => setDeletingRow(null)} className="w-1/2 rounded-xl border border-white/10 bg-slate-800 p-3 text-xs font-bold text-slate-300">Kansal</button>
-          <button type="button" onClick={handleDelete} disabled={actionLoading} className="flex w-1/2 items-center justify-center gap-1.5 rounded-xl bg-rose-500 p-3 text-xs font-black text-white disabled:opacity-50">
+        <div className="flex gap-2.5 pt-3">
+          <button type="button" onClick={() => setDeletingRow(null)} className="w-1/2 rounded-2xl border border-white/10 bg-slate-800/80 p-3.5 text-xs font-bold text-slate-300 hover:bg-slate-800 transition-colors">Kansal</button>
+          <button type="button" onClick={handleDelete} disabled={actionLoading} className="flex w-1/2 items-center justify-center gap-1.5 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-500 to-red-500 p-3.5 text-xs font-black uppercase tracking-wider text-white shadow-[0_0_20px_rgba(244,63,94,0.35)] active:scale-95 transition-all disabled:opacity-50">
             {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />} Haa, Tirtir
           </button>
         </div>
