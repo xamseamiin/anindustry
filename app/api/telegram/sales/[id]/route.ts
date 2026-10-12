@@ -127,11 +127,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       total: (Number(item.quantity) || 1) * money(item.unitPrice)
     }));
 
-    if (!normalizedItems.length || normalizedItems.some(i => !i.productId || i.quantity <= 0)) {
+    if (!normalizedItems.length || normalizedItems.some((i: any) => !i.productId || i.quantity <= 0)) {
       return NextResponse.json({ error: 'Safka alaabta waa inuu sax yahay.' }, { status: 400 });
     }
 
-    const subtotal = normalizedItems.reduce((sum, item) => sum + item.total, 0);
+    const subtotal = normalizedItems.reduce((sum: number, item: any) => sum + item.total, 0);
     const total = subtotal;
     const paidAmountInput = body.paidAmount !== undefined && body.paidAmount !== '' ? money(body.paidAmount) : (paymentMethod === 'CREDIT' ? 0 : total);
     const paidAmount = Math.min(total, Math.max(0, paidAmountInput));
@@ -188,7 +188,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
           status: 'Completed',
           createdAt: saleDate,
           items: {
-            create: normalizedItems.map(item => ({
+            create: normalizedItems.map((item: any) => ({
               productId: item.productId,
               productName: item.productName,
               quantity: item.quantity,

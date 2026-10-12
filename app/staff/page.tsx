@@ -2,96 +2,202 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { BellRing, Building2, FileText, Loader2, ShieldCheck, Smartphone, Store, WalletCards } from 'lucide-react';
+import { 
+  Building2, FileText, Loader2, Smartphone, 
+  WalletCards, Receipt, Factory, History, ArrowRight,
+  LogOut, Shield, Sparkles, TrendingUp
+} from 'lucide-react';
+import { signOut } from 'next-auth/react';
 
-type Account = { id: string; name: string; type: string; currency: string };
-type Setup = { user: { id: string; name: string; role: string }; accounts: Account[]; canEnableSmsReader: boolean };
-
-declare global {
-  interface Window {
-    ANStaffBridge?: {
-      getDeviceFingerprint?: () => string;
-      enableCashierPaymentReader?: (config: string) => void;
-      disableCashierPaymentReader?: () => void;
-    };
-  }
-}
+type Account = { id: string; name: string; type: string; balance?: number; currency: string };
+type Setup = { 
+  user: { id: string; name: string; role: string; email?: string }; 
+  accounts: Account[];
+};
 
 async function readJson(response: Response) {
   const text = await response.text();
   try { return text ? JSON.parse(text) : { error: 'Server error' }; } catch { return { error: 'Server error' }; }
 }
 
-function browserFingerprint() {
-  const key = 'an_industry_staff_device_id';
-  const previous = window.localStorage.getItem(key);
-  if (previous) return previous;
-  const fresh = 'web-' + crypto.randomUUID();
-  window.localStorage.setItem(key, fresh);
-  return fresh;
-}
-
 export default function StaffPortalPage() {
   const [setup, setSetup] = useState<Setup | null>(null);
-  const [ebirrAccountId, setEbirrAccountId] = useState('');
-  const [cbeAccountId, setCbeAccountId] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
-  const [registering, setRegistering] = useState(false);
-  const nativeApp = typeof window !== 'undefined' && Boolean(window.ANStaffBridge);
-  const accountOptions = useMemo(() => setup?.accounts || [], [setup]);
 
   useEffect(() => {
     (async () => {
-      const response = await fetch('/api/staff/device-setup', { cache: 'no-store' });
-      if (response.status === 401) { window.location.assign('/login?callbackUrl=%2Fstaff'); return; }
-      const data = await readJson(response);
-      if (!response.ok) { setMessage(data.error || 'Staff setup lama soo qaadin.'); setLoading(false); return; }
-      setSetup(data);
-      const ebirr = data.accounts.find((account: Account) => /e-?birr/i.test(account.name));
-      const cbe = data.accounts.find((account: Account) => /cbe|commercial/i.test(account.name));
-      setEbirrAccountId(ebirr?.id || '');
-      setCbeAccountId(cbe?.id || '');
-      setLoading(false);
+      try {
+        const response = await fetch('/api/staff/device-setup', { cache: 'no-store' });
+        if (response.status === 401) { 
+          window.location.assign('/login?callbackUrl=%2Fstaff'); 
+          return; 
+        }
+        const data = await readJson(response);
+        if (!response.ok) { 
+          setMessage(data.error || 'Staff setup lama soo qaadin.'); 
+          setLoading(false); 
+          return; 
+        }
+        setSetup(data);
+      } catch (err: any) {
+        setMessage(err.message || 'Cilad ayaa dhacday.');
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
-  const registerCashierDevice = async () => {
-    if (!nativeApp) return setMessage('Fur boggan gudaha AN-Industry Staff App si SMS reader loo shido.');
-    if (!setup?.canEnableSmsReader) return setMessage('SMS reader waxaa loo oggol yahay cashier-ka oo keliya.');
-    if (!ebirrAccountId && !cbeAccountId) return setMessage('Dooro ugu yaraan hal account oo E-Birr ama CBE ah.');
-    setRegistering(true);
-    try {
-      const fingerprint = window.ANStaffBridge?.getDeviceFingerprint?.() || browserFingerprint();
-      const response = await fetch('/api/staff/devices/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceFingerprint: fingerprint, name: 'AN Staff Android', enableSmsReader: true })
-      });
-      const data = await readJson(response);
-      if (!response.ok) throw new Error(data.error || 'Device lama diiwaangelin.');
-      window.ANStaffBridge?.enableCashierPaymentReader?.(JSON.stringify({
-        deviceToken: data.deviceToken,
-        ebirrAccountId,
-        cbeAccountId
-      }));
-      setMessage('Cashier device waa la diiwaangeliyey. Android ayaa hadda ku weydiinaya oggolaanshaha RECEIVE_SMS.');
-    } catch (error: any) {
-      setMessage(error.message || 'Device lama diiwaangelin.');
-    } finally {
-      setRegistering(false);
-    }
-  };
+  const totalBalance = useMemo(() => {
+    return (setup?.accounts || []).reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  }, [setup]);
 
-  if (loading) return <main className="min-h-screen bg-slate-950 text-white grid place-items-center"><Loader2 className="animate-spin text-emerald-300" /></main>;
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#020617] text-white flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="animate-spin text-cyan-400" size={36} />
+        <p className="text-xs font-black tracking-widest text-slate-400 uppercase">AN-Industry Staff Hub...</p>
+      </main>
+    );
+  }
 
-  return <main className="min-h-screen bg-[#020617] px-4 py-7 text-slate-100"><div className="mx-auto max-w-md space-y-4">
-    <header className="rounded-3xl border border-white/15 bg-slate-900/80 p-5 shadow-2xl"><div className="flex items-center gap-3"><div className="rounded-2xl bg-emerald-400/15 p-3 text-emerald-300"><Smartphone size={24} /></div><div><p className="text-xs font-black tracking-wider">AN-INDUSTRY STAFF</p><p className="text-[11px] font-bold text-slate-400">{setup?.user.name || 'Staff portal'} · {setup?.user.role || 'STAFF'}</p></div></div></header>
-    {message && <div className="rounded-2xl border border-cyan-300/30 bg-cyan-400/10 p-3 text-xs font-bold text-cyan-100">{message}</div>}
-    <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-4"><div className="mb-3 flex items-center gap-2"><Store className="text-cyan-300" size={18} /><h1 className="font-black">Shaqada warshadda</h1></div><div className="grid grid-cols-2 gap-2"><Link href="/manufacturing" className="rounded-2xl bg-cyan-400/15 p-4 text-center text-xs font-black text-cyan-100"><Building2 className="mx-auto mb-2" size={20} />Dashboard</Link><Link href="/manufacturing/sales/add" className="rounded-2xl bg-emerald-400/15 p-4 text-center text-xs font-black text-emerald-100"><WalletCards className="mx-auto mb-2" size={20} />New sale</Link></div><p className="mt-3 text-[10px] font-bold text-slate-500">Bogagga kale ee system-ka waxaa laga furayaa Dashboard-ka, iyadoo role-ka qofku go'aaminayo waxa uu qaban karo.</p></section>
-    <section className="rounded-3xl border border-amber-300/25 bg-amber-400/5 p-4"><div className="flex items-start gap-3"><BellRing className="mt-0.5 text-amber-200" size={20} /><div><h2 className="text-sm font-black text-amber-100">Cashier payment reader</h2><p className="mt-1 text-[10px] font-bold text-slate-400">Wuxuu qabtaa SMS cusub oo E-Birr/CBE ah oo keliya; ma akhriyo SMS-yadii hore ama OTP/PIN.</p></div></div>
-      {!setup?.canEnableSmsReader ? <p className="mt-3 rounded-xl bg-slate-950/70 p-3 text-[10px] font-bold text-slate-400">Role-kan SMS reader looma fasixin.</p> : <><label className="mt-3 block text-[10px] font-black uppercase text-slate-400">E-Birr account<select value={ebirrAccountId} onChange={event => setEbirrAccountId(event.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white"><option value="">Ha isticmaalin E-Birr</option>{accountOptions.map(account => <option value={account.id} key={account.id}>{account.name}</option>)}</select></label><label className="mt-3 block text-[10px] font-black uppercase text-slate-400">CBE account<select value={cbeAccountId} onChange={event => setCbeAccountId(event.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white"><option value="">Ha isticmaalin CBE</option>{accountOptions.map(account => <option value={account.id} key={account.id}>{account.name}</option>)}</select></label><button onClick={registerCashierDevice} disabled={registering || !nativeApp} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 p-3 text-xs font-black text-slate-950 disabled:opacity-50">{registering ? <Loader2 className="animate-spin" size={15} /> : <ShieldCheck size={15} />}{nativeApp ? 'Diiwaangeli oo shid SMS reader' : 'Ku fur gudaha Staff App'}</button></>}
-    </section>
-    <Link href="/privacy/staff-app" className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900/60 p-3 text-[10px] font-bold text-slate-400"><FileText size={14} />Privacy & SMS data policy</Link>
-  </div></main>;
+  return (
+    <main className="min-h-screen bg-[#020617] text-slate-100 px-4 py-5 pb-24 font-sans select-none">
+      <div className="mx-auto max-w-md space-y-4">
+        {/* TOP HEADER */}
+        <header className="rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl backdrop-blur-xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 border border-cyan-400/30 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+              <Smartphone size={22} />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">AN-INDUSTRY</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              </div>
+              <h1 className="text-sm font-black text-white">{setup?.user.name || 'Staff Operations'}</h1>
+              <p className="text-[10px] font-bold text-slate-400">{setup?.user.role || 'CASHIER'}</p>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            title="Log Out"
+            className="h-9 w-9 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center text-slate-400 hover:text-rose-400 transition-colors">
+            <LogOut size={16} />
+          </button>
+        </header>
+
+        {message && (
+          <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-3.5 text-xs font-bold text-cyan-100">
+            {message}
+          </div>
+        )}
+
+        {/* FINANCIAL SUMMARY CARD */}
+        <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/90 via-slate-900/50 to-slate-950 p-4 shadow-xl">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5 text-slate-400 text-xs font-bold">
+              <TrendingUp size={14} className="text-cyan-400" />
+              <span>Accounts Active</span>
+            </div>
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
+              Synced
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            {(setup?.accounts || []).slice(0, 2).map((acc) => (
+              <div key={acc.id} className="rounded-2xl border border-white/5 bg-slate-950/60 p-3">
+                <p className="text-[10px] font-bold text-slate-400 truncate">{acc.name}</p>
+                <p className="text-xs font-black text-white mt-1">{(acc.balance || 0).toLocaleString()} <span className="text-[9px] text-cyan-300 font-semibold">ETB</span></p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* PRIMARY ACTIONS: SALES & RECEIPT SCAN */}
+        <section className="space-y-2">
+          <p className="text-[11px] font-black uppercase tracking-wider text-slate-400 px-1">Hawlaha Maalinlaha ah (Operations)</p>
+
+          {/* ADD SALE & SCAN */}
+          <Link 
+            href="/telegram-mini-app/sales"
+            className="group flex items-center justify-between rounded-3xl border border-cyan-400/30 bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-indigo-500/15 p-4 shadow-[0_0_20px_rgba(6,182,212,0.1)] active:scale-[0.98] transition-all">
+            <div className="flex items-center gap-3.5">
+              <div className="h-12 w-12 rounded-2xl bg-cyan-400/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.25)] group-hover:scale-105 transition-transform">
+                <Receipt size={24} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black text-white">Sales & Rasiid Scan</h3>
+                  <span className="rounded-md bg-cyan-400/20 px-1.5 py-0.5 text-[9px] font-black uppercase text-cyan-200">AI Camera</span>
+                </div>
+                <p className="text-[11px] font-bold text-slate-300 mt-0.5">Sawir rasiidka ama geli iib cusub</p>
+              </div>
+            </div>
+            <ArrowRight size={18} className="text-cyan-400 group-hover:translate-x-1 transition-transform" />
+          </Link>
+
+          {/* PRODUCTION ORDERS */}
+          <Link 
+            href="/telegram-mini-app/production"
+            className="group flex items-center justify-between rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-lg active:scale-[0.98] transition-all hover:border-white/20">
+            <div className="flex items-center gap-3.5">
+              <div className="h-12 w-12 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center text-indigo-300 group-hover:scale-105 transition-transform">
+                <Factory size={24} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white">Production Orders</h3>
+                <p className="text-[11px] font-bold text-slate-400 mt-0.5">Dalabyada warshadda & status-ka</p>
+              </div>
+            </div>
+            <ArrowRight size={18} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
+          </Link>
+
+          {/* EXPENSES & PURCHASES */}
+          <Link 
+            href="/telegram-mini-app"
+            className="group flex items-center justify-between rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-lg active:scale-[0.98] transition-all hover:border-white/20">
+            <div className="flex items-center gap-3.5">
+              <div className="h-12 w-12 rounded-2xl bg-amber-500/15 border border-amber-400/30 flex items-center justify-center text-amber-300 group-hover:scale-105 transition-transform">
+                <WalletCards size={24} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white">Kharash & Dalab Lacag</h3>
+                <p className="text-[11px] font-bold text-slate-400 mt-0.5">Diiwaangeli kharash ama dalab cusub</p>
+              </div>
+            </div>
+            <ArrowRight size={18} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
+          </Link>
+
+          {/* WEB DASHBOARD */}
+          <Link 
+            href="/manufacturing"
+            className="group flex items-center justify-between rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-lg active:scale-[0.98] transition-all hover:border-white/20">
+            <div className="flex items-center gap-3.5">
+              <div className="h-12 w-12 rounded-2xl bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-emerald-300 group-hover:scale-105 transition-transform">
+                <Building2 size={24} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white">Full System Portal</h3>
+                <p className="text-[11px] font-bold text-slate-400 mt-0.5">Maamulka buuxa ee warshadda</p>
+              </div>
+            </div>
+            <ArrowRight size={18} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
+          </Link>
+        </section>
+
+        {/* SECURITY & PRIVACY FOOTER */}
+        <footer className="pt-2 flex flex-col items-center gap-2 text-center">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+            <Shield size={12} className="text-cyan-400" />
+            <span>AN-Industry Private Staff Network · Play Store Ready</span>
+          </div>
+          <Link href="/privacy/staff-app" className="text-[10px] font-bold text-slate-400 hover:text-white underline decoration-slate-600">
+            Privacy & Security Policy
+          </Link>
+        </footer>
+      </div>
+    </main>
+  );
 }

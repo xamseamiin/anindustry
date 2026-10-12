@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireTelegramPermission } from '@/lib/telegram-access';
+import { sendTelegramOrderAlert } from '@/lib/telegram-alert';
 
 export const dynamic = 'force-dynamic';
 type PaymentAllocationInput = { incomingPaymentId: string; amount: number };
@@ -210,7 +211,7 @@ export async function POST(req: Request) {
             items: { create: group.items.map(item => { const material = materialMap.get(item.productId)!; return { productId: material.id, productName: material.name, quantity: item.quantity, unitPrice: item.unitPrice, total: item.quantity * item.unitPrice, costPrice: Number(material.purchasePrice || 0), totalCost: Number(material.purchasePrice || 0) * item.quantity }; }) },
             ...(groupAllocations[index].length ? { paymentAllocations: { create: groupAllocations[index].map(payment => ({ incomingPaymentId: payment.incomingPaymentId, amount: payment.amount })) } } : {})
           },
-          include: { items: true, paymentAllocations: true }
+          include: { items: true, paymentAllocations: true, customer: { select: { name: true } }, account: { select: { name: true } } }
         }));
       }
       for (const item of items) {
@@ -234,6 +235,28 @@ export async function POST(req: Request) {
       }
       return { sales, learnedCorrections };
     });
+
+    // Send Telegram alert with receipt photo and order details
+    for (const createdSale of result.sales) {
+      sendTelegramOrderAlert({
+        title: 'Iib Cusub / Dalab La Xareeyey',
+        invoiceNumber: createdSale.invoiceNumber,
+        customerName: (createdSale as any).customer?.name || null,
+        total: Number(createdSale.total),
+        paidAmount: Number(createdSale.paidAmount),
+        paymentMethod: createdSale.paymentMethod,
+        accountName: (createdSale as any).account?.name || null,
+        items: createdSale.items.map(it => ({
+          productName: it.productName,
+          quantity: Number(it.quantity),
+          unitPrice: Number(it.unitPrice),
+          total: Number(it.total)
+        })),
+        receiptUrl: (createdSale as any).receiptUrl,
+        notes: createdSale.notes
+      }).catch(err => console.error('Telegram alert error:', err));
+    }
+
     return NextResponse.json({ success: true, sale: result.sales[0], sales: result.sales, learnedCorrections: result.learnedCorrections, recognitionMemoryAvailable });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Sale lama kaydin.' }, { status: 500 });

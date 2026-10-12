@@ -356,7 +356,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
                     status: 'Completed',
                     createdAt: saleDate,
                     items: {
-                        create: normalizedItems.map(item => ({
+                        create: normalizedItems.map((item: any) => ({
                             productId: item.productId,
                             productName: item.productName,
                             quantity: item.quantity,

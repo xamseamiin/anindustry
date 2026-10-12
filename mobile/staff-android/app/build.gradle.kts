@@ -24,7 +24,7 @@ android {
         // Set with -PAN_INDUSTRY_BASE_URL=https://staff.example.com.
         // This is a public HTTPS URL, never a password, token or database URL.
         val appBaseUrl = providers.gradleProperty("AN_INDUSTRY_BASE_URL")
-            .orElse("https://YOUR-AN-INDUSTRY-DOMAIN")
+            .orElse("https://anindustry.online")
             .get()
             .trimEnd('/')
         buildConfigField("String", "STAFF_PORTAL_URL", "\"$appBaseUrl/staff\"")
