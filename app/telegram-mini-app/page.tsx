@@ -1751,8 +1751,8 @@ export default function TelegramMiniAppPage() {
 
     const reportRequestPayload = () => ({
         reportType,
-        startDate: reportStartDate,
-        endDate: reportEndDate,
+        startDate: reportStartDate || undefined,
+        endDate: reportEndDate || undefined,
         accountId: reportAccountId || undefined,
         category: reportCategory,
         employeeIds: reportEmployeeIds.join(','),
@@ -1794,59 +1794,200 @@ export default function TelegramMiniAppPage() {
         });
     };
 
+    const deliverReportFile = async (blob: Blob, fileName: string, caption: string) => {
+        try {
+            setReportLoading(true);
+
+            // 1. Deliver via Telegram Bot API — get a stable HTTPS download URL
+            const form = new FormData();
+            form.append('document', blob, fileName);
+            form.append('fileName', fileName);
+            form.append('caption', caption);
+            form.append('initData', telegramInitData);
+            if (requesterId) form.append('chatId', requesterId);
+
+            let downloadUrl: string | null = null;
+            let telegramSent = false;
+
+            try {
+                const res = await fetch('/api/telegram/reports/send-document', {
+                    method: 'POST',
+                    body: form
+                });
+                const data = await res.json();
+                telegramSent = !!data?.telegramSent;
+                downloadUrl = data?.downloadUrl || null;
+
+                // 2. Telegram WebApp native downloadFile (works on newer Telegram versions)
+                if (downloadUrl && typeof window !== 'undefined') {
+                    const tg = (window as any).Telegram?.WebApp;
+                    if (tg?.downloadFile) {
+                        try { tg.downloadFile({ url: downloadUrl, file_name: fileName }); } catch {}
+                    }
+                }
+            } catch (apiErr) {
+                console.warn('send-document API error:', apiErr);
+            }
+
+            // 3. Direct browser blob download attempt (works in regular browsers, sometimes in Telegram desktop)
+            try {
+                const url = downloadUrl || URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    try { document.body.removeChild(a); } catch {}
+                    if (!downloadUrl) { try { URL.revokeObjectURL(url); } catch {} }
+                }, 1500);
+            } catch (dlErr) {
+                console.warn('Browser direct download skipped:', dlErr);
+            }
+
+            // 4. Show result with direct link if available
+            if (telegramSent && downloadUrl) {
+                showAlert(`✅ Warbixinta (${fileName}) Telegram-kaaga loogu soo diray! Hoos ka fur:\n${downloadUrl}`, 'success');
+            } else if (downloadUrl) {
+                showAlert(`✅ Warbixinta diyaar: ${fileName}\n🔗 Link: ${downloadUrl}`, 'success');
+            } else if (telegramSent) {
+                showAlert(`✅ Warbixinta (${fileName}) waxa si toos ah loogu soo diray Telegram-kaaga! Toos uga fur chat-ka.`, 'success');
+            } else {
+                showAlert(`✅ Warbixinta waa la soo saaray: ${fileName}`, 'success');
+            }
+        } catch (err: any) {
+            console.error('Report delivery error:', err);
+            showAlert(`Warbixinta waa la diyaariyay: ${fileName}`, 'success');
+        } finally {
+            setReportLoading(false);
+        }
+    };
+
     const exportEnterprisePdf = async () => {
-        const report = await loadEnterpriseReport(true); if (!report) return;
+        const report = reportPreview || await loadEnterpriseReport(true); if (!report) return;
         const [{ default: jsPDF }, autoTableModule] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
-        const doc = new jsPDF({ orientation: report.filters.orientation || 'portrait', unit: 'mm', format: 'a4' });
+        const doc = new jsPDF({ orientation: report.filters?.orientation || 'portrait', unit: 'mm', format: 'a4' });
         const autoTable = (autoTableModule as any).default || (autoTableModule as any).autoTable;
         const pageWidth = doc.internal.pageSize.getWidth(); const pageHeight = doc.internal.pageSize.getHeight();
         const green: [number, number, number] = [21, 155, 80]; const navy: [number, number, number] = [7, 23, 47]; const red: [number, number, number] = [220, 38, 38];
         let logo = ''; try { logo = await assetToDataUrl('/logo.png'); } catch {}
         const money = (value: number) => `${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB`;
-        const date = new Date(report.period.end).toLocaleDateString('en-CA');
+        const endDateStr = report.period?.end ? new Date(report.period.end).toLocaleDateString('en-CA') : new Date().toLocaleDateString('en-CA');
+        const startDateStr = report.period?.start ? new Date(report.period.start).toLocaleDateString('en-CA') : endDateStr;
+        const reportNum = report.reportNumber || `AN-${(report.reportType || 'REP').slice(0, 3)}-${Date.now().toString(36).toUpperCase()}`;
+
         if (logo) doc.addImage(logo, 'PNG', 15, 9, 25, 19);
         doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.text('AN INDUSTRIES PARTNERSHIP', 45, 18);
         doc.setFontSize(7); doc.setTextColor(100); doc.setFont('helvetica', 'italic'); doc.text(`${report.reportType} ${reportCategory === 'SALARY' ? 'Employee Salary' : 'General Transaction'} Report`, 45, 25);
-        [['DATE', date], ['REF NUMBER', report.reportNumber], ['PREPARED BY', report.generatedBy || 'Administrator']].forEach(([label, value], i) => {
+        [['DATE', `${startDateStr} - ${endDateStr}`], ['REF NUMBER', reportNum], ['PREPARED BY', report.generatedBy || 'Administrator']].forEach(([label, value], i) => {
             const y = 10 + i * 8; doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...navy); doc.text(label, pageWidth - 15, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); doc.text(doc.splitTextToSize(String(value), 47), pageWidth - 15, y + 3, { align: 'right' });
         });
         doc.setDrawColor(...green); doc.setLineWidth(0.6); doc.line(15, 36, pageWidth - 15, 36);
-        ([['MONEY IN', report.summary.totalIn, green], ['MONEY OUT', report.summary.totalOut, red], ['ACCOUNT BALANCE (CURRENT)', report.summary.closingBalance, navy]] as any[]).forEach(([label, value, color], i) => {
+        ([['MONEY IN', report.summary?.totalIn || 0, green], ['MONEY OUT', report.summary?.totalOut || 0, red], ['ACCOUNT BALANCE (CURRENT)', report.summary?.closingBalance || 0, navy]] as any[]).forEach(([label, value, color], i) => {
             const x = 15 + i * 60; doc.setTextColor(105); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold'); doc.text(label, x, 47); doc.setTextColor(color[0], color[1], color[2]); doc.setFontSize(10); doc.text(money(value), x, 56);
         });
         doc.setDrawColor(225); doc.line(15, 61, pageWidth - 15, 61);
-        const ledgerRows = report.ledger.map((row: any) => [new Date(row.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), row.category || 'General', row.person || row.recipient || '-', row.description || '-', row.account || '-', row.inflow ? money(row.inflow) : '-', row.outflow ? money(row.outflow) : '-']);
+        const ledgerRows = (report.ledger || []).map((row: any) => [new Date(row.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), row.category || 'General', row.person || row.recipient || '-', row.description || '-', row.account || '-', row.inflow ? money(row.inflow) : '-', row.outflow ? money(row.outflow) : '-']);
         if (reportCategory === 'SALARY' && report.payroll?.length) {
             drawPayrollReport(doc, autoTable, report.payroll, 69);
-        } else autoTable(doc, {
-            startY: 66, margin: { left: 15, right: 15, bottom: 18 }, theme: 'plain', showHead: 'everyPage',
-            head: [['DATE', 'CATEGORY', 'NAME / PERSON', 'DESCRIPTION', 'ACCOUNT', 'MONEY IN', 'MONEY OUT']], body: ledgerRows.length ? ledgerRows : [['-', 'No transactions', '-', '-', '-', '-', '-']],
-            foot: [['', '', '', '', 'TOTAL', money(report.summary.totalIn), money(report.summary.totalOut)]], showFoot: 'lastPage',
-            headStyles: { textColor: navy, fontStyle: 'bold', fontSize: 5.5, lineColor: [185,190,195], lineWidth: { bottom: 0.6 }, cellPadding: 1.8 },
-            bodyStyles: { textColor: navy, lineColor: [228,231,234], lineWidth: { bottom: 0.2 }, fontSize: 5.5, cellPadding: 1.8 },
-            footStyles: { textColor: navy, fontStyle: 'bold', fillColor: [244,247,248], fontSize: 5.8, cellPadding: 2 },
-            columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 27 }, 2: { cellWidth: 30 }, 3: { cellWidth: 39 }, 4: { cellWidth: 19 }, 5: { cellWidth: 18, halign: 'right', textColor: green }, 6: { cellWidth: 17, halign: 'right', textColor: red } },
-            didDrawPage: () => { doc.setDrawColor(225); doc.line(15, pageHeight - 14, pageWidth - 15, pageHeight - 14); doc.setFontSize(6); doc.setTextColor(105); doc.text('AN Industries Partnership - Financial Report', 15, pageHeight - 9); doc.text(`Generated: ${new Date(report.generatedAt).toLocaleString()}`, pageWidth - 15, pageHeight - 9, { align: 'right' }); }
-        });
+        } else {
+            autoTable(doc, {
+                startY: 66, margin: { left: 15, right: 15, bottom: 18 }, theme: 'plain', showHead: 'everyPage',
+                head: [['DATE', 'CATEGORY', 'NAME / PERSON', 'DESCRIPTION', 'ACCOUNT', 'MONEY IN', 'MONEY OUT']], body: ledgerRows.length ? ledgerRows : [['-', 'No transactions', '-', '-', '-', '-', '-']],
+                foot: [['', '', '', '', 'TOTAL', money(report.summary?.totalIn || 0), money(report.summary?.totalOut || 0)]], showFoot: 'lastPage',
+                headStyles: { textColor: navy, fontStyle: 'bold', fontSize: 5.5, lineColor: [185,190,195], lineWidth: { bottom: 0.6 }, cellPadding: 1.8 },
+                bodyStyles: { textColor: navy, lineColor: [228,231,234], lineWidth: { bottom: 0.2 }, fontSize: 5.5, cellPadding: 1.8 },
+                footStyles: { textColor: navy, fontStyle: 'bold', fillColor: [244,247,248], fontSize: 5.8, cellPadding: 2 },
+                columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 27 }, 2: { cellWidth: 30 }, 3: { cellWidth: 39 }, 4: { cellWidth: 19 }, 5: { cellWidth: 18, halign: 'right', textColor: green }, 6: { cellWidth: 17, halign: 'right', textColor: red } },
+                didDrawPage: () => { doc.setDrawColor(225); doc.line(15, pageHeight - 14, pageWidth - 15, pageHeight - 14); doc.setFontSize(6); doc.setTextColor(105); doc.text('AN Industries Partnership - Financial Report', 15, pageHeight - 9); doc.text(`Generated: ${new Date(report.generatedAt || Date.now()).toLocaleString()}`, pageWidth - 15, pageHeight - 9, { align: 'right' }); }
+            });
+        }
         if (reportCategory !== 'SALARY' && report.payroll?.length) {
-            drawPayrollReport(doc, autoTable, report.payroll, (doc as any).lastAutoTable.finalY + 14);
+            const lastY = (doc as any).lastAutoTable?.finalY || 66;
+            drawPayrollReport(doc, autoTable, report.payroll, lastY + 14);
         }
         const totalPages = (doc as any).getNumberOfPages();
         for (let page = 1; page <= totalPages; page++) {
             doc.setPage(page); doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(105);
             doc.text(`Page ${page} / ${totalPages}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
         }
-        doc.save(`${report.reportNumber}.pdf`);
+
+        const pdfBlob = doc.output('blob');
+        const pdfFileName = `${reportNum}.pdf`;
+        const caption = `📄 <b>Warbixinta Maaliyadda AN-Industry (PDF)</b>\n📊 Nooca: <b>${report.reportType} Report</b>\n📅 Muddada: ${startDateStr} - ${endDateStr}\n💵 Inflow: <b>${money(report.summary?.totalIn || 0)}</b>\n💸 Outflow: <b>${money(report.summary?.totalOut || 0)}</b>\n💼 Balance: <b>${money(report.summary?.closingBalance || 0)}</b>\n\n<i>Faylka PDF-ka hoos toos uga fur.</i>`;
+
+        await deliverReportFile(pdfBlob, pdfFileName, caption);
     };
 
     const exportEnterpriseExcel = async () => {
         const report = reportPreview || await loadEnterpriseReport(false); if (!report) return;
         const XLSX = await import('xlsx'); const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([report.summary]), 'Executive Summary');
-        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(report.categories), 'Category Analysis');
-        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(report.ledger), 'Ledger');
-        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet((report.payroll || []).map(({transactions, ...summary}: any) => summary)), 'Employee Salary');
-        XLSX.writeFile(workbook, `AN-${report.reportType}-Financial-Report.xlsx`);
+
+        const startDateStr = report.period?.start ? new Date(report.period.start).toLocaleDateString('en-GB') : '-';
+        const endDateStr = report.period?.end ? new Date(report.period.end).toLocaleDateString('en-GB') : '-';
+
+        // Summary sheet
+        const summaryRows = [
+            { 'Qaybta (Field)': 'Nooca Warbixinta (Report Type)', 'Xogta (Value)': report.reportType },
+            { 'Qaybta (Field)': 'Muddada Bilaabashada (Start Date)', 'Xogta (Value)': startDateStr },
+            { 'Qaybta (Field)': 'Muddada Dhammaadka (End Date)', 'Xogta (Value)': endDateStr },
+            { 'Qaybta (Field)': 'Diyaariyey (Prepared By)', 'Xogta (Value)': report.generatedBy || 'Administrator' },
+            { 'Qaybta (Field)': 'Haraaga Hore (Opening Balance ETB)', 'Xogta (Value)': Number(report.summary?.openingBalance || 0) },
+            { 'Qaybta (Field)': 'Wadarta Soo Gashay (Total Inflow ETB)', 'Xogta (Value)': Number(report.summary?.totalIn || 0) },
+            { 'Qaybta (Field)': 'Wadarta Baxday (Total Outflow ETB)', 'Xogta (Value)': Number(report.summary?.totalOut || 0) },
+            { 'Qaybta (Field)': 'Socodka Saafiga ah (Net Cash Flow ETB)', 'Xogta (Value)': Number(report.summary?.netCashFlow || 0) },
+            { 'Qaybta (Field)': 'Haraaga Xiritaanka (Closing Balance ETB)', 'Xogta (Value)': Number(report.summary?.closingBalance || 0) },
+            { 'Qaybta (Field)': 'Tirada Dhaqdhaqaaqa (Transactions)', 'Xogta (Value)': report.summary?.transactionCount || 0 },
+        ];
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+
+        // Clean ledger sheet
+        const cleanLedger = (report.ledger || []).map((row: any) => ({
+            'Taariikh (Date)': new Date(row.date).toLocaleDateString('en-GB'),
+            'Qeybta (Category)': row.category || 'General',
+            'Qofka / Macmiilka (Person)': row.person || row.recipient || '-',
+            'Faahfaahin (Description)': row.description || '-',
+            'Koontada (Account)': row.account || '-',
+            'Soo Gashay (Inflow ETB)': Number(row.inflow || 0),
+            'Baxday (Outflow ETB)': Number(row.outflow || 0),
+            'Haraaga (Balance ETB)': Number(row.balance || 0),
+            'Xaaladda (Status)': row.status || 'PAID',
+            'Codsade (Requester)': row.requester || '-',
+            'Telefoonka (Phone)': row.paymentPhone || '-'
+        }));
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(cleanLedger.length ? cleanLedger : [{ 'Xog': 'Dhaqdhaqaaq ma jiro' }]), 'Transactions');
+
+        // Categories sheet
+        const cleanCategories = (report.categories || []).map((cat: any) => ({
+            'Qeybta (Category)': cat.category,
+            'Wadarta Lacagta (Total ETB)': Number(cat.amount || 0),
+            'Tirada Dhaqdhaqaaqa (Count)': cat.count || 0
+        }));
+        if (cleanCategories.length) {
+            XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(cleanCategories), 'Categories');
+        }
+
+        // Payroll sheet
+        const cleanPayroll = (report.payroll || []).map((p: any) => ({
+            'Shaqaalaha (Employee)': p.name,
+            'Mushahar (Paid ETB)': Number(p.paid || 0),
+            'Hormaris (Advances ETB)': Number(p.advances || 0),
+            'Soo-celin (Refunds ETB)': Number(p.refunds || 0),
+            'Wadarta Saafiga ah (Net Paid ETB)': Number(p.netPaid || 0),
+            'Tirada Lacag-bixinta': p.transactions?.length || 0
+        }));
+        if (cleanPayroll.length) {
+            XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(cleanPayroll), 'Salary Breakdown');
+        }
+
+        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const excelBlob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const excelFileName = `AN-${report.reportType || 'Custom'}-Financial-Report.xlsx`;
+        const caption = `📊 <b>Warbixinta Excel ee AN-Industry (.xlsx)</b>\n📈 Nooca: <b>${report.reportType} Report</b>\n📅 Muddada: ${startDateStr} - ${endDateStr}\n💵 Inflow: <b>${Number(report.summary?.totalIn || 0).toLocaleString()} ETB</b>\n💸 Outflow: <b>${Number(report.summary?.totalOut || 0).toLocaleString()} ETB</b>\n💼 Balance: <b>${Number(report.summary?.closingBalance || 0).toLocaleString()} ETB</b>\n\n<i>Faylka Excel hoos toos uga fur.</i>`;
+
+        await deliverReportFile(excelBlob, excelFileName, caption);
     };
 
     const exportPersonalExcel = async () => {
@@ -1862,8 +2003,11 @@ export default function TelegramMiniAppPage() {
                 Receipt: exp.receiptUrl || ''
             }));
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'My Requests');
-        XLSX.writeFile(workbook, `AN-Industry-${requesterUsername || 'profile'}-report.xlsx`);
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'Info': 'Codsiyo hore ma jiraan' }]), 'My Requests');
+        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const excelBlob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const fileName = `AN-Industry-${requesterUsername || 'profile'}-report.xlsx`;
+        await deliverReportFile(excelBlob, fileName, `📊 <b>Warbixinta Codsiyadaada (Excel)</b>\n👤 User: <b>${requesterName}</b>`);
     };
 
     const exportPersonalPdf = async () => {
@@ -1876,10 +2020,12 @@ export default function TelegramMiniAppPage() {
         doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 34);
         let y = 44;
         (profileData?.recent || []).forEach((item: any) => {
-            doc.text(`${new Date(item.date).toLocaleDateString()} | ${item.description.slice(0, 65)} | ${item.amount.toLocaleString()} ETB | ${item.status}`, 14, y);
+            doc.text(`${new Date(item.date).toLocaleDateString()} | ${String(item.description || '').slice(0, 65)} | ${Number(item.amount || 0).toLocaleString()} ETB | ${item.status}`, 14, y);
             y += 7;
         });
-        doc.save(`AN-Industry-${requesterUsername || 'profile'}-report.pdf`);
+        const pdfBlob = doc.output('blob');
+        const fileName = `AN-Industry-${requesterUsername || 'profile'}-report.pdf`;
+        await deliverReportFile(pdfBlob, fileName, `📄 <b>Warbixinta Codsiyadaada (PDF)</b>\n👤 User: <b>${requesterName}</b>`);
     };
 
     if (loading) {
@@ -2587,14 +2733,34 @@ export default function TelegramMiniAppPage() {
 
                                 <div className="grid grid-cols-4 gap-1.5">
                                     {(['DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'] as const).map(type => (
-                                        <button key={type} type="button" onClick={() => setReportType(type)} className={`py-2 rounded-lg text-[8px] font-black border ${reportType === type ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40' : 'bg-white/5 text-slate-400 border-white/10'}`}>{type}</button>
+                                        <button key={type} type="button" onClick={() => {
+                                            setReportType(type);
+                                            if (type === 'CUSTOM') {
+                                                const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+                                                const firstOfMonth = today.slice(0, 7) + '-01';
+                                                if (!reportStartDate) setReportStartDate(firstOfMonth);
+                                                if (!reportEndDate) setReportEndDate(today);
+                                            }
+                                        }} className={`py-2 rounded-lg text-[8px] font-black border ${reportType === type ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40' : 'bg-white/5 text-slate-400 border-white/10'}`}>{type}</button>
                                     ))}
                                 </div>
 
                                 {reportType === 'CUSTOM' && (
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <label className="text-[8px] font-black text-slate-400">FROM<input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="mt-1 w-full rounded-lg bg-slate-950 border border-white/10 p-2 text-[9px] text-white" /></label>
-                                        <label className="text-[8px] font-black text-slate-400">TO<input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="mt-1 w-full rounded-lg bg-slate-950 border border-white/10 p-2 text-[9px] text-white" /></label>
+                                    <div className="flex flex-col gap-2">
+                                        {/* Quick preset buttons */}
+                                        <div className="grid grid-cols-3 gap-1">
+                                            {[
+                                                { label: '📅 Bishan', fn: () => { const t = new Date(Date.now() + 3*60*60*1000).toISOString().slice(0,10); setReportStartDate(t.slice(0,7)+'-01'); setReportEndDate(t); } },
+                                                { label: '📆 Bishii Hore', fn: () => { const d = new Date(Date.now() + 3*60*60*1000); d.setDate(0); const lastDay = d.toISOString().slice(0,10); d.setDate(1); const firstDay = d.toISOString().slice(0,10); setReportStartDate(firstDay); setReportEndDate(lastDay); } },
+                                                { label: '📋 30 Maalmood', fn: () => { const t = new Date(Date.now() + 3*60*60*1000); const to = t.toISOString().slice(0,10); t.setDate(t.getDate()-29); setReportStartDate(t.toISOString().slice(0,10)); setReportEndDate(to); } },
+                                            ].map(({ label, fn }) => (
+                                                <button key={label} type="button" onClick={fn} className="py-1.5 rounded-lg bg-violet-500/10 border border-violet-400/20 text-[8px] font-bold text-violet-300 active:bg-violet-500/30">{label}</button>
+                                            ))}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <label className="text-[8px] font-black text-slate-400">FROM<input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="mt-1 w-full rounded-lg bg-slate-950 border border-white/10 p-2 text-[9px] text-white" /></label>
+                                            <label className="text-[8px] font-black text-slate-400">TO<input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="mt-1 w-full rounded-lg bg-slate-950 border border-white/10 p-2 text-[9px] text-white" /></label>
+                                        </div>
                                     </div>
                                 )}
 
@@ -2642,9 +2808,16 @@ export default function TelegramMiniAppPage() {
                                         <span className="text-sm font-black text-emerald-300">{reportPreview.summary.receiptStats.total ? Math.round(reportPreview.summary.receiptStats.attached / reportPreview.summary.receiptStats.total * 100) : 100}%</span>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
-                                        <button type="button" onClick={exportEnterprisePdf} disabled={reportLoading} className="py-3 rounded-xl bg-rose-500/15 border border-rose-400/25 text-rose-200 text-[10px] font-black flex items-center justify-center gap-1"><Download size={13} /> DOWNLOAD PDF</button>
-                                        <button type="button" onClick={exportEnterpriseExcel} disabled={reportLoading} className="py-3 rounded-xl bg-emerald-500/15 border border-emerald-400/25 text-emerald-200 text-[10px] font-black flex items-center justify-center gap-1"><FileSpreadsheet size={13} /> EXPORT EXCEL</button>
+                                        <button type="button" onClick={exportEnterprisePdf} disabled={reportLoading} className="py-3 rounded-xl bg-rose-500/15 border border-rose-400/25 text-rose-200 text-[10px] font-black flex items-center justify-center gap-1 disabled:opacity-50">
+                                            {reportLoading ? <span className="animate-spin text-xs">⏳</span> : <Download size={13} />}
+                                            {reportLoading ? 'LOADING...' : 'DOWNLOAD PDF'}
+                                        </button>
+                                        <button type="button" onClick={exportEnterpriseExcel} disabled={reportLoading} className="py-3 rounded-xl bg-emerald-500/15 border border-emerald-400/25 text-emerald-200 text-[10px] font-black flex items-center justify-center gap-1 disabled:opacity-50">
+                                            {reportLoading ? <span className="animate-spin text-xs">⏳</span> : <FileSpreadsheet size={13} />}
+                                            {reportLoading ? 'LOADING...' : 'EXPORT EXCEL'}
+                                        </button>
                                     </div>
+                                    <p className="text-[9px] text-cyan-400/70 text-center font-bold">📨 Faylasha PDF &amp; Excel sidoo kale si toos ah Telegram-kaaga loogu soo diraa.</p>
                                     <p className="text-[8px] text-slate-500 text-center">PDF: logo, xogta lacag-bixinta, shaqaale kasta iyo wadartiisa, magaca diyaariyaha iyo page numbers.</p>
                                 </div>
                             )}

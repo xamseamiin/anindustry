@@ -17,10 +17,32 @@ function periodBounds(type: string, start?: string | null, end?: string | null) 
   if (type === 'WEEKLY') { from = new Date(from.getTime() - 6 * 86400000); }
   if (type === 'MONTHLY') { from = new Date(`${today.slice(0, 7)}-01T00:00:00+03:00`); }
   if (type === 'CUSTOM') {
-    if (start) from = new Date(`${start}T00:00:00+03:00`);
-    if (end) to = new Date(`${end}T23:59:59.999+03:00`);
+    const cleanStart = typeof start === 'string' ? start.trim() : '';
+    const cleanEnd = typeof end === 'string' ? end.trim() : '';
+    if (cleanStart && cleanEnd) {
+      from = new Date(`${cleanStart}T00:00:00+03:00`);
+      to = new Date(`${cleanEnd}T23:59:59.999+03:00`);
+    } else if (cleanStart && !cleanEnd) {
+      from = new Date(`${cleanStart}T00:00:00+03:00`);
+      to = new Date(`${cleanStart}T23:59:59.999+03:00`);
+    } else if (!cleanStart && cleanEnd) {
+      from = new Date(`${cleanEnd}T00:00:00+03:00`);
+      to = new Date(`${cleanEnd}T23:59:59.999+03:00`);
+    } else {
+      from = new Date(`${today.slice(0, 7)}-01T00:00:00+03:00`);
+      to = new Date(`${today}T23:59:59.999+03:00`);
+    }
+    // If user inverted start and end dates (from > to), swap gracefully instead of crashing
+    if (from.getTime() > to.getTime()) {
+      const temp = from;
+      from = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 0, 0, 0, 0);
+      to = new Date(temp.getFullYear(), temp.getMonth(), temp.getDate(), 23, 59, 59, 999);
+    }
   }
-  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from > to) throw new Error('Invalid report date range.');
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) {
+    from = new Date(`${today.slice(0, 7)}-01T00:00:00+03:00`);
+    to = new Date(`${today}T23:59:59.999+03:00`);
+  }
   return { from, to };
 }
 
