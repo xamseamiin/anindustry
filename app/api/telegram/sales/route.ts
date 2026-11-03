@@ -119,11 +119,18 @@ export async function POST(req: Request) {
         if (customerRows.length !== customerIds.length) throw new Error('Customer-ka mid ka mid ah lama helin.');
         customerRows.forEach(customer => customersById.set(customer.id, customer));
       }
-      let paidAmount = requestedPaidAmount;
+      const paymentMethod = String(body.paymentMethod || 'CASH').toUpperCase();
+      const isCredit = paymentMethod === 'CREDIT';
+      let paidAmount = isCredit ? 0 : requestedPaidAmount;
       let saleAccountId = body.accountId ? String(body.accountId) : null;
-      if (!saleAccountId) throw new Error('Dooro account-ka lacagta lagu shubay.');
-      const selectedAccount = await tx.account.findFirst({ where: { id: saleAccountId, companyId, isActive: true }, select: { id: true } });
-      if (!selectedAccount) throw new Error('Account-ka la doortay lama helin ama ma active aha.');
+      if (!isCredit) {
+        if (!saleAccountId) throw new Error('Dooro account-ka lacagta lagu shubay.');
+        const selectedAccount = await tx.account.findFirst({ where: { id: saleAccountId, companyId, isActive: true }, select: { id: true } });
+        if (!selectedAccount) throw new Error('Account-ka la doortay lama helin ama ma active aha.');
+      } else {
+        saleAccountId = null;
+      }
+      if (isCredit && allocationInputs.length) throw new Error('Credit sale account ama incoming payment ma laha.');
       let resolvedAllocations: Array<{ incomingPaymentId: string; amount: number; accountId: string; originalAmount: number; originalAllocated: number }> = [];
       if (allocationInputs.length) {
         const incomingPayments = await tx.incomingPayment.findMany({ where: { companyId, id: { in: allocationInputs.map(payment => payment.incomingPaymentId) }, status: { in: ['UNMATCHED', 'PARTIALLY_ALLOCATED'] } }, select: { id: true, accountId: true, amount: true, allocatedAmount: true } });
@@ -198,14 +205,14 @@ export async function POST(req: Request) {
       for (let index = 0; index < itemGroups.length; index += 1) {
         const group = itemGroups[index];
         const groupPaid = groupPaymentAmounts[index];
-        const paymentStatus = groupPaid >= group.subtotal ? 'Paid' : groupPaid > 0 ? 'Partial' : 'Unpaid';
+        const paymentStatus = isCredit ? 'Unpaid' : groupPaid >= group.subtotal ? 'Paid' : groupPaid > 0 ? 'Partial' : 'Unpaid';
         const groupAccountIds = [...new Set(groupAllocations[index].map(payment => payment.accountId))];
         const groupAccountId = resolvedAllocations.length ? (groupAccountIds.length === 1 ? groupAccountIds[0] : null) : saleAccountId;
         const invoiceNumber = itemGroups.length === 1 ? baseInvoice : `${baseInvoice}-${index + 1}`;
         sales.push(await tx.sale.create({
           data: {
             invoiceNumber, userId, companyId, customerId: group.customerId, accountId: groupAccountId,
-            subtotal: group.subtotal, tax: 0, total: group.subtotal, paidAmount: groupPaid, paymentMethod: String(body.paymentMethod || 'CASH'), paymentStatus, status: 'Completed',
+            subtotal: group.subtotal, tax: 0, total: group.subtotal, paidAmount: isCredit ? 0 : groupPaid, paymentMethod, paymentStatus, status: 'Completed',
             notes: itemGroups.length > 1 ? `${saleNotes}\nReceipt group ${index + 1}/${itemGroups.length}` : saleNotes,
             receiptUrl: body.receiptUrl || null,
             items: { create: group.items.map(item => { const material = materialMap.get(item.productId)!; return { productId: material.id, productName: material.name, quantity: item.quantity, unitPrice: item.unitPrice, total: item.quantity * item.unitPrice, costPrice: Number(material.purchasePrice || 0), totalCost: Number(material.purchasePrice || 0) * item.quantity }; }) },
