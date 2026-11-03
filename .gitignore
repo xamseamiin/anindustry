@@ -62,3 +62,10 @@ scratch/
 /mobile/staff-android/*.keystore
 /output/android/*.apk
 /output/android/*.aab
+
+*.tar.gz
+.next-stale*
+/tmp/
+/output/
+*-backup-*.json
+/mobile/staff-android/build/
