@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Script from 'next/script';
-import { Loader2, Search, ChevronLeft, ChevronRight, RefreshCw, Pencil, Trash2, X, Check } from 'lucide-react';
+import { Loader2, Search, ChevronLeft, ChevronRight, RefreshCw, Pencil, Trash2, X, Check, Eye } from 'lucide-react';
 
 export default function ActivityHistory({ kind }: { kind: 'sales' | 'production' }) {
   const [rows, setRows] = useState<any[]>([]);
@@ -155,7 +155,7 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 text-[10px]">
             <span className="text-slate-400">{new Date(row.startDate || row.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short', year: 'numeric' })}</span>
-            <span className="rounded-md bg-white/5 px-2 py-1 text-slate-300">{row.paymentStatus || row.status}</span>
+            <span className={`rounded-md px-2 py-1 font-black ${row.paymentStatus === 'Paid' ? 'bg-emerald-500/15 text-emerald-300' : row.paymentStatus === 'Unpaid' || row.paymentStatus === 'Credit' ? 'bg-rose-500/15 text-rose-300' : 'bg-amber-500/15 text-amber-300'}`}>{row.paymentStatus || row.status}</span>
             <span className="text-cyan-400 font-bold group-open:hidden">View details & actions ↓</span>
           </div>
         </summary>
@@ -165,6 +165,7 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
 
           {/* Ultra-Modern Action Buttons: Edit & Delete */}
           <div className="flex items-center justify-end gap-2.5 pt-3 mt-1 border-t border-slate-800/80">
+            {kind === 'sales' && row.receiptUrl && <a href={row.receiptUrl} target="_blank" rel="noreferrer" className="group/btn inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-300" title="View receipt"><Eye size={12} /> <span>Receipt</span></a>}
             <button
               type="button"
               onClick={() => openEdit(row)}
