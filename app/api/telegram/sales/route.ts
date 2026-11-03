@@ -5,7 +5,7 @@ import { sendTelegramOrderAlert } from '@/lib/telegram-alert';
 
 export const dynamic = 'force-dynamic';
 type PaymentAllocationInput = { incomingPaymentId: string; amount: number };
-type SaleItemInput = { productId: string; quantity: number; unitPrice: number; customerId?: string | null };
+type SaleItemInput = { productId: string; quantity: number; unitPrice: number; customerId?: string | null; accountId?: string | null };
 type CustomerCorrectionInput = { observedName: string; customerId: string };
 
 function money(value: unknown) {
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
     if (!access) return NextResponse.json({ error: 'Add Sale fasax uma lihid.' }, { status: 403 });
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     const userId = process.env.TELEGRAM_USER_ID || String(access.identity.id);
-    const items: SaleItemInput[] = Array.isArray(body.items) ? body.items.map((item: any): SaleItemInput => ({ productId: String(item.productId || ''), quantity: Number(item.quantity), unitPrice: money(item.unitPrice), customerId: item.customerId ? String(item.customerId) : null })) : [];
+    const items: SaleItemInput[] = Array.isArray(body.items) ? body.items.map((item: any): SaleItemInput => ({ productId: String(item.productId || ''), quantity: Number(item.quantity), unitPrice: money(item.unitPrice), customerId: item.customerId ? String(item.customerId) : null, accountId: item.accountId ? String(item.accountId) : null })) : [];
     const allocationInputs: PaymentAllocationInput[] = Array.isArray(body.paymentAllocations) ? body.paymentAllocations.map((payment: any) => ({ incomingPaymentId: String(payment.incomingPaymentId || ''), amount: money(payment.amount) })) : [];
     if (!companyId || !items.length || items.some(item => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0 || item.unitPrice <= 0)) return NextResponse.json({ error: 'Product, quantity iyo price waa qasab.' }, { status: 400 });
     if (allocationInputs.some(payment => !payment.incomingPaymentId || payment.amount <= 0)) return NextResponse.json({ error: 'Lacagta la dooranayo waa inay leedahay amount sax ah.' }, { status: 400 });
@@ -85,12 +85,14 @@ export async function POST(req: Request) {
     const subtotal = money(items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0));
     const itemGroups = [...items.reduce((groups, item) => {
       const customerId = item.customerId || (body.customerId ? String(body.customerId) : null);
-      const group = groups.get(customerId || '') || { customerId, items: [] as SaleItemInput[], subtotal: 0 };
+      const itemAccountId = item.accountId || (body.accountId ? String(body.accountId) : null);
+      const groupKey = `${customerId || ''}|${itemAccountId || ''}`;
+      const group = groups.get(groupKey) || { customerId, accountId: itemAccountId, items: [] as SaleItemInput[], subtotal: 0 };
       group.items.push(item);
       group.subtotal = money(group.subtotal + item.quantity * item.unitPrice);
-      groups.set(customerId || '', group);
+      groups.set(groupKey, group);
       return groups;
-    }, new Map<string, { customerId: string | null; items: SaleItemInput[]; subtotal: number }>()).values()];
+    }, new Map<string, { customerId: string | null; accountId: string | null; items: SaleItemInput[]; subtotal: number }>()).values()];
     const requestedPaidAmount = Math.max(0, Math.min(money(body.paidAmount), subtotal));
     let recognitionMemoryAvailable = true;
     if (Array.isArray(body.customerCorrections) && body.customerCorrections.length) {
@@ -184,6 +186,14 @@ export async function POST(req: Request) {
         if (!customer) throw new Error('Iibka daynta waa in customer la diiwaangeliyey lagu xiraa.');
         if (!String(customer.phone || customer.phoneNumber || '').trim()) throw new Error(`Lambarka customer-ka ${customer.name} waa khasab marka dayn/credit la gelinayo.`);
       }
+      if (!isCredit) {
+        for (const group of itemGroups) {
+          const accountIdForGroup = group.accountId || saleAccountId;
+          if (!accountIdForGroup) throw new Error('Item kasta dooro account-ka lacagta lagu shubay.');
+          const selected = await tx.account.findFirst({ where: { id: accountIdForGroup, companyId, isActive: true }, select: { id: true } });
+          if (!selected) throw new Error('Account-ka item-ka la doortay lama helin.');
+        }
+      }
 
       const corrections = Array.isArray(body.customerCorrections) ? body.customerCorrections as CustomerCorrectionInput[] : [];
       let learnedCorrections = 0;
@@ -207,7 +217,7 @@ export async function POST(req: Request) {
         const groupPaid = groupPaymentAmounts[index];
         const paymentStatus = isCredit ? 'Unpaid' : groupPaid >= group.subtotal ? 'Paid' : groupPaid > 0 ? 'Partial' : 'Unpaid';
         const groupAccountIds = [...new Set(groupAllocations[index].map(payment => payment.accountId))];
-        const groupAccountId = resolvedAllocations.length ? (groupAccountIds.length === 1 ? groupAccountIds[0] : null) : saleAccountId;
+        const groupAccountId = resolvedAllocations.length ? (groupAccountIds.length === 1 ? groupAccountIds[0] : null) : (isCredit ? null : (group.accountId || saleAccountId));
         const invoiceNumber = itemGroups.length === 1 ? baseInvoice : `${baseInvoice}-${index + 1}`;
         sales.push(await tx.sale.create({
           data: {

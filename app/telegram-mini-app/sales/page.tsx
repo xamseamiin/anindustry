@@ -9,7 +9,7 @@ import ActivityHistory from '../ActivityHistory';
 type Product = { id: string; name: string; sku?: string; inStock: number; sellingPrice: number; unit?: string };
 type Customer = { id: string; name: string; phone?: string | null; phoneNumber?: string | null };
 type Account = { id: string; name: string; balance: number; currency?: string };
-type Item = { productId: string; productName: string; quantity: number; unitPrice: number; customerId?: string; customerName?: string | null; customerPhone?: string | null; ocrCustomerName?: string | null; customerCorrectionConfirmed?: boolean };
+type Item = { productId: string; productName: string; quantity: number; unitPrice: number; customerId?: string; accountId?: string; customerName?: string | null; customerPhone?: string | null; ocrCustomerName?: string | null; customerCorrectionConfirmed?: boolean };
 type IncomingPayment = { id: string; accountId: string; accountName: string; provider: string; providerReference: string; senderName?: string | null; senderPhone?: string | null; amount: number; allocatedAmount: number; availableAmount: number; receivedAt: string };
 const blankSaleItem = (): Item => ({ productId: '', productName: '', quantity: 1, unitPrice: 0 });
 
@@ -108,7 +108,7 @@ export default function TelegramSalesPage() {
     if (!product) return;
     setItems(current => {
       const emptyIndex = current.findIndex(item => !item.productId && !item.productName);
-      const next = { productId: product.id, productName: product.name, quantity: 1, unitPrice: product.sellingPrice || 0, customerId };
+      const next = { productId: product.id, productName: product.name, quantity: 1, unitPrice: product.sellingPrice || 0, customerId, accountId };
       return emptyIndex >= 0 ? current.map((item, index) => index === emptyIndex ? next : item) : [...current, next];
     });
   };
@@ -184,7 +184,7 @@ export default function TelegramSalesPage() {
           const lineCustomerName = String(item.customerName || (!mixedCustomerReceipt ? (receiptCustomerName || globalRawCustomerName) : '')).trim();
           const lineCustomer = customers.find(customer => customer.id === item.matchedCustomerId)
             || (lineCustomerName ? findCustomer(customers, lineCustomerName, item.customerPhone) : null);
-          return { productId: matched?.id || '', productName: matched?.name || item.productName || '', quantity: Number(item.quantity) || 1, unitPrice: Number(item.unitPrice) || 0, customerId: lineCustomer?.id || (lineCustomerName ? '' : receiptCustomerId), customerName: lineCustomer ? null : lineCustomerName || null, customerPhone: item.customerPhone || receiptCustomerPhone || null, ocrCustomerName: lineCustomerName || null, customerCorrectionConfirmed: false };
+          return { productId: matched?.id || '', productName: matched?.name || item.productName || '', quantity: Number(item.quantity) || 1, unitPrice: Number(item.unitPrice) || 0, customerId: lineCustomer?.id || (lineCustomerName ? '' : receiptCustomerId), accountId, customerName: lineCustomer ? null : lineCustomerName || null, customerPhone: item.customerPhone || receiptCustomerPhone || null, ocrCustomerName: lineCustomerName || null, customerCorrectionConfirmed: false };
         }));
       }
       if (scan.accountName) {
@@ -204,6 +204,7 @@ export default function TelegramSalesPage() {
 
   const saveSale = async () => {
     if (items.some(item => item.customerName && !item.customerId)) return setMessage('Rasiidka waxaa ku jira customer cusub. Ka samee customer-ka (+), ku qor lambarkiisa saxda ah, kadib mar kale kaydi.');
+    if (paymentMethod !== 'CREDIT' && items.some(item => !item.accountId && !accountId)) return setMessage('Item kasta dooro account-ka lacagta lagu shubay.');
     const saleItems = items.filter(item => item.productId || item.productName.trim());
     const missingProducts = saleItems.filter(item => !item.productId).map(item => item.productName || 'Product aan la aqoonsan');
     if (!saleItems.length || missingProducts.length || saleItems.some(item => item.quantity <= 0 || item.unitPrice <= 0)) return setMessage(missingProducts.length ? `Product-kan system-ka lagama helin: ${missingProducts.join(', ')}. Sax rasiidka ama marka hore Products-ka ku dar.` : 'Saf kasta geli qty iyo qiime sax ah.');
@@ -235,6 +236,7 @@ export default function TelegramSalesPage() {
           {item.customerName && !item.customerId && <button type="button" onClick={() => { setNewCustomerName(item.customerName || ''); setNewCustomerPhone(item.customerPhone || ''); setCustomerRegistrationSourceName(item.ocrCustomerName || item.customerName || ''); setShowCustomerForm(true); }} className="w-full rounded-lg border border-amber-300/30 bg-amber-500/10 p-2 text-left text-[10px] font-black text-amber-200">Customer cusub: {item.customerName} · xaqiiji magaca (+)</button>}
           {item.ocrCustomerName && item.customerId && normalizeLookup(item.ocrCustomerName) !== normalizeLookup(customers.find(customer => customer.id === item.customerId)?.name) && <button type="button" onClick={() => setItems(current => current.map((x, i) => i === index ? { ...x, customerCorrectionConfirmed: true } : x))} className="w-full rounded-lg border border-amber-300/30 bg-amber-500/10 p-2 text-left text-[9px] font-bold text-amber-100">Rasiidka: “{item.ocrCustomerName}” → {customers.find(customer => customer.id === item.customerId)?.name}. {item.customerCorrectionConfirmed ? 'Sixitaanka waa la xafidayaa.' : 'Xaqiiji si AI-gu u barto.'}</button>}
           <label className="block text-[9px] font-black uppercase text-slate-500">Customer-ka item-kan<select value={item.customerId || ''} onChange={e => setItems(current => current.map((x, i) => i === index ? { ...x, customerId: e.target.value, customerName: null, customerCorrectionConfirmed: Boolean(x.ocrCustomerName) } : x))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 p-2 text-[11px] normal-case text-white"><option value="">Default customer / Walk-in</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>)}</select></label>
+          {paymentMethod !== 'CREDIT' && <label className="block text-[9px] font-black uppercase text-slate-500">Account-ka item-kan<select value={item.accountId || accountId} onChange={e => setItems(current => current.map((x, i) => i === index ? { ...x, accountId: e.target.value } : x))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 p-2 text-[11px] normal-case text-white"><option value="">Dooro account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
         </div>)}
       </div>
       {paymentMethod !== 'CREDIT' && <label className="block text-[10px] font-black uppercase text-slate-400">Account-ka lacagta lagu shubay<select value={accountId} onChange={e => setAccountId(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm"><option value="">Dooro account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name} · {a.balance.toLocaleString()} ETB</option>)}</select><p className="mt-1 text-[9px] normal-case text-slate-500">Credit/dayn account looma baahna.</p></label>}
