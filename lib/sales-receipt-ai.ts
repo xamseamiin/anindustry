@@ -30,6 +30,7 @@ export interface SalesReceiptLineItem {
     quantity: number | null;
     unitPrice: number | null;
     total: number | null;
+    paymentMethod?: 'CASH' | 'CARD' | 'PARTIAL' | 'CREDIT' | null;
     confidence?: number;
 }
 
@@ -206,6 +207,9 @@ export function normalizeSalesReceiptAnalysis(
             const explicitLineCustomerName = String(item?.customerName || item?.buyerName || '').trim();
             const lineCustomerName = explicitLineCustomerName || (!mixedCustomerReceipt ? String(customerName || '').trim() : '');
             const matchedLineCustomer = lineCustomerName ? bestCustomerMatch(lineCustomerName, customers, corrections) : null;
+            const lineMethod = ['CASH', 'CARD', 'PARTIAL', 'CREDIT'].includes(String(item?.paymentMethod || '').toUpperCase())
+                ? String(item.paymentMethod).toUpperCase() as SalesReceiptLineItem['paymentMethod']
+                : null;
 
             if (!productName) itemWarnings.push('Magaca product-ka lama akhrin.');
             if (!match && productName) itemWarnings.push(`Product "${productName}" inventory-ga lama hubo, dooro product sax ah.`);
@@ -224,6 +228,7 @@ export function normalizeSalesReceiptAnalysis(
                 quantity,
                 unitPrice,
                 total: total ?? (unitPrice ? quantity * unitPrice : null),
+                paymentMethod: lineMethod,
                 confidence: match ? Math.round(match.score * 100) : Number(item?.confidence) || 0
             };
         })
@@ -426,7 +431,7 @@ Extract key sales transaction fields accurately:
 3. If the receipt says only customer/client/macmiil or explicitly "walk-in customer", treat it as generic, return null and set customerType to "WALK_IN". A Walk-in sale is cash and fully paid at the receipt total. If a real person/company name is visible, set customerType to "NAMED" and do not invent a phone number.
 4. customerPhone: Phone number only if actually written on the receipt.
 5. customerType: One of "WALK_IN" or "NAMED".
-6. items: Every product/material line sold. Return every handwritten row. EACH ROW MUST carry its own customerName when the paper contains different buyers—even when the same product repeats. Read the buyer beside that exact quantity/price/total; do not inherit the receipt-level customer or the preceding row's customer. For each item return productName, quantity, unitPrice, total, customerName, matchedCustomerName, and customerPhone only when visible. When only a buyer name is written in a row's Description and the actual product is unclear, preserve the buyer name, leave productName null, and add a warning instead of inventing a product.
+6. items: Every product/material line sold. Return every handwritten row. EACH ROW MUST carry its own customerName when the paper contains different buyers—even when the same product repeats. Read the buyer beside that exact quantity/price/total; do not inherit the receipt-level customer or the preceding row's customer. For each item return productName, quantity, unitPrice, total, customerName, matchedCustomerName, customerPhone only when visible, and paymentMethod. A handwritten tick/check/mark beside a line, or words such as "paid", "tik", "la saxay", "cash", mean paymentMethod "CASH" (paid). Words such as "dayn", "deyn", "credit", "nala leeyahay", "later", or "aan la bixin" mean paymentMethod "CREDIT". If no line mark exists, inherit the receipt-level method. Never treat a tick in the margin as decoration; associate it with the nearest item row. When only a buyer name is written in a row's Description and the actual product is unclear, preserve the buyer name, leave productName null, and add a warning instead of inventing a product.
 7. totalAmount: Grand total price of the sale as a raw ETB number.
 8. paidAmount: Amount paid/deposited according to the receipt as a raw ETB number. If no payment is shown, use 0 only when the receipt clearly says credit/dayn/unpaid; otherwise use null.
 9. paymentMethod: One of "CASH", "CARD", "PARTIAL", "CREDIT". A printed heading such as "CASH SALES INVOICE" means CASH unless handwriting clearly says otherwise. If paidAmount >= totalAmount, use "CASH". If 0 < paidAmount < totalAmount, use "PARTIAL". If paidAmount == 0 and it is dayn/unpaid, use "CREDIT".
@@ -447,7 +452,7 @@ Return ONLY a valid raw JSON object (strictly no markdown codeblocks or extra te
   "requiresCustomerRegistration": false,
   "matchedCustomerName": "Abdi Hassan",
   "items": [
-    { "customerName": "Abdi Hassan", "matchedCustomerName": "Abdi Hassan", "customerPhone": null, "productName": "Block 15cm", "quantity": 500, "unitPrice": 150, "total": 75000 },
+    { "customerName": "Abdi Hassan", "matchedCustomerName": "Abdi Hassan", "customerPhone": null, "productName": "Block 15cm", "quantity": 500, "unitPrice": 150, "total": 75000, "paymentMethod": "CASH" },
     { "customerName": "Abdi Hassan", "customerPhone": null, "productName": "Cement", "quantity": 10, "unitPrice": 900, "total": 9000 }
   ],
   "totalAmount": 75000,

@@ -40,8 +40,12 @@ export async function POST(req: Request) {
     try {
       receiptUrl = await storeReceiptImage({ buffer, mimeType: file.type, folder: 'sales_receipts', nameHint: receiptHash.slice(0, 12) });
     } catch (error: any) {
-      receiptWarning = error?.message || 'Sawirka AI ayaa akhriyey, balse kaydinta rasiidku way fashilantay.';
-      console.warn('Sales receipt parsed but could not be persisted.', error);
+      // Keep the receipt attached even when Vercel Blob is not configured.
+      // The Sale.receiptUrl column is text-backed in Postgres, so this data URL
+      // remains viewable from Sales History and can later be migrated to Blob.
+      receiptUrl = `data:${file.type};base64,${buffer.toString('base64')}`;
+      receiptWarning = 'Blob storage lama habeyn; rasiidka waxaa lagu keydiyey database-ka fallback ahaan.';
+      console.warn('Sales receipt stored as database data URL fallback.', error);
     }
     return NextResponse.json({ success: true, receiptUrl, receiptHash, receiptWarning, data, requiresReview: data.warnings.length > 0 || data.confidence < 85 });
   } catch (error: any) {

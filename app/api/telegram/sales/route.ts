@@ -5,7 +5,7 @@ import { sendTelegramOrderAlert } from '@/lib/telegram-alert';
 
 export const dynamic = 'force-dynamic';
 type PaymentAllocationInput = { incomingPaymentId: string; amount: number };
-type SaleItemInput = { productId: string; quantity: number; unitPrice: number; customerId?: string | null; accountId?: string | null };
+type SaleItemInput = { productId: string; quantity: number; unitPrice: number; customerId?: string | null; accountId?: string | null; paymentMethod?: string | null };
 type CustomerCorrectionInput = { observedName: string; customerId: string };
 
 function money(value: unknown) {
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
     if (!access) return NextResponse.json({ error: 'Add Sale fasax uma lihid.' }, { status: 403 });
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     const userId = process.env.TELEGRAM_USER_ID || String(access.identity.id);
-    const items: SaleItemInput[] = Array.isArray(body.items) ? body.items.map((item: any): SaleItemInput => ({ productId: String(item.productId || ''), quantity: Number(item.quantity), unitPrice: money(item.unitPrice), customerId: item.customerId ? String(item.customerId) : null, accountId: item.accountId ? String(item.accountId) : null })) : [];
+    const items: SaleItemInput[] = Array.isArray(body.items) ? body.items.map((item: any): SaleItemInput => ({ productId: String(item.productId || ''), quantity: Number(item.quantity), unitPrice: money(item.unitPrice), customerId: item.customerId ? String(item.customerId) : null, accountId: item.accountId ? String(item.accountId) : null, paymentMethod: item.paymentMethod ? String(item.paymentMethod).toUpperCase() : null })) : [];
     const allocationInputs: PaymentAllocationInput[] = Array.isArray(body.paymentAllocations) ? body.paymentAllocations.map((payment: any) => ({ incomingPaymentId: String(payment.incomingPaymentId || ''), amount: money(payment.amount) })) : [];
     if (!companyId || !items.length || items.some(item => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0 || item.unitPrice <= 0)) return NextResponse.json({ error: 'Product, quantity iyo price waa qasab.' }, { status: 400 });
     if (allocationInputs.some(payment => !payment.incomingPaymentId || payment.amount <= 0)) return NextResponse.json({ error: 'Lacagta la dooranayo waa inay leedahay amount sax ah.' }, { status: 400 });
@@ -86,14 +86,16 @@ export async function POST(req: Request) {
     const itemGroups = [...items.reduce((groups, item) => {
       const customerId = item.customerId || (body.customerId ? String(body.customerId) : null);
       const itemAccountId = item.accountId || (body.accountId ? String(body.accountId) : null);
-      const groupKey = `${customerId || ''}|${itemAccountId || ''}`;
-      const group = groups.get(groupKey) || { customerId, accountId: itemAccountId, items: [] as SaleItemInput[], subtotal: 0 };
+      const itemPaymentMethod = item.paymentMethod || String(body.paymentMethod || 'CASH').toUpperCase();
+      const groupKey = `${customerId || ''}|${itemAccountId || ''}|${itemPaymentMethod}`;
+      const group = groups.get(groupKey) || { customerId, accountId: itemAccountId, paymentMethod: itemPaymentMethod, items: [] as SaleItemInput[], subtotal: 0 };
       group.items.push(item);
       group.subtotal = money(group.subtotal + item.quantity * item.unitPrice);
       groups.set(groupKey, group);
       return groups;
-    }, new Map<string, { customerId: string | null; accountId: string | null; items: SaleItemInput[]; subtotal: number }>()).values()];
-    const requestedPaidAmount = Math.max(0, Math.min(money(body.paidAmount), subtotal));
+    }, new Map<string, { customerId: string | null; accountId: string | null; paymentMethod: string; items: SaleItemInput[]; subtotal: number }>()).values()];
+    const nonCreditSubtotal = itemGroups.reduce((sum, group) => sum + (group.paymentMethod === 'CREDIT' ? 0 : group.subtotal), 0);
+    const requestedPaidAmount = Math.max(0, Math.min(money(body.paidAmount), nonCreditSubtotal));
     let recognitionMemoryAvailable = true;
     if (Array.isArray(body.customerCorrections) && body.customerCorrections.length) {
       try {
@@ -215,14 +217,15 @@ export async function POST(req: Request) {
       for (let index = 0; index < itemGroups.length; index += 1) {
         const group = itemGroups[index];
         const groupPaid = groupPaymentAmounts[index];
-        const paymentStatus = isCredit ? 'Unpaid' : groupPaid >= group.subtotal ? 'Paid' : groupPaid > 0 ? 'Partial' : 'Unpaid';
+        const groupIsCredit = group.paymentMethod === 'CREDIT';
+        const paymentStatus = groupIsCredit ? 'Unpaid' : groupPaid >= group.subtotal ? 'Paid' : groupPaid > 0 ? 'Partial' : 'Unpaid';
         const groupAccountIds = [...new Set(groupAllocations[index].map(payment => payment.accountId))];
         const groupAccountId = resolvedAllocations.length ? (groupAccountIds.length === 1 ? groupAccountIds[0] : null) : (isCredit ? null : (group.accountId || saleAccountId));
         const invoiceNumber = itemGroups.length === 1 ? baseInvoice : `${baseInvoice}-${index + 1}`;
         sales.push(await tx.sale.create({
           data: {
             invoiceNumber, userId, companyId, customerId: group.customerId, accountId: groupAccountId,
-            subtotal: group.subtotal, tax: 0, total: group.subtotal, paidAmount: isCredit ? 0 : groupPaid, paymentMethod, paymentStatus, status: 'Completed',
+            subtotal: group.subtotal, tax: 0, total: group.subtotal, paidAmount: groupIsCredit ? 0 : groupPaid, paymentMethod: group.paymentMethod, paymentStatus, status: 'Completed',
             notes: itemGroups.length > 1 ? `${saleNotes}\nReceipt group ${index + 1}/${itemGroups.length}` : saleNotes,
             receiptUrl: body.receiptUrl || null,
             items: { create: group.items.map(item => { const material = materialMap.get(item.productId)!; return { productId: material.id, productName: material.name, quantity: item.quantity, unitPrice: item.unitPrice, total: item.quantity * item.unitPrice, costPrice: Number(material.purchasePrice || 0), totalCost: Number(material.purchasePrice || 0) * item.quantity }; }) },
