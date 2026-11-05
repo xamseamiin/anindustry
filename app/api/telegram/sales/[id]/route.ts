@@ -115,7 +115,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
     const customerId = body.customerId ? String(body.customerId) : null;
     const accountId = body.accountId ? String(body.accountId) : null;
-    const paymentMethod = String(body.paymentMethod || 'CASH');
+    const paymentMethod = String(body.paymentMethod || 'CASH').toUpperCase();
     const saleDate = body.saleDate ? new Date(body.saleDate) : sale.createdAt;
 
     const rawItems = Array.isArray(body.items) ? body.items : [];
@@ -134,8 +134,13 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const subtotal = normalizedItems.reduce((sum: number, item: any) => sum + item.total, 0);
     const total = subtotal;
     const paidAmountInput = body.paidAmount !== undefined && body.paidAmount !== '' ? money(body.paidAmount) : (paymentMethod === 'CREDIT' ? 0 : total);
-    const paidAmount = Math.min(total, Math.max(0, paidAmountInput));
+    const paidAmount = paymentMethod === 'CREDIT' ? 0 : Math.min(total, Math.max(0, paidAmountInput));
     const paymentStatus = paidAmount >= total ? 'Paid' : paidAmount > 0 ? 'Partial' : 'Credit';
+    if (paymentMethod !== 'CREDIT' && paidAmount > 0) {
+      if (!accountId) return NextResponse.json({ error: 'Paid/Partial sale-ka account-ka waa qasab.' }, { status: 400 });
+      const account = await prisma.account.findFirst({ where: { id: accountId, companyId, isActive: true }, select: { id: true } });
+      if (!account) return NextResponse.json({ error: 'Account-ka la doortay lama helin.' }, { status: 400 });
+    }
 
     const updatedSale = await prisma.$transaction(async (tx) => {
       // 1. Revert previous stock
@@ -183,7 +188,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
           paymentMethod,
           subtotal,
           total,
-          paidAmount: paymentMethod === 'CASH' || paymentMethod === 'CARD' ? total : paidAmount,
+          paidAmount,
           paymentStatus,
           status: 'Completed',
           createdAt: saleDate,

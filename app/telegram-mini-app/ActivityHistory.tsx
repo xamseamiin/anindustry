@@ -26,6 +26,10 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
   const [editPaidAmount, setEditPaidAmount] = useState('');
   const [editStatus, setEditStatus] = useState('');
   const [editPaymentMethod, setEditPaymentMethod] = useState('');
+  const [editCustomerId, setEditCustomerId] = useState('');
+  const [editAccountId, setEditAccountId] = useState('');
+  const [salesCustomers, setSalesCustomers] = useState<any[]>([]);
+  const [salesAccounts, setSalesAccounts] = useState<any[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -44,6 +48,14 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [kind, page, search, refresh]);
 
+  useEffect(() => {
+    if (kind !== 'sales') return;
+    fetch('/api/telegram/sales', { cache: 'no-store', headers: { 'x-telegram-init-data': (window as any).Telegram?.WebApp?.initData || '' } })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (data) { setSalesCustomers(data.customers || []); setSalesAccounts(data.accounts || []); } })
+      .catch(() => undefined);
+  }, [kind]);
+
   const openEdit = (row: any) => {
     setEditingRow(row);
     const dateObj = new Date(row.startDate || row.createdAt);
@@ -52,6 +64,8 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
     setEditPaidAmount(String(row.paidAmount || 0));
     setEditStatus(row.status || 'COMPLETED');
     setEditPaymentMethod(row.paymentMethod || 'CASH');
+    setEditCustomerId(row.customer?.id || row.customerId || '');
+    setEditAccountId(row.account?.id || row.accountId || '');
   };
 
   const handleUpdate = async () => {
@@ -67,6 +81,8 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
         payload.saleDate = editDate;
         payload.paidAmount = Number(editPaidAmount);
         payload.paymentMethod = editPaymentMethod;
+        payload.customerId = editCustomerId || null;
+        payload.accountId = editPaymentMethod === 'CREDIT' ? null : (editAccountId || null);
         payload.items = editingRow.items || [{ productId: editingRow.items?.[0]?.productId, quantity: Number(editQuantity), unitPrice: editingRow.items?.[0]?.unitPrice || 0 }];
       } else {
         payload.startDate = editDate;
@@ -211,6 +227,9 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
           </label>
 
           {kind === 'sales' ? <>
+            <label className="block text-xs font-bold text-slate-300">Customer-ka
+              <select value={editCustomerId} onChange={e => setEditCustomerId(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white"><option value="">Walk-in Customer</option>{salesCustomers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}{customer.phone ? ` · ${customer.phone}` : ''}</option>)}</select>
+            </label>
             <label className="block text-xs font-bold text-slate-300">Paid Amount (ETB)
               <input type="number" min="0" value={editPaidAmount} onChange={e => setEditPaidAmount(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white focus:border-cyan-400/60 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 transition-all" />
             </label>
@@ -222,6 +241,9 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
                 <option value="CARD">Card</option>
               </select>
             </label>
+            {editPaymentMethod !== 'CREDIT' && <label className="block text-xs font-bold text-slate-300">Account-ka lacagta lagu shubay
+              <select value={editAccountId} onChange={e => setEditAccountId(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white"><option value="">Dooro account</option>{salesAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · {Number(account.balance || 0).toLocaleString()} ETB</option>)}</select>
+            </label>}
           </> : <>
             <label className="block text-xs font-bold text-slate-300">Tirada (Quantity)
               <input type="number" min="1" value={editQuantity} onChange={e => setEditQuantity(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white focus:border-cyan-400/60 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 transition-all" />
