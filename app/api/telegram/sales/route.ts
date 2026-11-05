@@ -124,7 +124,10 @@ export async function POST(req: Request) {
         customerRows.forEach(customer => customersById.set(customer.id, customer));
       }
       const paymentMethod = String(body.paymentMethod || 'CASH').toUpperCase();
-      const isCredit = paymentMethod === 'CREDIT';
+      // A scanned receipt may contain both credit and paid lines. Treat the
+      // whole draft as credit only when every item is credit; otherwise retain
+      // the paid lines/account allocations and handle each group separately.
+      const isCredit = itemGroups.length > 0 && itemGroups.every(group => group.paymentMethod === 'CREDIT');
       let paidAmount = isCredit ? 0 : requestedPaidAmount;
       let saleAccountId = body.accountId ? String(body.accountId) : null;
       if (!isCredit) {

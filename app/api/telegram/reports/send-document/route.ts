@@ -25,18 +25,23 @@ export async function POST(request: Request) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // 1. Save locally for direct HTTPS download
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'reports');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    // Vercel serverless filesystems are read-only outside /tmp. Telegram can
+    // receive the multipart document directly, so local persistence is only a
+    // best-effort convenience for browser links and must never block delivery.
+    let downloadUrl: string | null = null;
+    try {
+      const uploadDir = process.env.VERCEL ? '/tmp/an-industry-reports' : path.join(process.cwd(), 'public', 'uploads', 'reports');
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      const safeDiskFileName = `${Date.now()}-${fileName}`;
+      fs.writeFileSync(path.join(uploadDir, safeDiskFileName), buffer);
+      if (!process.env.VERCEL) {
+        const host = request.headers.get('host') || 'anindustry.online';
+        const proto = request.headers.get('x-forwarded-proto') || 'https';
+        downloadUrl = `${proto}://${host}/uploads/reports/${safeDiskFileName}`;
+      }
+    } catch (storageError) {
+      console.warn('Report local storage skipped; continuing with Telegram delivery.', storageError);
     }
-    const safeDiskFileName = `${Date.now()}-${fileName}`;
-    const filePath = path.join(uploadDir, safeDiskFileName);
-    fs.writeFileSync(filePath, buffer);
-
-    const host = request.headers.get('host') || 'anindustry.online';
-    const proto = request.headers.get('x-forwarded-proto') || 'https';
-    const downloadUrl = `${proto}://${host}/uploads/reports/${safeDiskFileName}`;
 
     // 2. Deliver via Telegram Bot directly to user's chat
     const token = process.env.TELEGRAM_BOT_TOKEN;

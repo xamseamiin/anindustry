@@ -15,6 +15,9 @@ export default function FinancialHubPage() {
     const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'DAILY'>('DAILY');
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any>(null);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [category, setCategory] = useState('');
 
     // Daily Report States
     const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -23,7 +26,11 @@ export default function FinancialHubPage() {
     const [copiedSummary, setCopiedSummary] = useState<boolean>(false);
 
     useEffect(() => {
-        fetch('/api/manufacturing/reports/financials')
+        const query = new URLSearchParams();
+        if (startDate) query.set('startDate', startDate);
+        if (endDate) query.set('endDate', endDate);
+        if (category) query.set('category', category);
+        fetch(`/api/manufacturing/reports/financials${query.toString() ? `?${query}` : ''}`)
             .then(res => res.json())
             .then(d => {
                 setData(d);
@@ -33,7 +40,7 @@ export default function FinancialHubPage() {
                 console.error(err);
                 setLoading(false);
             });
-    }, []);
+    }, [startDate, endDate, category]);
 
     const fetchDailyReport = (date: string) => {
         setDailyLoading(true);
@@ -156,6 +163,13 @@ export default function FinancialHubPage() {
                             <BarChart3 size={16} /> Executive Overview
                         </button>
                     </div>
+                </div>
+
+                <div className="print:hidden flex flex-wrap items-end gap-3 rounded-2xl border border-white/50 bg-white/40 p-4 shadow-lg backdrop-blur-xl">
+                    <div><label className="mb-1 block text-[9px] font-black uppercase tracking-widest text-slate-500">Custom from</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-xs font-bold text-slate-800" /></div>
+                    <div><label className="mb-1 block text-[9px] font-black uppercase tracking-widest text-slate-500">Custom to</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-xs font-bold text-slate-800" /></div>
+                    <div><label className="mb-1 block text-[9px] font-black uppercase tracking-widest text-slate-500">Category</label><select value={category} onChange={e => setCategory(e.target.value)} className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-xs font-bold text-slate-800"><option value="">All categories</option><option value="Sales Income">Sales Income</option><option value="Deposit / Dayn la Helay">Deposit / Dayn la Helay</option><option value="Utilities & Rent">Utilities & Rent</option><option value="Raw Materials">Raw Materials</option><option value="Salary">Salary</option></select></div>
+                    <button type="button" onClick={() => { setStartDate(''); setEndDate(''); setCategory(''); }} className="rounded-xl border border-slate-300 bg-white/70 px-3 py-2 text-xs font-black text-slate-600">Clear filters</button>
                 </div>
 
                 {/* TAB 1: DAILY EXECUTIVE REPORT (EXECUTIVE PDF TEMPLATE LAYOUT) */}

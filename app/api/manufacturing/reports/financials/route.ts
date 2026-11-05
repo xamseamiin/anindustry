@@ -8,10 +8,15 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
     try {
         const companyId = await getSessionCompanyId();
+        const params = new URL(request.url).searchParams;
+        const startDate = params.get('startDate');
+        const endDate = params.get('endDate');
+        const category = params.get('category');
+        const dateFilter = startDate || endDate ? { createdAt: { ...(startDate ? { gte: new Date(`${startDate}T00:00:00`) } : {}), ...(endDate ? { lte: new Date(`${endDate}T23:59:59.999`) } : {}) } } : {};
 
         // 1. Fetch all Sales for Revenue and COGS
         const sales = await prisma.sale.findMany({
-            where: { companyId, status: { not: 'Refunded' } },
+            where: { companyId, status: { not: 'Refunded' }, ...dateFilter },
             include: { 
                 items: {
                     include: {
@@ -23,12 +28,12 @@ export async function GET(request: Request) {
 
         // 2. Fetch all Expenses
         const expenses = await prisma.expense.findMany({
-            where: { companyId }
+            where: { companyId, ...(category ? { category } : {}), ...dateFilter }
         });
 
         // 3. Fetch Production Orders for Batch Profitability Table
         const batches = await prisma.productionOrder.findMany({
-            where: { companyId, status: 'COMPLETED' },
+            where: { companyId, status: 'COMPLETED', ...dateFilter },
             include: { 
                 manufacturingUsed: true,
                 costTracking: true,
@@ -94,6 +99,7 @@ export async function GET(request: Request) {
                 profitMargin: totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0
             },
             batchProfitability,
+            filters: { startDate, endDate, category },
             monthlyTrends
         });
     } catch (error: any) {
