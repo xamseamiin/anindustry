@@ -109,7 +109,9 @@ export async function POST(request: Request) {
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
 
     const body = await request.json();
-    const { saleId, amountCollected, accountId, note } = body;
+    const { saleId, amountCollected, accountId, note, paymentDate } = body;
+    const transactionDate = paymentDate ? new Date(`${String(paymentDate)}T12:00:00`) : new Date();
+    if (Number.isNaN(transactionDate.getTime())) return NextResponse.json({ error: 'Taariikhda lacag-bixinta ma saxna.' }, { status: 400 });
 
     const collectionAmount = money(amountCollected);
     if (collectionAmount <= 0) {
@@ -169,7 +171,7 @@ export async function POST(request: Request) {
           type: 'INCOME',
           description: `Deymoshub: #${sale.invoiceNumber} (${customerName})`,
           note: note ? String(note).slice(0, 500) : `Ururinta deynta invoice #${sale.invoiceNumber}`,
-          transactionDate: new Date(),
+          transactionDate,
           accountId,
           userId
         }

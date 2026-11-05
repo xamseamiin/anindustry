@@ -45,6 +45,7 @@ export default function TelegramAccountingPage() {
   const [amountToPay, setAmountToPay] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [note, setNote] = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -89,6 +90,7 @@ export default function TelegramAccountingPage() {
     setSelectedReceivable(item);
     setAmountToPay(String(item.debtAmount)); // Default to full remaining balance
     setNote(`Deymoshubka Invoice #${item.invoiceNumber}`);
+    setPaymentDate(new Date().toISOString().slice(0, 10));
     if (accounts.length > 0 && !selectedAccountId) {
       setSelectedAccountId(accounts[0].id);
     }
@@ -98,6 +100,7 @@ export default function TelegramAccountingPage() {
     setSelectedReceivable(null);
     setAmountToPay('');
     setNote('');
+    setPaymentDate(new Date().toISOString().slice(0, 10));
   };
 
   const handlePaySubmit = async (e: React.FormEvent) => {
@@ -134,7 +137,8 @@ export default function TelegramAccountingPage() {
           saleId: selectedReceivable.id,
           amountCollected: parsedAmount,
           accountId: selectedAccountId,
-          note
+          note,
+          paymentDate
         })
       });
       const data = await res.json();
@@ -445,6 +449,11 @@ export default function TelegramAccountingPage() {
               </div>
 
               {/* Note Input */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400">Taariikhda lacag-bixinta</label>
+                <input type="date" required value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 p-2.5 text-xs text-white focus:border-cyan-400 focus:outline-none" />
+              </div>
+
               <div>
                 <label className="block text-[10px] font-black uppercase text-slate-400">
                   Faahfaahin / Xusuusin (Ikhtiyaari)
