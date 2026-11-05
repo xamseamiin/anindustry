@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       const tomorrowStart = nairobiStart(1);
       const monthStart = new Date(Date.UTC(todayStart.getUTCFullYear(), todayStart.getUTCMonth(), 1, -3));
       const [rows, total, statsRows] = await Promise.all([
-        prisma.sale.findMany({ where, skip: (Math.floor(page) - 1) * 25, take: 25, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, invoiceNumber: true, createdAt: true, total: true, paidAmount: true, currency: true, status: true, paymentStatus: true, paymentMethod: true, receiptUrl: true, customer: { select: { name: true } }, account: { select: { name: true } }, items: { select: { productId: true, productName: true, quantity: true, unitPrice: true, total: true } } } }),
+        prisma.sale.findMany({ where, skip: (Math.floor(page) - 1) * 25, take: 25, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, invoiceNumber: true, createdAt: true, total: true, paidAmount: true, currency: true, status: true, paymentStatus: true, paymentMethod: true, receiptUrl: true, customerId: true, accountId: true, customer: { select: { id: true, name: true, phone: true, phoneNumber: true } }, account: { select: { id: true, name: true, balance: true } }, items: { select: { productId: true, productName: true, quantity: true, unitPrice: true, total: true } } } }),
         prisma.sale.count({ where }),
         prisma.sale.findMany({ where: { companyId, status: 'Completed', createdAt: { gte: monthStart, lt: tomorrowStart } }, select: { total: true, createdAt: true, items: { select: { quantity: true } } } })
       ]);
