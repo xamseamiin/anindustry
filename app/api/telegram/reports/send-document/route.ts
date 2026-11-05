@@ -42,11 +42,12 @@ export async function POST(request: Request) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     let telegramSent = false;
     let telegramMessageId: number | null = null;
+    const telegramErrors: string[] = [];
 
     if (token) {
       const candidates = [
         clientChatId,
-        access.identity?.id ? String(access.identity.id) : null,
+        access.telegramId ? String(access.telegramId) : null,
         process.env.TELEGRAM_CHAT_ID
       ].filter(Boolean);
 
@@ -75,16 +76,21 @@ export async function POST(request: Request) {
             telegramMessageId = data.result.message_id;
             break; // Stop after first successful delivery
           }
+          telegramErrors.push(String(data.description || `Telegram rejected chat ${targetId}`));
         } catch (tgErr) {
+          telegramErrors.push(tgErr instanceof Error ? tgErr.message : String(tgErr));
           console.warn(`Telegram delivery failed for chat ${targetId}:`, tgErr);
         }
       }
+    } else {
+      telegramErrors.push('TELEGRAM_BOT_TOKEN is missing in production environment.');
     }
 
     return NextResponse.json({
       success: true,
       telegramSent,
       telegramMessageId,
+      telegramError: telegramSent ? null : telegramErrors.join(' | '),
       downloadUrl,
       fileName
     });

@@ -1815,8 +1815,10 @@ export default function TelegramMiniAppPage() {
                     body: form
                 });
                 const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Telegram document delivery failed.');
                 telegramSent = !!data?.telegramSent;
                 downloadUrl = data?.downloadUrl || null;
+                if (!telegramSent && data?.telegramError) console.warn('Telegram delivery rejected:', data.telegramError);
 
                 // 2. Telegram WebApp native downloadFile (works on newer Telegram versions)
                 if (downloadUrl && typeof window !== 'undefined') {
@@ -1855,7 +1857,7 @@ export default function TelegramMiniAppPage() {
             } else if (telegramSent) {
                 showAlert(`✅ Warbixinta (${fileName}) waxa si toos ah loogu soo diray Telegram-kaaga! Toos uga fur chat-ka.`, 'success');
             } else {
-                showAlert(`✅ Warbixinta waa la soo saaray: ${fileName}`, 'success');
+                showAlert(`Warbixinta waa la soo saaray, laakiin Telegram-ka looma dirin. Hubi bot-ka iyo chat ID-ga.`, 'warning');
             }
         } catch (err: any) {
             console.error('Report delivery error:', err);
@@ -2275,10 +2277,11 @@ export default function TelegramMiniAppPage() {
                                 <button type="button" onClick={() => { triggerHaptic('medium'); window.location.href = '/telegram-mini-app/sales'; }} className="mt-2 w-full rounded-lg border border-cyan-500/30 bg-cyan-950/40 py-2 text-[9px] font-black text-cyan-200">NEW SALE →</button>
                             </section>
                             <section className="rounded-2xl border border-slate-700 bg-slate-900/75 p-3">
-                                <h3 className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-slate-100"><UserCheck size={17} className="text-amber-300" />Customer debt <button type="button" onClick={() => setActiveTab('REPORTS')} className="ml-auto text-[8px] text-cyan-300">VIEW ALL →</button></h3>
+                                <h3 className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-slate-100"><UserCheck size={17} className="text-amber-300" />Customer debt <button type="button" onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/accounting'; }} className="ml-auto text-[8px] font-black text-cyan-300">MAAMUL DAYMAHA →</button></h3>
                                 {!dashboardData?.customerDebtList?.length ? <p className="text-[9px] text-slate-400">{dashboardDataError ? 'Xogta daynta lama soo qaadin.' : 'Dayn macaamiil oo furan lama helin.'}</p> : dashboardData.customerDebtList.slice(0, 4).map((customer: any, index: number) => (
                                     <div key={`${customer.name}-${index}`} className="flex justify-between gap-2 border-t border-slate-800 py-1.5 first:border-0 text-[9px]"><span className="min-w-0 truncate text-slate-300">{customer.name}</span><b className="whitespace-nowrap text-amber-200">{Number(customer.amount).toLocaleString()} ETB</b></div>
                                 ))}
+                                <button type="button" onClick={() => { triggerHaptic('medium'); window.location.href = '/telegram-mini-app/accounting'; }} className="mt-2 w-full rounded-lg border border-amber-500/30 bg-amber-950/40 py-2 text-[9px] font-black uppercase tracking-wider text-amber-200">Fur Bogga Daymaha & Bixi (Pay Hub) →</button>
                             </section>
                         </div>
 
