@@ -130,11 +130,10 @@ export async function POST(req: Request) {
       const isCredit = itemGroups.length > 0 && itemGroups.every(group => group.paymentMethod === 'CREDIT');
       let paidAmount = isCredit ? 0 : requestedPaidAmount;
       let saleAccountId = body.accountId ? String(body.accountId) : null;
-      if (!isCredit) {
-        if (!saleAccountId) throw new Error('Dooro account-ka lacagta lagu shubay.');
+      if (!isCredit && saleAccountId) {
         const selectedAccount = await tx.account.findFirst({ where: { id: saleAccountId, companyId, isActive: true }, select: { id: true } });
         if (!selectedAccount) throw new Error('Account-ka la doortay lama helin ama ma active aha.');
-      } else {
+      } else if (isCredit) {
         saleAccountId = null;
       }
       if (isCredit && allocationInputs.length) throw new Error('Credit sale account ama incoming payment ma laha.');
@@ -246,14 +245,16 @@ export async function POST(req: Request) {
           const nextAllocatedAmount = money(payment.originalAllocated + payment.amount);
           await tx.incomingPayment.update({ where: { id: payment.incomingPaymentId }, data: { allocatedAmount: nextAllocatedAmount, status: nextAllocatedAmount >= payment.originalAmount - 0.001 ? 'ALLOCATED' : 'PARTIALLY_ALLOCATED' } });
         }
-      } else if (paidAmount > 0 && saleAccountId) {
+      } else if (paidAmount > 0) {
         // Matched payments entered the account on arrival; never credit them twice here.
-        await tx.account.update({ where: { id: saleAccountId }, data: { balance: { increment: paidAmount } } });
         for (let index = 0; index < sales.length; index += 1) {
           const groupPaid = groupPaymentAmounts[index];
           if (groupPaid <= 0) continue;
           const sale = sales[index];
-          await tx.transaction.create({ data: { description: 'Iibka ' + sale.invoiceNumber, amount: groupPaid, type: 'INCOME', accountId: saleAccountId, companyId, userId, customerId: sale.customerId, transactionDate: new Date(), category: groupPaid >= sale.total ? 'Sales Income' : 'Sales Deposit / Dayn Qayb Bixin', note: 'Telegram Mini App · ' + sale.paymentStatus } });
+          const groupAccountId = (sale as any).accountId || saleAccountId;
+          if (!groupAccountId) throw new Error('Account-ka item-ka lacagta lagu shubay lama helin.');
+          await tx.account.update({ where: { id: groupAccountId }, data: { balance: { increment: groupPaid } } });
+          await tx.transaction.create({ data: { description: 'Iibka ' + sale.invoiceNumber, amount: groupPaid, type: 'INCOME', accountId: groupAccountId, companyId, userId, customerId: sale.customerId, transactionDate: new Date(), category: groupPaid >= sale.total ? 'Sales Income' : 'Sales Deposit / Dayn Qayb Bixin', note: 'Telegram Mini App · ' + sale.paymentStatus } });
         }
       }
       return { sales, learnedCorrections };
