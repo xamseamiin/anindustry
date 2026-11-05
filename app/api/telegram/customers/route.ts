@@ -43,3 +43,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message || 'Customer lama kaydin.' }, { status: 500 });
   }
 }
+
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json();
+    const access = await requireTelegramPermission(String(body.initData || ''), 'addSales');
+    if (!access) return NextResponse.json({ error: 'Customer edit-giisa fasax uma lihid.' }, { status: 403 });
+    const companyId = process.env.TELEGRAM_COMPANY_ID || '';
+    const id = String(body.id || '').trim();
+    const name = String(body.name || '').trim();
+    const phone = String(body.phone || '').trim();
+    if (!id || !name) return NextResponse.json({ error: 'Customer id iyo magaca waa qasab.' }, { status: 400 });
+    const existing = await prisma.customer.findFirst({ where: { id, companyId }, select: { id: true } });
+    if (!existing) return NextResponse.json({ error: 'Customer-ka lama helin.' }, { status: 404 });
+    const duplicate = await prisma.customer.findFirst({ where: { companyId, id: { not: id }, OR: [{ name: { equals: name, mode: 'insensitive' } }, ...(phone ? [{ phone }, { phoneNumber: phone }] : [])] }, select: { id: true, name: true } });
+    if (duplicate) return NextResponse.json({ error: `Customer-kan hore ayuu u jiraa: ${duplicate.name}.` }, { status: 409 });
+    const customer = await prisma.customer.update({ where: { id }, data: { name, phone: phone || null, phoneNumber: phone || null, companyName: body.companyName ? String(body.companyName).trim() : null } });
+    return NextResponse.json({ customer, updated: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Customer lama cusboonaysiin.' }, { status: 500 });
+  }
+}
