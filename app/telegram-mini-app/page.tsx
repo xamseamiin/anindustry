@@ -2716,7 +2716,7 @@ export default function TelegramMiniAppPage() {
                                         <BarChart3 size={18} />
                                     </div>
                                     <div>
-                                        <h3 className="text-xs font-black text-white uppercase tracking-wider">Reports & Financial Audit Hub</h3>
+                                        <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-black text-white uppercase tracking-wider">Reports & Financial Audit Hub</h3><button type="button" onClick={() => { triggerHaptic('light'); window.location.href = '/telegram-mini-app/accounting'; }} className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-black text-emerald-200">ACCOUNTING / RECEIVABLES</button></div>
                                         <p className="text-[10px] text-emerald-400 font-bold">Live reconciliation, workflow & system health</p>
                                     </div>
                                 </div>
