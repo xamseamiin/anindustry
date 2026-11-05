@@ -83,7 +83,15 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
         payload.paymentMethod = editPaymentMethod;
         payload.customerId = editCustomerId || null;
         payload.accountId = editPaymentMethod === 'CREDIT' ? null : (editAccountId || null);
-        payload.items = editingRow.items || [{ productId: editingRow.items?.[0]?.productId, quantity: Number(editQuantity), unitPrice: editingRow.items?.[0]?.unitPrice || 0 }];
+        // Rebuild items with updated quantity from editQuantity
+        const originalItems: any[] = editingRow.items || [];
+        payload.items = originalItems.length > 0
+          ? originalItems.map((it: any, idx: number) => ({
+              productId: it.productId,
+              quantity: idx === 0 ? Math.max(1, Number(editQuantity) || 1) : it.quantity,
+              unitPrice: it.unitPrice,
+            }))
+          : [{ productId: '', quantity: Math.max(1, Number(editQuantity) || 1), unitPrice: 0 }];
       } else {
         payload.startDate = editDate;
         payload.quantity = Number(editQuantity);
@@ -229,6 +237,10 @@ export default function ActivityHistory({ kind }: { kind: 'sales' | 'production'
           {kind === 'sales' ? <>
             <label className="block text-xs font-bold text-slate-300">Customer-ka
               <select value={editCustomerId} onChange={e => setEditCustomerId(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white"><option value="">Walk-in Customer</option>{salesCustomers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}{customer.phone ? ` · ${customer.phone}` : ''}</option>)}</select>
+            </label>
+            <label className="block text-xs font-bold text-slate-300">Tirada / Quantity
+              <input type="number" min="1" step="1" value={editQuantity} onChange={e => setEditQuantity(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white focus:border-cyan-400/60 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 transition-all" />
+              {editingRow?.items?.[0]?.unitPrice && <p className="mt-1 text-[10px] font-bold text-cyan-300">Total cusub: {(Number(editQuantity || 1) * Number(editingRow.items[0].unitPrice)).toLocaleString()} ETB</p>}
             </label>
             <label className="block text-xs font-bold text-slate-300">Paid Amount (ETB)
               <input type="number" min="0" value={editPaidAmount} onChange={e => setEditPaidAmount(e.target.value)} className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950/80 p-3.5 text-sm text-white focus:border-cyan-400/60 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 transition-all" />

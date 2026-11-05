@@ -44,11 +44,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ rows, total, page: Math.floor(page), pageSize: 25, stats: { totalSales: statsRows.length, totalQuantity: quantity(statsRows), todaySales: todayRows.length, todayQuantity: quantity(todayRows), monthValue: statsRows.reduce((sum, row) => sum + Number(row.total || 0), 0), todayValue: todayRows.reduce((sum, row) => sum + Number(row.total || 0), 0) } }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (!await requireTelegramPermission(request.headers.get('x-telegram-init-data') || '', 'addSales')) return NextResponse.json({ error: 'Add Sale fasax uma lihid.' }, { status: 403 });
-    const [products, customers, accounts] = await Promise.all([
+    const [products, rawCustomers, accounts] = await Promise.all([
       prisma.factoryMaterial.findMany({ where: { companyId }, select: { id: true, name: true, sku: true, inStock: true, sellingPrice: true, unit: true }, orderBy: { name: 'asc' }, take: 250 }),
-      prisma.customer.findMany({ where: { companyId }, select: { id: true, name: true, phone: true, phoneNumber: true }, orderBy: { name: 'asc' }, take: 250 }),
+      prisma.customer.findMany({ where: { companyId }, select: { id: true, name: true, phone: true, phoneNumber: true, sales: { where: { paymentStatus: { in: ['Credit', 'Partial'] } }, select: { total: true, paidAmount: true } } }, orderBy: { name: 'asc' }, take: 250 }),
       prisma.account.findMany({ where: { companyId, isActive: true }, select: { id: true, name: true, balance: true, currency: true }, orderBy: { name: 'asc' } })
     ]);
+    const customers = rawCustomers.map(c => {
+      const creditBalance = c.sales.reduce((sum, s) => sum + Math.max(0, money(s.total) - money(s.paidAmount)), 0);
+      return { id: c.id, name: c.name, phone: c.phone, phoneNumber: c.phoneNumber, creditBalance: Math.round(creditBalance * 100) / 100 };
+    });
     let incomingPayments: any[] = [];
     try {
       incomingPayments = await prisma.incomingPayment.findMany({ where: { companyId, status: { in: ['UNMATCHED', 'PARTIALLY_ALLOCATED'] } }, include: { account: { select: { id: true, name: true } } }, orderBy: { receivedAt: 'desc' }, take: 100 });
