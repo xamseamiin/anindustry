@@ -2985,6 +2985,7 @@ export default function TelegramMiniAppPage() {
                         </div>
 
                         <AccessControlPanel initData={telegramInitData} />
+                        {profileData?.permissions?.isAdmin && <button type="button" onClick={() => { window.location.href = '/telegram-mini-app/integrations'; }} className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-500/10 p-3 text-left text-xs font-black text-cyan-200">API Integrations · E‑Birr / CBE →<span className="block mt-1 text-[10px] font-normal text-slate-400">Hamse admin oo keliya · Save & Test account sync</span></button>}
 
                         <div className="bg-slate-950/80 border border-white/10 rounded-3xl p-5 space-y-3">
                             <h3 className="text-xs font-black text-white flex items-center gap-2"><SlidersHorizontal size={15} className="text-cyan-400" /> Notification Preferences</h3>
@@ -3833,7 +3834,7 @@ export default function TelegramMiniAppPage() {
                                     historyExpenses.map(t => (
                                         <div key={t.id} className="p-3.5 bg-white/5 border border-white/10 rounded-2xl flex justify-between items-center hover:bg-white/10 transition-all">
                                             <div className="flex flex-col gap-0.5">
-                                                <span className="text-[10px] font-bold text-slate-400">{new Date(t.createdAt).toLocaleDateString('so-SO')}</span>
+                                                <span className="text-[10px] font-bold text-slate-400">{new Date(t.transactionDate || t.createdAt).toLocaleDateString('so-SO')}</span>
                                                 <span className="text-xs font-bold text-white">{t.description || t.category}</span>
                                                 {t.requesterName && <span className="text-[9px] text-slate-400 font-bold">👤 {t.requesterName}</span>}
                                             </div>
@@ -3936,7 +3937,7 @@ export default function TelegramMiniAppPage() {
                                         </span>
                                     </div>
                                     <span className="text-[9px] text-slate-400 font-bold">
-                                        {new Date(selectedTransactionForDetails.createdAt).toLocaleString('so-SO')}
+                                        {new Date(selectedTransactionForDetails.transactionDate || selectedTransactionForDetails.createdAt).toLocaleString('so-SO')}
                                     </span>
                                 </div>
                             </div>

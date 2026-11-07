@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { requireTelegramPermission } from '@/lib/telegram-access';
+import { resolveTelegramAccess } from '@/lib/telegram-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,8 @@ function money(value: unknown) {
 export async function GET(request: Request) {
   try {
     const initData = request.headers.get('x-telegram-init-data') || '';
-    const access = await requireTelegramPermission(initData, 'viewSales');
+    const access = await resolveTelegramAccess(initData);
+    if (!access || !access.permissions.isActive || !(access.permissions.viewSales || access.permissions.viewReports || access.permissions.manageExpenses || access.permissions.isAdmin)) return NextResponse.json({ error: 'Fasax uma lihid inaad aragto daymaha.' }, { status: 403 });
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
 
@@ -101,8 +102,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const initData = request.headers.get('x-telegram-init-data') || '';
-    const access = await requireTelegramPermission(initData, 'addSales');
-    if (!access) return NextResponse.json({ error: 'Fasax uma lihid inaad deyn qabatid.' }, { status: 403 });
+    const access = await resolveTelegramAccess(initData);
+    if (!access || !access.permissions.isActive || !(access.permissions.addSales || access.permissions.viewReports || access.permissions.manageExpenses || access.permissions.isAdmin)) return NextResponse.json({ error: 'Fasax uma lihid inaad deyn qabatid.' }, { status: 403 });
 
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
     const userId = process.env.TELEGRAM_USER_ID || String(access.identity.id);
@@ -110,7 +111,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { saleId, amountCollected, accountId, note, paymentDate } = body;
-    const transactionDate = paymentDate ? new Date(`${String(paymentDate)}T12:00:00`) : new Date();
+    const transactionDate = paymentDate ? new Date(`${String(paymentDate)}T12:00:00+03:00`) : new Date();
     if (Number.isNaN(transactionDate.getTime())) return NextResponse.json({ error: 'Taariikhda lacag-bixinta ma saxna.' }, { status: 400 });
 
     const collectionAmount = money(amountCollected);
@@ -150,7 +151,11 @@ export async function POST(request: Request) {
         data: {
           paidAmount: newPaidAmount,
           paymentStatus: newStatus,
-          accountId: accountId
+          accountId: accountId,
+          // Sales History displays Sale.createdAt; keep it aligned with the
+          // collection date selected by the user so the debt payment and its
+          // ledger transaction show the same date.
+          createdAt: transactionDate
         }
       });
 
