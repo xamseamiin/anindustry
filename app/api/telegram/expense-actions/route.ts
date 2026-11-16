@@ -249,7 +249,11 @@ export async function POST(request: Request) {
         const actor = { id: String(verifiedManager.id), name: approver, source: 'MINI_APP' as const };
 
         if (action === 'approve') {
-            await reserveExpenseFunds(id, actor);
+            // Dalab caadi ahaan qoondeyn lama raacinayo, kuwa horey qoondeynta u lahaa mooyee ama haddii si gaar ah loo doorto
+            const shouldReserve = Boolean(body.reserveFunds) || Number(expense.reservedAmount || 0) > 0;
+            if (shouldReserve) {
+                await reserveExpenseFunds(id, actor);
+            }
             const updated = await transitionExpense(id, EXPENSE_STATES.AWAITING_RECEIPT, actor, { approvedBy: approver });
 
             // Edit Telegram message to prompt requester for receipt upload

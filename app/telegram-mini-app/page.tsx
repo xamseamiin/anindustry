@@ -3908,7 +3908,9 @@ export default function TelegramMiniAppPage() {
                                 </button>
                                 <div className="flex flex-col items-center">
                                     <h3 className="text-xs font-black text-white uppercase tracking-wider">Transaction Details</h3>
-                                    <span className="text-[10px] text-slate-400 font-bold">Expense Transaction</span>
+                                    <span className="text-[10px] text-slate-400 font-bold">
+                                        {selectedTransactionForDetails.relatedType === 'SALE' ? 'Sales Income' : selectedTransactionForDetails.relatedType === 'DEBT_COLLECTION' ? 'Debt Collection' : selectedTransactionForDetails.isDeposit ? 'Account Deposit' : 'Expense Transaction'}
+                                    </span>
                                 </div>
                                 <button
                                     type="button"
@@ -3946,12 +3948,12 @@ export default function TelegramMiniAppPage() {
                             <div className="bg-slate-950/70 border border-white/10 rounded-2xl p-4 flex flex-col gap-2.5 backdrop-blur-xl">
                                 <div className="flex justify-between items-center text-xs">
                                     <span className="text-slate-400 font-bold">Transaction ID</span>
-                                    <span className="font-mono font-bold text-white text-[11px]">{selectedTransactionForDetails.id.substring(0, 18)}</span>
+                                    <a href={`#transaction-${selectedTransactionForDetails.id}`} className="font-mono font-bold text-cyan-300 underline text-[11px]" title={selectedTransactionForDetails.id}>{selectedTransactionForDetails.id.substring(0, 18)}</a>
                                 </div>
                                 <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
                                     <span className="text-slate-400 font-bold">Type</span>
                                     <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-black text-[10px] uppercase border border-blue-500/30">
-                                        Withdrawal
+                                        {selectedTransactionForDetails.relatedType === 'SALE' ? 'Sale / Iib' : selectedTransactionForDetails.relatedType === 'DEBT_COLLECTION' ? 'Debt Paid / Dayn la bixiyey' : selectedTransactionForDetails.isDeposit ? 'Deposit / Lacag soo gashay' : 'Withdrawal / Lacag baxday'}
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
@@ -3960,7 +3962,7 @@ export default function TelegramMiniAppPage() {
                                 </div>
                                 <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
                                     <span className="text-slate-400 font-bold">Payment Method</span>
-                                    <span className="font-bold text-emerald-400">E-Birr Merchant</span>
+                                    <span className="font-bold text-emerald-400">{selectedTransactionForDetails.accountName || '—'}</span>
                                 </div>
                                 <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
                                     <span className="text-slate-400 font-bold">Category</span>
@@ -3982,6 +3984,12 @@ export default function TelegramMiniAppPage() {
                                         <span className="text-slate-400 font-bold">Reference / Note</span>
                                         <span className="font-bold text-slate-200">{selectedTransactionForDetails.description}</span>
                                     </div>
+                                )}
+                                {selectedTransactionForDetails.relatedHref && (
+                                    <a href={selectedTransactionForDetails.relatedHref} className="mt-1 flex items-center justify-between rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[10px] font-black text-cyan-200">
+                                        <span>{selectedTransactionForDetails.relatedType === 'SALE' ? 'Fur iibka / rasiidka' : 'Fur bixinta daynta'}</span>
+                                        <ExternalLink size={12} />
+                                    </a>
                                 )}
                                 <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
                                     <span className="text-slate-400 font-bold">Status</span>

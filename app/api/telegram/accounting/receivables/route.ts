@@ -106,7 +106,7 @@ export async function POST(request: Request) {
     if (!access || !access.permissions.isActive || !(access.permissions.addSales || access.permissions.viewReports || access.permissions.manageExpenses || access.permissions.isAdmin)) return NextResponse.json({ error: 'Fasax uma lihid inaad deyn qabatid.' }, { status: 403 });
 
     const companyId = process.env.TELEGRAM_COMPANY_ID || '';
-    const userId = process.env.TELEGRAM_USER_ID || String(access.identity.id);
+    const configuredUserId = process.env.TELEGRAM_USER_ID || String(access.identity.id);
     if (!companyId) return NextResponse.json({ error: 'Company is not configured.' }, { status: 500 });
 
     const body = await request.json();
@@ -123,6 +123,24 @@ export async function POST(request: Request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // Resolve a real database user. Telegram numeric identities are not
+      // foreign keys in the transactions table, so never use them directly.
+      const dbUser = await tx.user.findFirst({
+        where: { id: configuredUserId, companyId },
+        select: { id: true }
+      }) || await tx.user.findFirst({
+        where: { companyId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true }
+      });
+      if (!dbUser) throw new Error('User-ka shirkadda lama helin. Fadlan dib u gal system-ka.');
+
+      const account = await tx.account.findFirst({
+        where: { id: String(accountId), companyId, isActive: true },
+        select: { id: true, name: true, balance: true }
+      });
+      if (!account) throw new Error('Account-ka la doortay lama helin ama ma active aha.');
+
       // 1. Fetch target sale
       const sale = await tx.sale.findFirst({
         where: { id: saleId, companyId },
@@ -161,7 +179,7 @@ export async function POST(request: Request) {
 
       // 3. Deposit money into the selected account
       const updatedAccount = await tx.account.update({
-        where: { id: accountId },
+        where: { id: account.id },
         data: {
           balance: { increment: collectionAmount }
         }
@@ -177,19 +195,21 @@ export async function POST(request: Request) {
           description: `Deymoshub: #${sale.invoiceNumber} (${customerName})`,
           note: note ? String(note).slice(0, 500) : `Ururinta deynta invoice #${sale.invoiceNumber}`,
           transactionDate,
-          accountId,
-          userId
+          accountId: account.id,
+          userId: dbUser.id,
+          customerId: sale.customerId
         }
       });
 
       return {
         updatedSale,
+        transactionId: txn.id,
         accountName: updatedAccount.name,
         newAccountBalance: updatedAccount.balance,
         remainingDebt: Math.max(0, money(saleTotal - newPaidAmount)),
         isFullySettled
       };
-    });
+    }, { timeout: 15000 });
 
     return NextResponse.json({
       success: true,

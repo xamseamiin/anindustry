@@ -177,9 +177,15 @@ export async function GET(request: Request) {
             };
         });
 
-        const mappedDeposits = deposits.map(d => ({
+        const mappedDeposits = deposits.map(d => {
+            const description = d.description || 'Deposit / Account Inflow';
+            const saleMatch = description.match(/^Iibka\s+([^\s]+)/i);
+            const debtMatch = description.match(/^Deymoshub:\s*#?([^\s]+)/i);
+            const relatedInvoice = saleMatch?.[1] || debtMatch?.[1] || null;
+            const relatedType = saleMatch ? 'SALE' : debtMatch ? 'DEBT_COLLECTION' : 'DEPOSIT';
+            return {
             id: d.id,
-            description: d.description || 'Deposit / Account Inflow',
+            description,
             amount: Number(d.amount),
             category: 'Deposit',
             categoryId: null,
@@ -202,8 +208,11 @@ export async function GET(request: Request) {
             employeeName: null,
             employeeId: null,
             telegramMessageId: null,
-            telegramChatId: null
-        }));
+            telegramChatId: null,
+            relatedType,
+            relatedInvoice,
+            relatedHref: relatedInvoice ? `/telegram-mini-app/sales?invoice=${encodeURIComponent(relatedInvoice)}` : null
+        }; });
         const mappedWithdrawals = withdrawals.map(w => ({
             id: w.id,
             description: w.description || 'Account withdrawal',

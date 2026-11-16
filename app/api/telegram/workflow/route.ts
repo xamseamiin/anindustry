@@ -23,7 +23,11 @@ export async function POST(request: Request) {
     if (!body.expenseId || !body.action) return NextResponse.json({ error: 'expenseId and action are required.' }, { status: 400 });
 
     if (body.action === 'APPROVE') {
-      await reserveExpenseFunds(body.expenseId, actor);
+      const expenseObj = await prisma.expense.findUnique({ where: { id: body.expenseId } });
+      const shouldReserve = Boolean(body.reserveFunds) || Number(expenseObj?.reservedAmount || 0) > 0;
+      if (shouldReserve) {
+        await reserveExpenseFunds(body.expenseId, actor);
+      }
       const expense = await transitionExpense(body.expenseId, EXPENSE_STATES.AWAITING_RECEIPT, actor, { approvedBy: actor.name });
       return NextResponse.json({ success: true, expense });
     }
